@@ -82,11 +82,28 @@ class FlaskApi(WebApi):
         super().__init__(project_root, file_picker_default="Tk 对话框")
         # Flask 运行在普通浏览器中，没有可调用的宿主系统对话框。
         self.state["filePickerSystemNativeAvailable"] = False
+        # Tk 有硬性线程约束：根窗口必须在创建它的线程上销毁，而 Flask 每个请求
+        # 各占一个线程——实测第二次弹窗换线程重建 Tk 即触发 Tcl 跨线程销毁，
+        # 进程直接非法指令退出（浏览器表现为 Failed to fetch）。因此起一个
+        # 常驻专用线程持有唯一的、永不销毁的 Tk 根窗口，弹窗请求全部交给它。
+        self._tk_queue: "queue.Queue[tuple] | None" = None
+        self._tk_ready = threading.Event()
+        self._tk_done = threading.Event()
+        self._tk_result: tuple[str, ...] = ()
+        self._tk_error: BaseException | None = None
         try:
             import tkinter  # noqa: F401 - 只探测目标 Python 是否带 Tcl/Tk
             tk_available = True
         except ImportError:
             tk_available = False
+        if tk_available:
+            worker = threading.Thread(target=self._tk_main, name="base-audit-tk", daemon=True)
+            worker.start()
+            self._tk_ready.wait(timeout=10)
+            tk_available = self._tk_queue is not None
+            if tk_available:
+                import atexit
+                atexit.register(self._tk_queue.put, None)
         self.state["filePickerTkAvailable"] = tk_available
 
         # 用户可能先运行过桌面外壳，用户设置中保留了“系统原生”。该模式在
@@ -109,6 +126,60 @@ class FlaskApi(WebApi):
     def browse_dir(self, path: str = "", mode: str = "") -> dict[str, Any]:
         """列出目录内容（浏览器端目录浏览的数据源；mode 过滤文件扩展名）。"""
         return _browse_dir(path, mode)
+
+    def _tk_main(self) -> None:
+        """Tk 专用线程：持有唯一根窗口并串行执行全部选择对话框。"""
+        try:
+            import tkinter as tk
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                root.attributes("-topmost", True)
+            except Exception:  # 个别平台不支持置顶，不影响弹窗
+                pass
+        except Exception:
+            self._tk_ready.set()
+            return
+        self._tk_queue = queue.Queue()
+        self._tk_ready.set()
+        from tkinter import filedialog
+        while True:
+            job = self._tk_queue.get()
+            if job is None:
+                root.destroy()
+                return
+            folder, current, multiple, file_types = job
+            try:
+                if folder:
+                    value = filedialog.askdirectory(
+                        parent=root, initialdir=current, mustexist=True)
+                    self._tk_result = (str(value),) if value else ()
+                elif multiple:
+                    self._tk_result = tuple(str(item) for item in filedialog.askopenfilenames(
+                        parent=root, initialdir=current, filetypes=file_types,
+                    ))
+                else:
+                    value = filedialog.askopenfilename(
+                        parent=root, initialdir=current, filetypes=file_types)
+                    self._tk_result = (str(value),) if value else ()
+                self._tk_error = None
+            except Exception as exc:
+                self._tk_result = ()
+                self._tk_error = exc
+            self._tk_done.set()
+
+    def _tk_dialog(self, *, folder: bool, current: str, multiple: bool = False,
+                   file_types: tuple[tuple[str, str], ...] = ()) -> tuple[str, ...]:
+        """把对话框请求转交 Tk 专用线程，等待其在属主线程上完成。"""
+        if self._tk_queue is None:
+            raise RuntimeError("Tk 图形组件不可用；请安装 python3-tk，或在高级设置改用“浏览器内置”")
+        self._tk_done.clear()
+        self._tk_queue.put((folder, current, multiple, tuple(file_types)))
+        if not self._tk_done.wait(timeout=3600):
+            raise RuntimeError("选择窗口长时间未响应")
+        if self._tk_error is not None:
+            raise RuntimeError(f"选择窗口异常：{self._tk_error}")
+        return self._tk_result
 
     def _select_path(self, **kwargs: Any) -> tuple[str, ...]:
         if self.state.get("filePickerMode") == "系统原生":
