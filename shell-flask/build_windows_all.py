@@ -29,8 +29,8 @@ def main() -> int:
     env = os.environ.copy()
     env["FLASK_DIST_DIR"] = str(output)
     for label, script in (
-        ("Windows 10/11", "打包Flask.bat"),
-        ("Windows 7", "打包Flask-Win7.bat"),
+        ("Windows 10/11", "Windows-2-打包Win10Win11.bat"),
+        ("Windows 7", "Windows-3-打包Win7.bat"),
     ):
         print("[build] {} -> {}".format(label, output), flush=True)
         result = subprocess.run(

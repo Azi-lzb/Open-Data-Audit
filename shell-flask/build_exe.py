@@ -1,7 +1,7 @@
 """Flask 外壳打包入口（unified 统一核心）。
 
 用法：python build_exe.py [--win7]
-由 打包Flask.bat / 打包Flask-Win7.bat 调用；bat 负责选择解释器。
+由 Windows-2-打包Win10Win11.bat / Windows-3-打包Win7.bat 调用；bat 负责选择解释器。
 
 产物布局（由 FLASK_DIST_DIR 指定，可为独立目录或 dist/windows-时间戳）：
   基础数据审核工具_Flask.exe / 基础数据审核工具_Flask_Win7兼容.exe

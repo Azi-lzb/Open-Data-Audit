@@ -1,0 +1,92 @@
+时间：2026-09-29 17:40（Asia/Shanghai）
+执行者：ZCode（GLM-5.3）
+修改前/后 commit：修改前 6d50173（已推送）；本批为下一提交，待用户确认范围。
+WIP 情况：私有工作副本（Close 侧）未动。
+
+修改目的：shell-flask/ 目录内 Linux（sh/desktop）与 Windows（bat）入口混居、
+命名无序，文件管理器中无法按工作流排序。经用户选定方案，统一改为
+「平台前缀 + 序号 + 用途」命名；序号即工作流顺序（0 调度器 → 1 启动 →
+2/3/4 打包 → 5 测试 → 6 源码验收包）。
+
+重命名清单（15 个）：
+- 启动Flask-UOS.sh / .desktop      → Linux-1-启动审核工具.sh / .desktop
+- 打包Flask-DEB.sh                  → Linux-2-打包DEB.sh
+- 打包Flask-TARGZ.sh                → Linux-3-打包TARGZ.sh
+- 打包Flask-Linux.sh / .desktop     → Linux-4-打包DEB与TARGZ.sh / .desktop
+- 测试启动Linux包.sh / .desktop     → Linux-5-测试发行包启动.sh / .desktop
+- 打包Flask-UOS.sh / .desktop       → Linux-6-打包UOS源码验收包.sh / .desktop
+- UOS桌面入口.sh                    → Linux-0-桌面调度器.sh
+- 启动Flask.bat                     → Windows-1-启动审核工具.bat
+- 打包Flask.bat                     → Windows-2-打包Win10Win11.bat
+- 打包Flask-Win7.bat                → Windows-3-打包Win7.bat
+- 打包Flask-双Windows.bat           → Windows-4-打包双版本.bat
+
+桌面显示名同步（4 个 .desktop 的 Name=，文件管理器/菜单可见文字）：
+- 启动 Flask 审核工具（UOS）→ 启动审核工具（Linux/UOS）
+- 打包 Flask 发行包（LinuxUOS）→ 打包 DEB 与 tar.gz 发行包（Linux/UOS）
+- 测试 Linux 发行包（启动冒烟）→ 测试发行包启动（冒烟）
+- 打包 Flask 源码（UOS）→ 打包 UOS 源码验收包
+DEB 安装后的系统菜单项（基础数据审核工具 V3）与 Windows EXE 产物名
+（基础数据审核工具_Flask.exe 等）属既有产品命名，不在本次入口规整范围。
+
+同步更新引用（7 个）：README.md、四个 .desktop 的 Exec 指向、
+Linux-0-桌面调度器.sh 的分发目标、Linux-2/3 对引擎的调用、
+Linux-4 引擎内嵌发行包布局与目标机指引、Linux-5 对包内启动脚本的断言、
+Linux-6 随包脚本清单；build_exe.py / build_win7.py / build_windows_all.py
+中被 bat 名称引用处一并更新。内部文件名不动：app.py、run.py、
+build_*.py、requirements*.txt。GPT修改记录历史文件不改名。
+
+发行包布局影响：DEB/tar.gz 内 shell-flask/ 随包启动脚本由
+启动Flask-UOS.sh 改为 Linux-1-启动审核工具.sh，目标机双击
+Linux-1-启动审核工具.desktop 启动；打包引擎与冒烟脚本已同步。
+
+实际检查（Open 仓库工作目录执行）：
+- sh -n 七个 .sh 全部通过；build_exe.py/build_win7.py/build_windows_all.py
+  py_compile 通过。
+- 全仓（除 GPT修改记录/dist/__pycache__）grep 无旧名残留；.desktop Exec
+  抽查指向正确。
+- Linux-4-打包DEB与TARGZ.sh 完整重建：DEB + tar.gz 双产出，glibc 审计
+  2.25（目标 ≤2.28），空表头配置隐私清理校验通过。
+- Linux-5-测试发行包启动.sh 冒烟 2/2：DEB（8800）与 tar.gz（8805）均按
+  新名解包断言、HTTP 200、标题「V3 基础数据审核工具」、端口释放
+  （显示名更新后重建 174838 批次复测同过）。
+- Windows .bat 本机不可运行，仅做名称引用与语法层面核对，需 Windows
+  实机回归（风险见下）。
+
+未执行项/已知限制：Windows 侧四个 bat 及 build_*.py 未在 Win10/11/Win7
+实机验证；UOS20/麒麟/arm64 实机未测。业务核心 core/ 零改动，S1/S2/S3
+规则与配置结构未变。
+
+第三轮（用户复核后）：删除冗余桌面入口与调度器、新增速查说明。
+- 用户反馈：文件管理器里 .desktop 按内部显示名渲染，与 .sh 成对显示显得
+  冗余、看似"未改名"。处理：删除 Linux-4-打包DEB与TARGZ.desktop、
+  Linux-5-测试发行包启动.desktop、Linux-6-打包UOS源码验收包.desktop
+  及其唯一调用方 Linux-0-桌面调度器.sh（双击直接运行 .sh 即可）。
+  保留 Linux-1-启动审核工具.desktop（随 DEB/tar.gz 发行包提供给目标机
+  双击启动，打包引擎依赖），显示名改为与文件名完全一致。
+- Linux-6-打包UOS源码验收包.sh 随包清单同步（不再复制已删文件）。
+- 新增 shell-flask/文件说明.txt：每个入口/内部文件的用途速查与典型流程。
+- README 双击章节改为指向 .sh 与 文件说明.txt。
+- 复验：sh -n 全过、无残留引用、Linux-4 引擎完整重建 + Linux-5 冒烟 2/2
+  （175xxx 批次）、Linux-6 源码验收包构建成功（含 SHA-256 留档）。
+
+第四轮（用户决策）：单产物快捷入口去冗余，序号前移。
+- 删除 Linux-2-打包DEB.sh、Linux-3-打包TARGZ.sh（仅是引擎加 --skip 参数的
+  7 行包装，单机场景无时间收益）；需要单产物时直接
+  `Linux-2-打包DEB与TARGZ.sh --skip-deb / --skip-tgz`。
+- 序号顺延重命名：Linux-4-打包DEB与TARGZ.sh → Linux-2-打包DEB与TARGZ.sh、
+  Linux-5-测试发行包启动.sh → Linux-3-测试发行包启动.sh、
+  Linux-6-打包UOS源码验收包.sh → Linux-4-打包UOS源码验收包.sh。
+- 引擎用法段、源码包随包清单、README、文件说明.txt 同步新序号并移除
+  对已删入口的引用。
+- 复验：sh -n 全过、无旧序号残留；引擎（新名）完整重建、冒烟 2/2、
+  源码验收包（新名）构建成功。
+- 最终 Linux 入口为 1 启动 / 2 打包引擎 / 3 冒烟 / 4 源码包。
+
+删除清单：Linux-0-桌面调度器.sh、Linux-4-打包DEB与TARGZ.desktop、
+Linux-5-测试发行包启动.desktop、Linux-6-打包UOS源码验收包.desktop。
+回滚：按本记录恢复 15 个文件名与引用即可（含上述 4 个文件）。回滚：按本记录反向改回 15 个文件名
+并恢复引用即可。
+
+【组件版本】
+不升级。平台外壳入口命名规整，业务规则、对外业务契约与配置结构未修改。

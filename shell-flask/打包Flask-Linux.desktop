@@ -1,8 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=打包 Flask 发行包（Linux/UOS）
-Comment=构建自带 Python 的 DEB 与 tar.gz（兼容 UOS20/UOS25/麒麟）
-Exec=sh -c "set -f; IFS=; cd \\${1%%/*}; exec sh ./UOS桌面入口.sh linux" sh "%k"
-Terminal=true
-Categories=Development;

@@ -6,8 +6,8 @@
 # 本脚本拷到目标机直接运行，即可在安装前预检；测试机不需要 Python。
 #
 # 用法：
-#   ./测试启动Linux包.sh                          # 自动测 dist/ 下最新 .deb 与 .tar.gz
-#   ./测试启动Linux包.sh 产物1.deb 产物2.tar.gz    # 测试指定产物（可多个）
+#   ./Linux-3-测试发行包启动.sh                          # 自动测 dist/ 下最新 .deb 与 .tar.gz
+#   ./Linux-3-测试发行包启动.sh 产物1.deb 产物2.tar.gz    # 测试指定产物（可多个）
 #
 # 全部通过退出码 0；任一失败退出码 1。测试过程使用 8800 起的端口段，不影响
 # 8750 上已在运行的正式实例。
@@ -81,8 +81,8 @@ test_one() {  # $1=产物绝对/相对路径
                 break
                 ;;
         esac
-        if [ ! -x "$ROOT/app/base-audit-v3" ] || [ ! -f "$ROOT/shell-flask/启动Flask-UOS.sh" ]; then
-            FAILURE="包内缺少 app/base-audit-v3 或 shell-flask/启动Flask-UOS.sh"
+        if [ ! -x "$ROOT/app/base-audit-v3" ] || [ ! -f "$ROOT/shell-flask/Linux-1-启动审核工具.sh" ]; then
+            FAILURE="包内缺少 app/base-audit-v3 或 shell-flask/Linux-1-启动审核工具.sh"
             break
         fi
 
@@ -90,11 +90,11 @@ test_one() {  # $1=产物绝对/相对路径
         LOG=$T/server.log
         case "$LABEL" in
             *.deb)
-                BASE_AUDIT_INSTALL_ROOT=$ROOT sh "$ROOT/shell-flask/启动Flask-UOS.sh" \
+                BASE_AUDIT_INSTALL_ROOT=$ROOT sh "$ROOT/shell-flask/Linux-1-启动审核工具.sh" \
                     --no-browser --port "$NEXT_PORT" >"$LOG" 2>&1 &
                 ;;
             *)
-                sh "$ROOT/shell-flask/启动Flask-UOS.sh" \
+                sh "$ROOT/shell-flask/Linux-1-启动审核工具.sh" \
                     --no-browser --port "$NEXT_PORT" >"$LOG" 2>&1 &
                 ;;
         esac

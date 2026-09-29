@@ -1,8 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=测试 Linux 发行包（启动冒烟）
-Comment=在本机实测 DEB/tar.gz 发行包能否启动（UOS/麒麟通用）
-Exec=sh -c "set -f; IFS=; cd \\${1%%/*}; exec sh ./UOS桌面入口.sh test" sh "%k"
-Terminal=true
-Categories=Development;

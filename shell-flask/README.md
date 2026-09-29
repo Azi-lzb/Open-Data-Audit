@@ -18,15 +18,15 @@ Windows）共用 `core` 的唯一业务核心（`base_audit` 后端 +
 ## Windows 运行与打包
 
 ```bat
-启动Flask.bat                 :: 运行（源码模式，绑定根目录 core；--packed 用打包版）
-打包Flask.bat                 :: Win10/11 64 位推荐 EXE（Python 3.11/3.12）
-打包Flask-Win7.bat            :: Win7 兼容 EXE（32 位，Python 3.7/3.8）
-打包Flask-双Windows.bat       :: 两个 EXE 放在同一个发布文件夹（推荐对外分发）
+Windows-1-启动审核工具.bat                 :: 运行（源码模式，绑定根目录 core；--packed 用打包版）
+Windows-2-打包Win10Win11.bat                 :: Win10/11 64 位推荐 EXE（Python 3.11/3.12）
+Windows-3-打包Win7.bat            :: Win7 兼容 EXE（32 位，Python 3.7/3.8）
+Windows-4-打包双版本.bat       :: 两个 EXE 放在同一个发布文件夹（推荐对外分发）
 ```
 
 ### Windows 双发行形态（同一业务核心）
 
-推荐运行 `打包Flask-双Windows.bat`。它在 `dist\` 下新建一个目录，把两个
+推荐运行 `Windows-4-打包双版本.bat`。它在 `dist\` 下新建一个目录，把两个
 EXE 与共用的 `core\`、`config\` 放在一起；用户按自己的 Windows 版本选择
 对应 EXE。单独运行两个旧入口时仍分别输出 `win10-*`、`win7-*` 目录。
 不要把旧 `dist\core\data` 或旧 `dist\config` 当作发布内容；它们可能包含
@@ -45,10 +45,10 @@ dist\
 
 两个 EXE 都从仓库根目录同一份 `core\` 与 `config\` 生成。Win10/11 用户
 双击无后缀的推荐版；Win7 用户双击带
-`Win7兼容` 后缀的版本。若用启动器验证打包版：`启动Flask.bat --packed`
-启动推荐版，`启动Flask.bat --packed win7` 启动 Win7 版。
+`Win7兼容` 后缀的版本。若用启动器验证打包版：`Windows-1-启动审核工具.bat --packed`
+启动推荐版，`Windows-1-启动审核工具.bat --packed win7` 启动 Win7 版。
 
-`打包Flask.bat` 首次会从本机 64 位 Python 3.11/3.12 创建仓库根目录
+`Windows-2-打包Win10Win11.bat` 首次会从本机 64 位 Python 3.11/3.12 创建仓库根目录
 `.venv`，并安装 `requirements-win10win11-build.txt`；复制来的旧 `.venv`
 不可运行时改用独立的 `.venv-flask-build`。本机已有的 Conda Python 3.11
 也可用于创建该环境；其它位置可设置 `PYTHON_MODERN` 指向解释器。
@@ -58,7 +58,7 @@ Win7 使用独立的 32 位 Python 3.7/3.8 环境。
 > 便携目录/ZIP。`build_win7.py portable` 会明确报错；历史产物留在原处，
 > 请只分发本次生成的时间戳目录。
 
-`打包Flask-Win7.bat` 使用已验证的 32 位 Python；旧虚拟环境失效时创建
+`Windows-3-打包Win7.bat` 使用已验证的 32 位 Python；旧虚拟环境失效时创建
 `build-win7-venv-rebuilt`，不会复用原有坏环境。可通过 `PYTHON_WIN7`
 指定其它 32 位 Python 3.7/3.8。离线依赖缓存包括：
 
@@ -90,12 +90,9 @@ Win7 包不在 EXE 旁散放 DLL。目标机使用系统 UCRT；裸 Win7 报缺
 
 ### 双击启动与打包
 
-在文件管理器中打开 `shell-flask/`，双击对应的桌面入口：
-
-- `启动Flask-UOS.desktop`：后台启动本机服务并打开浏览器，不弹终端。
-- `打包Flask-Linux.desktop`：构建自包含发行包（DEB + tar.gz）。
-- `测试启动Linux包.desktop`：对最新产物做本机启动冒烟。
-- `打包Flask-UOS.desktop`：生成源码 ZIP/TAR 验收包（内含全套 Linux 打包/测试脚本）。
+在文件管理器中打开 `shell-flask/`，双击 `Linux-1-启动审核工具.desktop`
+即可后台启动本机服务并打开浏览器，不弹终端。其余脚本（打包、冒烟、
+源码验收包等）直接双击对应 `.sh` 运行，用途速查见同目录 `文件说明.txt`。
 
 入口文件在版本库中带有 Linux 可执行权限，正常同步后不需要手动运行 `chmod`。UOS
 对从源码目录直接双击的 `.desktop` 入口可能仍会显示一次“允许启动/信任此启动器”提示；
@@ -107,22 +104,20 @@ Win7 包不在 EXE 旁散放 DLL。目标机使用系统 UCRT；裸 Win7 报缺
 
 ### 冻结发行包（DEB + tar.gz，自带 Python）
 
-终端入口按用途分开，共用同一构建引擎 `打包Flask-Linux.sh`：
+终端入口按用途分开，共用同一构建引擎 `Linux-2-打包DEB与TARGZ.sh`：
 
 ```sh
-/bin/sh ./启动Flask-UOS.sh        # 前台调试运行（源码模式）
-/bin/sh ./打包Flask-DEB.sh        # 冻结+审计，仅出 DEB
-/bin/sh ./打包Flask-TARGZ.sh      # 冻结+审计，仅出 tar.gz（DEB 备用方案）
-/bin/sh ./打包Flask-Linux.sh      # 冻结+审计，一次出 DEB + tar.gz
-/bin/sh ./测试启动Linux包.sh        # 本机实测 dist/ 最新 .deb 与 .tar.gz 能否启动
+/bin/sh ./Linux-1-启动审核工具.sh        # 前台调试运行（源码模式）
+/bin/sh ./Linux-2-打包DEB与TARGZ.sh      # 冻结+审计，一次出 DEB + tar.gz
+/bin/sh ./Linux-3-测试发行包启动.sh        # 本机实测 dist/ 最新 .deb 与 .tar.gz 能否启动
 ```
 
 - **DEB**：文件管理器双击安装到 `/opt/base-audit-v3/`，注册应用菜单
   「基础数据审核工具 V3」（`base-audit-v3` 命令同效）。
 - **tar.gz 便携包**：DEB 的备用方案——目标机无 root、包管理受限或不想安装时，
-  解压到任意可写目录，双击其中 `shell-flask/启动Flask-UOS.desktop` 或运行
-  `shell-flask/启动Flask-UOS.sh`；启动器自动识别发行包布局。
-- **测试启动Linux包.sh**：打包后、分发前的本机实测（解包→启动→HTTP 200 与页面
+  解压到任意可写目录，双击其中 `shell-flask/Linux-1-启动审核工具.desktop` 或运行
+  `shell-flask/Linux-1-启动审核工具.sh`；启动器自动识别发行包布局。
+- **Linux-3-测试发行包启动.sh**：打包后、分发前的本机实测（解包→启动→HTTP 200 与页面
   标题校验→释放端口→汇总）；可随产物拷到 UOS/麒麟目标机做安装前预检，
   测试机不需要 Python。
 

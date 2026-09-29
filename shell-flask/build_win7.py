@@ -1,4 +1,4 @@
-"""Win7 发行包收尾工具（由 打包Flask-Win7.bat 调用，Python 3.7/3.8 可运行）。
+"""Win7 发行包收尾工具（由 Windows-3-打包Win7.bat 调用，Python 3.7/3.8 可运行）。
 
 唯一子命令：
   exe-extras   PyInstaller 产物收尾：生成《运行环境说明-Win7.txt》（GBK，
@@ -98,7 +98,7 @@ def main(argv: list[str]) -> int:
     """唯一入口：exe-extras（便携版模式已移除）。"""
     if len(argv) == 2 and argv[1] == "portable":
         print("[错误] 便携版模式已移除（2026-09-21 用户要求：发行只保留 EXE 形态）。\n"
-              "       请直接运行 打包Flask-Win7.bat 生成 EXE + core + config。")
+              "       请直接运行 Windows-3-打包Win7.bat 生成 EXE + core + config。")
         return 2
     if len(argv) != 2 or argv[1] != "exe-extras":
         print(__doc__)

@@ -4,7 +4,7 @@
 #
 # 包内布局（app.py 同时兼容开发布局与打包布局）：
 #   基础数据审核工具_UOS_<日期>/
-#   ├─ app.py, run.py, requirements.txt, README.md, 启动Flask-UOS.sh
+#   ├─ app.py, run.py, requirements.txt, README.md, Linux-1-启动审核工具.sh
 #   ├─ core/{src,frontend,基础数据审核工具使用说明.docx}   ← 业务核心与前端
 #   └─ config/                                                ← 三册配置
 #
@@ -44,16 +44,13 @@ cp "$SCRIPT_DIR/app.py" "$PKG/"
 cp "$SCRIPT_DIR/run.py" "$PKG/"
 cp "$SCRIPT_DIR/requirements.txt" "$PKG/"
 cp "$SCRIPT_DIR/README.md" "$PKG/"
-cp "$SCRIPT_DIR/启动Flask-UOS.sh" "$PKG/"
-cp "$SCRIPT_DIR/打包Flask-UOS.sh" "$SCRIPT_DIR/打包Flask-Linux.sh" "$PKG/"
-cp "$SCRIPT_DIR/打包Flask-DEB.sh" "$SCRIPT_DIR/打包Flask-TARGZ.sh" "$PKG/"
-cp "$SCRIPT_DIR/测试启动Linux包.sh" "$PKG/"
-cp "$SCRIPT_DIR/UOS桌面入口.sh" "$PKG/"
-cp "$SCRIPT_DIR/启动Flask-UOS.desktop" "$SCRIPT_DIR/打包Flask-Linux.desktop" \
-    "$SCRIPT_DIR/打包Flask-UOS.desktop" "$SCRIPT_DIR/测试启动Linux包.desktop" "$PKG/"
-chmod 755 "$PKG/启动Flask-UOS.sh" "$PKG/打包Flask-UOS.sh" "$PKG/打包Flask-Linux.sh" \
-    "$PKG/打包Flask-DEB.sh" "$PKG/打包Flask-TARGZ.sh" "$PKG/测试启动Linux包.sh" \
-    "$PKG/UOS桌面入口.sh" "$PKG/"*.desktop
+cp "$SCRIPT_DIR/Linux-1-启动审核工具.sh" "$PKG/"
+cp "$SCRIPT_DIR/Linux-4-打包UOS源码验收包.sh" "$SCRIPT_DIR/Linux-2-打包DEB与TARGZ.sh" "$PKG/"
+cp "$SCRIPT_DIR/Linux-3-测试发行包启动.sh" "$PKG/"
+cp "$SCRIPT_DIR/Linux-1-启动审核工具.desktop" "$PKG/"
+chmod 755 "$PKG/Linux-1-启动审核工具.sh" "$PKG/Linux-4-打包UOS源码验收包.sh" "$PKG/Linux-2-打包DEB与TARGZ.sh" \
+    "$PKG/Linux-3-测试发行包启动.sh" \
+    "$PKG/Linux-1-启动审核工具.desktop"
 
 # ---- 共享核心：后端 + 前端 + 使用说明 ----
 mkdir -p "$PKG/core"

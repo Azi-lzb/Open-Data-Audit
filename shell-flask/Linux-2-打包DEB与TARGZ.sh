@@ -36,12 +36,12 @@ SKIP_TGZ=0
 usage() {
     cat <<EOF
 用法：
-  ./打包Flask-Linux.sh [--with-local-config] [--python 解释器]
+  ./Linux-2-打包DEB与TARGZ.sh [--with-local-config] [--python 解释器]
                        [--skip-deb] [--skip-tgz]
 
 默认生成 DEB 与 tar.gz 两种发行包，均自带冻结 Python 运行时，目标机无需
 安装 Python。tar.gz 解压即可运行（双击解压目录 shell-flask/ 里的
-启动Flask-UOS.desktop，或运行 shell-flask/启动Flask-UOS.sh）。
+Linux-1-启动审核工具.desktop，或运行 shell-flask/Linux-1-启动审核工具.sh）。
 
 --with-local-config  仅自测：把本机 config-real/（真实配置）原样带入包内，禁止外发；
                       默认使用公开 config/ 空表头配置，构建时同样做隐私清理校验。
@@ -51,9 +51,7 @@ usage() {
 --skip-deb / --skip-tgz  只生成其中一种包。
 
 配套入口（推荐在每台打包机上按此流程）：
-  打包Flask-DEB.sh    仅生成 DEB（等价 --skip-tgz）
-  打包Flask-TARGZ.sh  仅生成 tar.gz（等价 --skip-deb；DEB 的备用方案）
-  测试启动Linux包.sh  打包后在本机实测产物能否启动（解包→启动→HTTP 校验）
+  Linux-3-测试发行包启动.sh  打包后在本机实测产物能否启动（解包→启动→HTTP 校验）
 
 跨机器/芯片：amd64 与 arm64（飞腾/鲲鹏）构建机会自动下载对应架构的自包含解释器，
 产物文件名带架构标记；其它架构回退该机系统 Python。适用 UOS20/UOS25、麒麟 V10
@@ -299,8 +297,8 @@ cp -R "$ROOT/core/frontend/." "$PAYLOAD/core/frontend/"
 for doc in "$ROOT/基础数据审核工具使用说明.docx" "$ROOT/core/基础数据审核工具使用说明.docx"; do
     if [ -f "$doc" ]; then cp "$doc" "$PAYLOAD/core/"; break; fi
 done
-cp "$SCRIPT_DIR/启动Flask-UOS.sh" "$PAYLOAD/shell-flask/"
-cp "$SCRIPT_DIR/启动Flask-UOS.desktop" "$PAYLOAD/shell-flask/"
+cp "$SCRIPT_DIR/Linux-1-启动审核工具.sh" "$PAYLOAD/shell-flask/"
+cp "$SCRIPT_DIR/Linux-1-启动审核工具.desktop" "$PAYLOAD/shell-flask/"
 
 if [ "$WITH_LOCAL_CONFIG" = 1 ]; then
     echo '[警告] 本包带有本机 config-real/，可能含机构资料和审核历史，仅供本人验证，禁止外发。'
@@ -355,7 +353,7 @@ cat > "$STAGE/usr/bin/base-audit-v3" <<SH
 set -eu
 BASE_AUDIT_INSTALL_ROOT=$RELEASE
 export BASE_AUDIT_INSTALL_ROOT
-exec "$RELEASE/shell-flask/启动Flask-UOS.sh" "\$@"
+exec "$RELEASE/shell-flask/Linux-1-启动审核工具.sh" "\$@"
 SH
 
 cat > "$STAGE/usr/share/applications/base-audit-v3.desktop" <<DESKTOP
@@ -402,8 +400,8 @@ find "$STAGE" -type d -exec chmod 755 {} +
 find "$STAGE" -type f -exec chmod 644 {} +
 chmod 755 "$STAGE/usr/bin/base-audit-v3" \
     "$PAYLOAD/app/base-audit-v3" \
-    "$PAYLOAD/shell-flask/启动Flask-UOS.sh" \
-    "$PAYLOAD/shell-flask/启动Flask-UOS.desktop"
+    "$PAYLOAD/shell-flask/Linux-1-启动审核工具.sh" \
+    "$PAYLOAD/shell-flask/Linux-1-启动审核工具.desktop"
 
 FINISHED=
 
@@ -435,7 +433,7 @@ echo
 echo "[完成] 构建产物：$FINISHED"
 echo "[审计] 冻结包实测最低 glibc ${MIN_GLIBC}（目标基线 ${GLIBC_TARGET}）；GLIBCXX ${MIN_GLIBCXX:-无}。"
 echo '[提示] 目标机无需 Python；DEB 装到 /opt/base-audit-v3 并加菜单入口；tar.gz 解压后运行其中'
-echo '       shell-flask/启动Flask-UOS.sh 或双击同目录 启动Flask-UOS.desktop。'
+echo '       shell-flask/Linux-1-启动审核工具.sh 或双击同目录 Linux-1-启动审核工具.desktop。'
 echo '[提示] 目标机仍需桌面会话、xdg-utils、iproute2 和 LibreOffice Calc。'
 echo '[提示] 配置和运行数据保存在 ~/.local/share/base-audit-v3/，升级不覆盖已有用户数据。'
 for f in "$DIST/${ARTIFACT_BASE}".*; do echo "[留档] $f"; done

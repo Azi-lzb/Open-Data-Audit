@@ -67,7 +67,7 @@ if [ "${1:-}" = "--background" ]; then
     LOG_DIR=$STATE_HOME/base-audit-v3/logs
     mkdir -p "$LOG_DIR"
     LOG_FILE=$LOG_DIR/start-$(date '+%Y%m%d_%H%M%S').log
-    nohup /bin/sh "$SCRIPT_DIR/启动Flask-UOS.sh" "$@" >>"$LOG_FILE" 2>&1 </dev/null &
+    nohup /bin/sh "$SCRIPT_DIR/Linux-1-启动审核工具.sh" "$@" >>"$LOG_FILE" 2>&1 </dev/null &
     APP_PID=$!
     READY=0
     attempt=0

@@ -1,8 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=打包 Flask 源码（UOS）
-Comment=生成可外发的 UOS 源码验收包
-Exec=sh -c "set -f; IFS=; cd \\${1%%/*}; exec sh ./UOS桌面入口.sh source" sh "%k"
-Terminal=true
-Categories=Development;
