@@ -255,6 +255,16 @@ Linux-1-启动审核工具.desktop 启动；打包引擎与冒烟脚本已同步
 - 验证：test_web_app/system_info 77 通过；重建 + 冒烟 2/2；打包版实测
   启动 3s、版本后台补全、四行展示不受影响。
 
+第十七轮：本机切用原生 LibreOffice（性能）。
+- 用户分析"UOS20 跑 S1F1 反而更快"：成因是本机 UOS25 用玲珑商店版，
+  ll-cli 每次冷启动约 10 秒且 S1F1 每工作簿各起一次 soffice；UOS20 目标机
+  为 /opt 原生安装，无沙箱税。
+- 已在本机 pkexec 安装 7.6.7.2 离线包至 /opt/libreoffice7.6（42 包）。
+  引擎发现顺序 /opt 版本化目录优先于玲珑兜底，实测自动切换：选择
+  "LibreOffice Calc（版本化 DEB 安装目录）"，--version 实测 0.2 秒
+  （玲珑路径约 10 秒）；环境摘要同步显示原生版。
+- 无代码改动；玲珑版保留为兜底。
+
 删除清单：Linux-0-桌面调度器.sh、Linux-1-启动审核工具.desktop（第七轮）、Linux-4-打包DEB与TARGZ.desktop、
 Linux-5-测试发行包启动.desktop、Linux-6-打包UOS源码验收包.desktop。
 回滚：按本记录恢复 15 个文件名与引用即可（含上述 4 个文件）。回滚：按本记录反向改回 15 个文件名
