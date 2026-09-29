@@ -1,0 +1,23 @@
+# 换行符规范：shell 脚本必须 LF，否则 Linux 上 shebang 变成 /bin/sh\r 无法执行。
+# 这正是 UOS 验收 #1 号问题，用版本库规则根治，不再依赖打包时转换。
+*.sh text eol=lf
+*.desktop text eol=lf
+
+# Windows 批处理必须 CRLF。
+*.bat text eol=crlf
+
+# Python / Markdown / YAML 用 LF（跨平台一致，便于 diff）。
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# 二进制文件不参与换行转换。
+*.xlsx binary
+*.xls binary
+*.docx binary
+*.zip binary
+*.gz binary
+*.png binary
+*.jpg binary
+*.exe binary

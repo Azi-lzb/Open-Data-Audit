@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=打包 Flask DEB（UOS）
+Comment=构建自带 Python 运行时的 DEB 安装包
+Exec=sh -c "d=$(dirname \"$1\"); exec sh \"$d/UOS桌面入口.sh\" deb" sh "%k"
+Terminal=true
+Categories=Development;

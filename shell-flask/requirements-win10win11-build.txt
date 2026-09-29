@@ -1,0 +1,5 @@
+# Windows 10/11 64-bit Flask build environment.
+# Kept separate from requirements-win7.txt: the modern release may use a
+# current 64-bit Python and PyInstaller, while Win7 remains pinned to 3.8/x86.
+-r requirements.txt
+pyinstaller>=6.0,<7

@@ -1,0 +1,5 @@
+flask>=3.0
+openpyxl>=3.1
+lxml>=4.9   # openpyxl 的 C 加速 XML 后端：大工作簿解析/保存显著提速
+xlrd>=2.0
+pywin32>=306 ; sys_platform == "win32"

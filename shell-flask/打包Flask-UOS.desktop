@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=打包 Flask 源码包（UOS）
+Comment=生成便携源码验收包
+Exec=sh -c "d=$(dirname \"$1\"); exec sh \"$d/UOS桌面入口.sh\" source" sh "%k"
+Terminal=true
+Categories=Development;

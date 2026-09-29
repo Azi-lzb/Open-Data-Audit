@@ -1,0 +1,29 @@
+# Private business data and local configuration
+/config-real/
+/2026-07-31/
+/reference/
+/test-output/
+/data/
+**/data/
+**/dist/
+**/build/
+**/runtime/
+**/wheels/
+**/.venv/
+**/venv/
+**/__pycache__/
+/.pytest_cache/
+*.pyc
+*.log
+*.csv
+*.xls
+*.xlsm
+*.zip
+*.deb
+*.exe
+*.dll
+
+# Only the deliberately empty header workbooks in config/ are versioned.
+*.xlsx
+!/config/*.xlsx
+!/config/默认配置/*.xlsx
