@@ -47,10 +47,8 @@ cp "$SCRIPT_DIR/README.md" "$PKG/"
 cp "$SCRIPT_DIR/Linux-1-启动审核工具.sh" "$PKG/"
 cp "$SCRIPT_DIR/Linux-4-打包UOS源码验收包.sh" "$SCRIPT_DIR/Linux-2-打包DEB与TARGZ.sh" "$PKG/"
 cp "$SCRIPT_DIR/Linux-3-测试发行包启动.sh" "$PKG/"
-cp "$SCRIPT_DIR/Linux-1-启动审核工具.desktop" "$PKG/"
 chmod 755 "$PKG/Linux-1-启动审核工具.sh" "$PKG/Linux-4-打包UOS源码验收包.sh" "$PKG/Linux-2-打包DEB与TARGZ.sh" \
-    "$PKG/Linux-3-测试发行包启动.sh" \
-    "$PKG/Linux-1-启动审核工具.desktop"
+    "$PKG/Linux-3-测试发行包启动.sh"
 
 # ---- 共享核心：后端 + 前端 + 使用说明 ----
 mkdir -p "$PKG/core"
@@ -90,6 +88,7 @@ else
     "$PY" -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest()+'  '+sys.argv[1],end='')" "$ARTIFACT" > "$ARTIFACT.sha256"
 fi
 
+rm -rf -- "$PKG"   # 压缩与校验文件已生成，清理组装暂存目录
 SIZE="$(du -sh "$ARTIFACT" | cut -f1)"
 echo ""
 echo "打包完成：dist/$ARTIFACT（$SIZE）"

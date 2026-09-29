@@ -100,7 +100,32 @@ Linux-1-启动审核工具.desktop 启动；打包引擎与冒烟脚本已同步
 - 文件说明.txt 增补：.desktop 首次信任提示、选择器三模式说明、
   .sh 双击行为说明。
 
-删除清单：Linux-0-桌面调度器.sh、Linux-4-打包DEB与TARGZ.desktop、
+第六轮：构建引擎收尾自动清理旧批次。
+- Linux-2-打包DEB与TARGZ.sh 末尾新增清理：按 base-audit-v3_时间戳 分组，
+  默认只保留最新一批产物（含 build-info/sha256），FLASK_KEEP_BUILDS=N 可留
+  N 批。开发中曾出现首版逻辑排序方向颠倒（误删新批次留旧批次），验证时
+  由 dist 清单核对发现，已改为 sort -ru 修正。
+- 验证：连续两次完整构建，dist/ 依次 191918→193513→193622 各仅存最新一代；
+  冒烟 2/2 通过。文件说明.txt Linux-2 条目补充清理说明。
+
+第七轮（用户决策）：移除 .desktop 快捷方式，统一以 .sh 为入口。
+- 用户实测 .desktop 双击仍无反应。用 gio launch（文件管理器同源启动通道）
+  实验定位根因：Exec 中 %k 参数展开写法在桌面解析层报 Bad substitution；
+  且实测 gio 启动的工作目录跟随启动进程（非 desktop 所在目录）、相对路径
+  Exec 被拒载——结论：.desktop 仅绝对路径可靠，tar.gz 解压场景无法预知
+  路径，该入口不可维护。
+- 删除仓库 shell-flask/Linux-1-启动审核工具.desktop；打包引擎不再向
+  DEB/tar.gz 载荷塞 desktop（DEB 用户用安装注册的系统菜单「基础数据
+  审核工具 V3」，tar.gz 用户右键"在终端中运行" Linux-1-启动审核工具.sh）。
+- Linux-4 源码验收包：清单移除 desktop；新增打包后清理组装暂存目录。
+- README/文件说明.txt 同步：入口说明改为 .sh，FAQ 记录 .desktop 不可靠
+  的实测结论。
+- 源码模式 Tk 选项灰显为已知状态：本机系统 python3 未装 python3-tk，
+  需 sudo 安装后可选；发行包内 Tk 默认可用（前轮已实测）。
+- 验证：sh -n 全过；引擎重建 + 冒烟 2/2；包内 desktop 数量 0、.sh 在位、
+  DEB 应用菜单入口保持；Linux-4 实跑且不再遗留暂存目录。
+
+删除清单：Linux-0-桌面调度器.sh、Linux-1-启动审核工具.desktop（第七轮）、Linux-4-打包DEB与TARGZ.desktop、
 Linux-5-测试发行包启动.desktop、Linux-6-打包UOS源码验收包.desktop。
 回滚：按本记录恢复 15 个文件名与引用即可（含上述 4 个文件）。回滚：按本记录反向改回 15 个文件名
 并恢复引用即可。

@@ -40,8 +40,8 @@ usage() {
                        [--skip-deb] [--skip-tgz]
 
 默认生成 DEB 与 tar.gz 两种发行包，均自带冻结 Python 运行时，目标机无需
-安装 Python。tar.gz 解压即可运行（双击解压目录 shell-flask/ 里的
-Linux-1-启动审核工具.desktop，或运行 shell-flask/Linux-1-启动审核工具.sh）。
+安装 Python。tar.gz 解压后运行 shell-flask/Linux-1-启动审核工具.sh
+（文件管理器右键"在终端中运行"，或终端里 ./Linux-1-启动审核工具.sh）。
 
 --with-local-config  仅自测：把本机 config-real/（真实配置）原样带入包内，禁止外发；
                       默认使用公开 config/ 空表头配置，构建时同样做隐私清理校验。
@@ -298,7 +298,6 @@ for doc in "$ROOT/基础数据审核工具使用说明.docx" "$ROOT/core/基础�
     if [ -f "$doc" ]; then cp "$doc" "$PAYLOAD/core/"; break; fi
 done
 cp "$SCRIPT_DIR/Linux-1-启动审核工具.sh" "$PAYLOAD/shell-flask/"
-cp "$SCRIPT_DIR/Linux-1-启动审核工具.desktop" "$PAYLOAD/shell-flask/"
 
 if [ "$WITH_LOCAL_CONFIG" = 1 ]; then
     echo '[警告] 本包带有本机 config-real/，可能含机构资料和审核历史，仅供本人验证，禁止外发。'
@@ -400,8 +399,7 @@ find "$STAGE" -type d -exec chmod 755 {} +
 find "$STAGE" -type f -exec chmod 644 {} +
 chmod 755 "$STAGE/usr/bin/base-audit-v3" \
     "$PAYLOAD/app/base-audit-v3" \
-    "$PAYLOAD/shell-flask/Linux-1-启动审核工具.sh" \
-    "$PAYLOAD/shell-flask/Linux-1-启动审核工具.desktop"
+    "$PAYLOAD/shell-flask/Linux-1-启动审核工具.sh"
 
 FINISHED=
 
@@ -433,7 +431,18 @@ echo
 echo "[完成] 构建产物：$FINISHED"
 echo "[审计] 冻结包实测最低 glibc ${MIN_GLIBC}（目标基线 ${GLIBC_TARGET}）；GLIBCXX ${MIN_GLIBCXX:-无}。"
 echo '[提示] 目标机无需 Python；DEB 装到 /opt/base-audit-v3 并加菜单入口；tar.gz 解压后运行其中'
-echo '       shell-flask/Linux-1-启动审核工具.sh 或双击同目录 Linux-1-启动审核工具.desktop。'
+echo '       shell-flask/Linux-1-启动审核工具.sh（右键在终端中运行，或终端执行）。'
 echo '[提示] 目标机仍需桌面会话、xdg-utils、iproute2 和 LibreOffice Calc。'
 echo '[提示] 配置和运行数据保存在 ~/.local/share/base-audit-v3/，升级不覆盖已有用户数据。'
 for f in "$DIST/${ARTIFACT_BASE}".*; do echo "[留档] $f"; done
+
+# 收尾清理历史批次：默认只保留最新一批 base-audit-v3_* 产物，避免 dist/ 堆积
+# 旧包误发；需同时留档多批时设 FLASK_KEEP_BUILDS=N（不小于 1）。
+KEEP_BUILDS=${FLASK_KEEP_BUILDS:-1}
+case "$KEEP_BUILDS" in ''|*[!0-9]*) KEEP_BUILDS=1 ;; esac
+[ "$KEEP_BUILDS" -lt 1 ] && KEEP_BUILDS=1
+ls -- "$DIST" 2>/dev/null | sed -n 's/^base-audit-v3_\([0-9][0-9.]*\)_.*/\1/p' | sort -ru \
+    | tail -n +"$((KEEP_BUILDS + 1))" | while IFS= read -r stamp; do
+        rm -f -- "$DIST/base-audit-v3_${stamp}"_*
+        echo "[清理] 已删除旧批次产物 base-audit-v3_${stamp}_*"
+    done

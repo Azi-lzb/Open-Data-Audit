@@ -1,8 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Linux-1-启动审核工具
-Comment=后台启动本机审核服务并打开浏览器
-Exec=sh -c "set -f; IFS=; cd \\${1%/*} || cd .; exec sh ./Linux-1-启动审核工具.sh --background" sh "%k"
-Terminal=false
-Categories=Office;
