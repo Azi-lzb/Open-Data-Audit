@@ -56,11 +56,49 @@ def _glibc_version() -> str:
 
 
 def _python_description() -> str:
-    frozen = "随包运行时" if getattr(sys, "frozen", False) else "系统 Python"
-    return f"{sys.version.split()[0]}（{frozen}）"
+    """系统内置 python3（PATH 上的）版本；随包运行时版本固定，不占此行。"""
+    import re
+    import subprocess
+    try:
+        completed = subprocess.run(
+            ["python3", "--version"], stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return f"{sys.version.split()[0]}（当前进程）"
+    match = re.search(r"([0-9]+\.[0-9]+\.[0-9]+)", completed.stdout or "")
+    if match:
+        return f"{match.group(1)}（系统 python3）"
+    return f"{sys.version.split()[0]}（当前进程）"
 
 
-def _libreoffice_summary() -> str:
+def _probe_libreoffice_version(command_prefix: tuple[str, ...]) -> str:
+    """启动一次 --version 取真实版本号；失败返回空串（不阻塞启动）。"""
+    import re
+    import subprocess
+
+    from .engines.libreoffice import _system_command_env
+    try:
+        completed = subprocess.run(
+            [*command_prefix, "--version"], stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, timeout=15, check=False,
+            env=_system_command_env(),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    for line in (completed.stdout or "").splitlines():
+        match = re.search(r"LibreOffice\s+[0-9][0-9.]*", line)
+        if match:
+            return match.group(0).split()[-1]
+    return ""
+
+
+def _libreoffice_summary(probe_version: bool = False) -> str:
+    """引擎摘要；probe_version=True 时实启一次 --version 取版本号。
+
+    玲珑版 ll-cli 冷启动可达 10 秒，默认只显示来源（秒回），由调用方
+    在后台线程里以 probe_version=True 补全，避免阻塞应用启动。
+    """
     if sys.platform == "win32":
         return "Windows 由 Excel/WPS 提供（运行时实测）"
     try:
@@ -70,18 +108,26 @@ def _libreoffice_summary() -> str:
         engine = None
     if engine is None:
         return "未找到"
-    return engine.display
+    source = engine.source or "已安装"
+    if not probe_version:
+        return f"LibreOffice（{source}，版本检测中…）"
+    version = _probe_libreoffice_version(engine.command_prefix)
+    # display 是启动命令（如 ll-cli run …），不适合给人看；改为 版本+来源。
+    return f"LibreOffice {version}（{source}）" if version else f"LibreOffice（{source}，版本未识别）"
 
 
-def system_environment_summary() -> dict[str, str]:
-    """进程内缓存的环境四项：os / glibc / python / libreoffice。"""
+def system_environment_summary(probe_version: bool = False) -> dict[str, str]:
+    """进程内缓存的环境四项：os / glibc / python / libreoffice。
+
+    probe_version=True 时重探 LibreOffice 版本并更新缓存（慢，供后台线程用）。
+    """
     global _SUMMARY
-    if _SUMMARY is None:
+    if _SUMMARY is None or probe_version:
         _SUMMARY = {
             "os": _os_pretty_name(),
             "glibc": _glibc_version(),
             "python": _python_description(),
-            "libreoffice": _libreoffice_summary(),
+            "libreoffice": _libreoffice_summary(probe_version=probe_version),
         }
     return dict(_SUMMARY)
 

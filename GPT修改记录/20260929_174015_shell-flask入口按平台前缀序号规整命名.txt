@@ -230,6 +230,31 @@ Linux-1-启动审核工具.desktop 启动；打包引擎与冒烟脚本已同步
 - 测试：test_system_info.py 3 用例（conftest 归 s1）；test_web_app 40 通过；
   s1 组 348 通过；打包版实测 systemEnvironment 完整输出；冒烟 2/2。
 
+第十五轮（用户反馈）：环境摘要改为三行展示。
+- 用户反馈一行式系统配置不美观。高级设置顶部改为三行：系统/glibc、
+  Python、LibreOffice（各带说明文字）；web_app 状态新增结构化
+  systemEnvironmentInfo（os/glibc/python/libreoffice），一行式
+  systemEnvironment 保留并由隐藏载体 + 复制按钮继续提供（报障仍复制整行）。
+- 验证：test_system_info + test_web_app 40 通过；重建后打包版实测
+  两个字段齐备、页面含三行标记；冒烟 2/2。
+- 追加（用户反馈）：三行再拆为四行——系统 / glibc / Python / LibreOffice
+  各占一行，说明文字相应细化；打包版实测四行 row() 定义在位，冒烟 2/2。
+- 追加（用户决策）：Python 行改显系统内置 python3（PATH 探测，
+  "3.12.13（系统 python3）"），随包运行时版本固定不占行；源码模式与
+  源码验收包依赖系统 python3，该项才有诊断价值。打包版实测确认。
+
+第十六轮（用户问询）：LibreOffice 显示 ll-cli 命令的问题。
+- 用户问环境摘要里"ll-cli run org.libreoffice.libreoffice -- soffice"
+  是什么——玲珑（UOS 沙箱应用）版 LibreOffice 的启动命令，此前展示的是
+  engine.display（命令）而非版本，不友好。
+- system_info 改为"版本+来源"展示；因 ll-cli 冷启动实测 10 秒，改为
+  快速摘要秒出（"玲珑商店版，版本检测中…"）+ web_app 后台守护线程
+  补探真实版本并更新状态（实测 3s 启动、约 12s 版本就位）。
+- 修复过程：首轮编辑脚本中断断言导致 _start_environment_probe 未被调用
+  （打包版延时复测发现字段不更新），补调用后复测通过。
+- 验证：test_web_app/system_info 77 通过；重建 + 冒烟 2/2；打包版实测
+  启动 3s、版本后台补全、四行展示不受影响。
+
 删除清单：Linux-0-桌面调度器.sh、Linux-1-启动审核工具.desktop（第七轮）、Linux-4-打包DEB与TARGZ.desktop、
 Linux-5-测试发行包启动.desktop、Linux-6-打包UOS源码验收包.desktop。
 回滚：按本记录恢复 15 个文件名与引用即可（含上述 4 个文件）。回滚：按本记录反向改回 15 个文件名

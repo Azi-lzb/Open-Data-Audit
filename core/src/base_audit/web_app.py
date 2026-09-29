@@ -112,8 +112,10 @@ class WebApi:
         self.project_root = project_root
         self._file_picker_default = file_picker_default if file_picker_default in FILE_PICKER_MODES else "系统原生"
         # 本机环境摘要（glibc/Python/LibreOffice）：高级设置展示与报障定位用。
-        from .system_info import system_environment_text
+        from .system_info import system_environment_summary, system_environment_text
         self._system_environment_text = system_environment_text()
+        self._system_environment_info = system_environment_summary()
+        self._start_environment_probe()
         hide_application_data_directory(project_root / "data")
         self.settings_store = SettingsStore(project_root / "data" / "用户设置.json")
         self.settings = self.settings_store.load(file_picker_default=self._file_picker_default)
@@ -197,6 +199,7 @@ class WebApi:
             "filePickerMode": self.settings.file_picker_mode,
             # 本机环境摘要（glibc/Python/LibreOffice）：高级设置展示、报障定位。
             "systemEnvironment": self._system_environment_text,
+            "systemEnvironmentInfo": self._system_environment_info,
             # 桌面外壳提供系统原生对话框；Flask 可覆盖为 false。
             "filePickerSystemNativeAvailable": True,
             "xlsxRenderMode": self.settings.xlsx_render_mode,
@@ -347,7 +350,25 @@ class WebApi:
     def refresh_system_environment(self) -> dict[str, Any]:
         """刷新本机环境摘要（glibc/Python/LibreOffice）；高级设置展示用。"""
         self.state["systemEnvironment"] = self._system_environment_text
+        self.state["systemEnvironmentInfo"] = self._system_environment_info
         return self.state
+
+    def _start_environment_probe(self) -> None:
+        """后台补全 LibreOffice 版本；仅 Linux 且已找到引擎时启动。"""
+        if sys.platform == "win32":
+            return
+        if self._system_environment_info.get("libreoffice") == "未找到":
+            return
+
+        def probe() -> None:
+            from .system_info import system_environment_summary, system_environment_text
+            system_environment_summary(probe_version=True)
+            self._system_environment_text = system_environment_text()
+            self._system_environment_info = system_environment_summary()
+            self.state["systemEnvironment"] = self._system_environment_text
+            self.state["systemEnvironmentInfo"] = self._system_environment_info
+
+        threading.Thread(target=probe, name="base-audit-env-probe", daemon=True).start()
 
     def initialize_config(self) -> dict[str, Any]:
         """兼容旧界面调用；通用 DAG 配置已取消。"""

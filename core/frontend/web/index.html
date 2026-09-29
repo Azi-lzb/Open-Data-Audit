@@ -377,6 +377,7 @@ body.collect-legacy-locked .egg-btn{display:none}
 .gen-row-desc{font-size:12px;color:var(--text-3);line-height:1.55;margin-top:2px}
 .gen-row-left{min-width:0;flex:1}
 .gen-row-right{flex:none;display:flex;align-items:center}
+.sys-env-value{max-width:46vw;word-break:break-all;text-align:right;opacity:.85;margin-right:8px}
 .gen-select{min-width:210px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font:inherit;font-size:13px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
 .gen-select:hover{border-color:var(--accent)}
 .gen-select:focus-visible{outline:2px solid var(--accent-ring);outline-offset:-2px}
@@ -1559,7 +1560,8 @@ function applySettingsEggState(){
    （连点左侧“设置中心”导航 5 次，本机记忆）。隐藏只影响界面可见性，
    已保存的高级配置（生成/写入/求值器等）继续生效。 */
 function copySysEnv(btn){
-  var text=document.getElementById('sysEnvText')?document.getElementById('sysEnvText').textContent:'';
+  var holder=document.getElementById('sysEnvTextHolder');
+  var text=holder?holder.getAttribute('data-text'):'';
   if(!text){return;}
   function done(ok){btn.textContent=ok?'已复制':'复制失败';setTimeout(function(){btn.textContent='复制';},1800);}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){done(true);},function(){done(false);});}
@@ -1815,9 +1817,17 @@ function renderAdvanced(){
     +'<div class="advanced-zone-head"><h3 class="advanced-zone-title">高级设置</h3><span class="advanced-zone-badge">开发者 / 兼容性验证</span><button class="btn tiny" onclick="hideAdvancedSettings()">隐藏</button></div>'
     +group('本机运行环境')
     +card([
-      row('环境摘要','运行失败时把这一行复制给支持人员，即可定位系统与引擎差异（glibc 过旧、LibreOffice 不匹配等）。',
-        '<span id="sysEnvText" style="flex:1;text-align:right;word-break:break-all">'+esc(s.systemEnvironment||'未获取')+'</span><button type="button" class="btn tiny" onclick="copySysEnv(this)">复制</button>'),
+      row('系统','操作系统版本；LibreOffice 离线包按系统与 glibc 选型。',
+        '<span class="sys-env-value">'+esc(s.systemEnvironmentInfo&&s.systemEnvironmentInfo.os||'未知')+'</span>'),
+      row('glibc','系统 C 库版本；过旧时新 LibreOffice 离线包会无法启动（UOS20 为 2.28）。',
+        '<span class="sys-env-value">'+esc(s.systemEnvironmentInfo&&s.systemEnvironmentInfo.glibc||'未知')+'</span>'),
+      row('Python','系统内置 python3 版本；源码模式与源码验收包依赖它（发行包自带运行时，版本固定）。',
+        '<span class="sys-env-value">'+esc(s.systemEnvironmentInfo&&s.systemEnvironmentInfo.python||'未知')+'</span>'),
+      row('LibreOffice','计算引擎（S1F1 公式计算依赖）；运行 S1F1 时会实测能否启动。',
+        '<span class="sys-env-value">'+esc(s.systemEnvironmentInfo&&s.systemEnvironmentInfo.libreoffice||'未知')+'</span>'
+        +'<button type="button" class="btn tiny" onclick="copySysEnv(this)">复制</button>'),
     ])
+    +'<span id="sysEnvTextHolder" style="display:none" data-text="'+esc(s.systemEnvironment||'')+'"></span>'
     +group('文件选择')
     +card([
       row('文件/目录选择方式','系统原生适合桌面外壳；Tk 依赖 python3-tk；浏览器内置支持粘贴路径。Flask 默认 Tk，桌面外壳默认系统原生。适用于全部功能的路径与文件选择弹窗。',
