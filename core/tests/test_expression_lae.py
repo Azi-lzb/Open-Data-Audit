@@ -1,11 +1,12 @@
-"""当前表达式引擎测试：求值语义、合成业务数据与跨年累计口径。
+"""当前表达式引擎测试：求值语义与跨年累计口径。
 
 迁移期的 V2/旧三表对拍已退役；这里仅保留正式 V3 运行仍依赖的表达式语义回归。
+合成数据生成层（core/tools/expression_lae_synthetic.py）未随公开仓发布，
+其自检用例（TestSyntheticData）仅在私有仓保留。
 """
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -20,11 +21,6 @@ from base_audit.systems.s3_central_statistics.expression_lae import (  # noqa: E
     STATUS_ERROR, STATUS_OK, STATUS_UNSUPPORTED,
     ExpressionContext, evaluate_expression_lae, parse_expression,
 )
-from tools.expression_lae_synthetic import (  # noqa: E402
-    SyntheticRecord, SyntheticRuleDataGenerator, business_scenarios,
-)
-
-CONFIG = ROOT.parent / "config" / "3.1大集中执行比较_配置.xlsx"
 
 
 
@@ -158,40 +154,6 @@ class TestEngine:
         assert "import uno" not in source
         assert "import subprocess" not in source
 
-
-
-class TestSyntheticData:
-    """第一层：业务场景数据生成（§十六）。"""
-
-    def test_real_csv_structure(self, tmp_path):
-        gen = SyntheticRuleDataGenerator(tmp_path)
-        sc = business_scenarios()[0]
-        paths = gen.write(sc)
-        raw = paths["current"].read_bytes()
-        text = raw.decode("gbk")
-        assert text.splitlines()[0].startswith("业务类,数据日期,机构类代码")
-        assert paths["previous"].is_file()
-
-    def test_scenarios_cover_required_cases(self):
-        tags = {t for sc in business_scenarios() for t in sc.tags}
-        for need in ("同年累计增加", "同年累计下降", "累计值负数", "1月1日结转=0",
-                     "跨年", "指标有变动", "新增", "结清", "不应有数", "负数",
-                     "整数", "非整数", "整除", "不能整除", "本期0", "上期0",
-                     "本期空", "本期缺记录", "两期都缺"):
-            assert need in tags, need
-
-    def test_manifest_written(self, tmp_path):
-        gen = SyntheticRuleDataGenerator(tmp_path)
-        path = gen.write_manifest(business_scenarios())
-        assert path.is_file()
-
-    def test_cross_year_date_matrix(self):
-        pairs = {(sc.previous_date, sc.current_date) for sc in business_scenarios()
-                 if "跨年" in sc.tags}
-        for expected in (("2025-12-31", "2026-01-01"), ("2025-12-31", "2026-01-31"),
-                         ("2025-03-31", "2026-04-30"), ("2025-06-30", "2026-06-30"),
-                         ("2025-10-31", "2026-03-31")):
-            assert expected in pairs, expected
 
 
 class TestCrossYearBusinessRule:

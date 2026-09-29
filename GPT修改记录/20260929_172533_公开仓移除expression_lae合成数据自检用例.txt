@@ -1,0 +1,46 @@
+时间：2026-09-29 17:25（Asia/Shanghai）
+执行者：ZCode（GLM-5.3）
+修改前/后 commit：修改前 6bbd813（Linux 打包三入口与冻结运行时支持，已推送）；
+本批修改为下一提交。
+WIP 情况：私有工作副本（Close 侧）未动；本记录只描述 Open 仓库变更。
+
+修改目的：公开仓缺少整个 core/tools/ 目录（首版快照时因内含真实机构名被排除），
+test_expression_lae.py 顶层 import tools.expression_lae_synthetic 导致整个文件
+收集失败，全量回归必须 --ignore 才能运行。经评估做精准切除：只移除依赖未发布
+生成器的合成数据自检用例，保留全部业务引擎语义回归。
+
+背景评估（用户问询"该测试是否可整体取消"）：
+- expression_lae.py 是 S3 大集中执行比较的复杂规则表达式求值引擎，
+  service.py、complex_rule_engine.py、expression_parser.py、
+  expression_backend.py 四个正式模块在用；test_expression_lae.py 属
+  conftest 的 s3 回归组，其 TestEngine 14 个语义用例（0.01 哨兵、
+  空值/缺记录语义、触发模式反转、AND/OR 短路、IF 惰性求值防除零、
+  未知函数 STATUS_UNSUPPORTED、日期/数学函数、源码禁 eval/exec）
+  是该引擎唯一的系统性覆盖，不能取消。
+- 仅 TestSyntheticData 4 个用例依赖未发布的 core/tools/
+  expression_lae_synthetic.py（其 DEFAULT_ORGS 夹具含真实机构名），
+  且测试对象是测试工具本身，公开仓无该工具，属可取消部分。
+
+修改文件（Open 仓库）：
+- core/tests/test_expression_lae.py：删除顶层
+  from tools.expression_lae_synthetic import 与 TestSyntheticData 类
+  （4 用例）；顺带移除仅被其使用的 import json 与未使用的 CONFIG 常量；
+  模块 docstring 注明合成数据生成层未随公开仓发布、其自检仅在私有仓保留。
+  保留 TestEngine（14 用例）与 TestCrossYearBusinessRule（1 用例）。
+- 本记录。
+
+未改动：core/src 业务代码零改动；conftest.py 分组无需调整（文件仍在
+s3 组）；私有仓的完整版本（含 TestSyntheticData）保持原样。
+
+实际检查（Open 仓库工作目录执行）：
+- python3 -m pytest -q core/tests/test_expression_lae.py：15 passed。
+- python3 -m pytest -q core/tests（无 --ignore）：774 passed / 20 failed /
+  5 skipped，收集零错误；20 个失败与首版快照基线完全一致（空表头公开配置
+  导致的"正式配置"类既有失败），无新增回归。
+
+删除清单：TestSyntheticData 类（test_real_csv_structure、
+test_scenarios_cover_required_cases、test_manifest_written、
+test_cross_year_date_matrix）。回滚：按本记录恢复类与 import 即可。
+
+【组件版本】
+不升级。S1/S2/S3 业务规则与配置结构未变；此为公开仓测试自洽性修复。
