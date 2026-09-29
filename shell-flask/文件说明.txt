@@ -10,6 +10,7 @@ shell-flask 目录文件说明
 【Linux/UOS 侧】
 Linux-1-启动审核工具.sh        启动审核服务（前台运行，Ctrl+C 停止；--background 后台启动）
 Linux-1-启动审核工具.desktop   同上的双击入口，后台启动并自动打开浏览器，不弹终端
+                               （UOS 首次双击会弹一次"信任此启动器"确认，同意后即可）
 Linux-2-打包DEB与TARGZ.sh      统一构建引擎：一次构建 DEB + tar.gz 两种产物。
                                DEB = 安装包（装到 /opt、加开始菜单）；tar.gz = 免安装便携包。
                                只想出一种时加参数：--skip-deb 或 --skip-tgz
@@ -36,6 +37,13 @@ requirements-win10win11-build.txt  Win10/11 构建依赖
 README.md                      完整开发、打包、分发文档
 dist/                          构建产物输出目录（不入版本库）
 __pycache__/                   Python 缓存（不入版本库）
+
+【常见问题】
+选文件/选文件夹用哪种窗口？  发行包默认用系统原生 Tk 对话框（已随包内置，无需安装）；
+                              源码模式若系统没装 python3-tk 会自动退回浏览器内置选文件，
+                              可在页面"高级设置"里切换三种模式。
+.sh 双击没反应/变编辑器？     这是 UOS 文件管理器默认行为，右键选"在终端中运行"即可；
+                              真正的双击入口是上面的 .desktop（首次需信任一次）。
 
 【典型流程】
 本机开发调试      → 双击 Linux-1-启动审核工具.desktop
