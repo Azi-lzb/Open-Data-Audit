@@ -372,7 +372,7 @@ Version: $DEB_VERSION
 Section: office
 Priority: optional
 Architecture: $ARCH
-Depends: libc6 (>= $MIN_GLIBC), libcrypt1, libstdc++6, xdg-utils, iproute2
+Depends: libc6 (>= $MIN_GLIBC), libstdc++6, xdg-utils, iproute2
 Maintainer: V3 Project
 Description: V3 base audit Flask application for UOS
  Frozen Flask application with bundled Python runtime and clean configuration templates.

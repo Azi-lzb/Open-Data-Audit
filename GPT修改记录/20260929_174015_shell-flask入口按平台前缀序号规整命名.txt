@@ -166,6 +166,16 @@ Linux-1-启动审核工具.desktop 启动；打包引擎与冒烟脚本已同步
   安装步骤与不入库原因，shell-flask README 补指引。
 - 用户已手工回归：源码模式全功能正常、DEB 版 S1F1 正常。
 
+第十一轮（用户实测反馈修复）：DEB 假依赖 libcrypt1 导致目标机安装失败。
+- 用户在 UOS 目标机安装 DEB 时图形安装器报"libcrypt1 amd64 仓库缺失"。
+- 排查：DEB control 声明了 Depends: libcrypt1，但扫描冻结产物全部 ELF，
+  无任何文件 NEEDED libcrypt.so.1——依赖为虚设；且本机 libcrypt.so.1
+  要求 GLIBC 2.38，也不具备随包分发条件。处理：引擎 control 模板移除
+  libcrypt1，其余依赖（libc6>=2.25 / libstdc++6 / xdg-utils / iproute2）保留。
+- 验证：重建后新 DEB Depends 无 libcrypt1；冒烟 2/2。目标机改装新 DEB 即可。
+- 留观项：目标机离线时若再报 xdg-utils / iproute2 缺失，可进一步软化
+  （推荐字段或随包补装）。
+
 删除清单：Linux-0-桌面调度器.sh、Linux-1-启动审核工具.desktop（第七轮）、Linux-4-打包DEB与TARGZ.desktop、
 Linux-5-测试发行包启动.desktop、Linux-6-打包UOS源码验收包.desktop。
 回滚：按本记录恢复 15 个文件名与引用即可（含上述 4 个文件）。回滚：按本记录反向改回 15 个文件名
