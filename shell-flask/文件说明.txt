@@ -38,9 +38,10 @@ dist/                          构建产物输出目录（不入版本库）
 __pycache__/                   Python 缓存（不入版本库）
 
 【离线依赖：LibreOffice】
-S1F1（汇总核查表校验）等功能依赖 LibreOffice Calc。目标机没装且无网络时，用
-仓库根目录的 LibreOffice_26.8.0_Linux_x86-64_deb.tar.gz（约 210MB，不入 git，
-经 GitHub Release 或随包 U 盘分发）：
+S1F1（汇总核查表校验）等功能依赖 LibreOffice Calc，优先用 deb 离线包装到
+/opt（deb 启动 0.2s；玲珑商店版每次冷启动约 10s 且 S1F1 逐簿启动会累积变慢；
+两者共存时程序自动优先 deb 版）。离线包不入 git，经 GitHub Release 或随包
+U 盘分发（版本选择见根 README：7.6.7.2 全系通吃，26.8 仅新系统）：
   tar -xzf LibreOffice_*_deb.tar.gz -C /tmp && cd /tmp/LibreOffice*_deb/DEBS
   sudo dpkg -i *.deb
 装完 LibreOffice 再安装 base-audit-v3 的 DEB 即可。

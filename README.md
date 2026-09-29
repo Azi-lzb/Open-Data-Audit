@@ -35,10 +35,15 @@
 - 26.8 按新系统基线构建（实测要求 glibc ≥2.34），**仅适用 UOS25 等新系统**，
   装到 UOS20 会在公式计算时报 GLIBC 版本缺失。
 
-程序会自动发现安装的 LibreOffice（PATH、/usr/lib/libreoffice/program/soffice、
-玲珑商店版、/opt/libreoffice* 均在检索范围内）。**S1F1（汇总核查表校验）开跑前
-会先做计算引擎预检**：引擎缺失或无法启动（如安装包与系统 glibc 不匹配）会立即
-报出原因和处理建议，不再跑到中途才失败。
+程序会自动发现安装的 LibreOffice（/opt/libreoffice*、PATH、
+/usr/lib/libreoffice/program/soffice、玲珑商店版均在检索范围内）。**S1F1
+（汇总核查表校验）开跑前会先做计算引擎预检**：引擎缺失或无法启动（如安装包
+与系统 glibc 不匹配）会立即报出原因和处理建议，不再跑到中途才失败。
+
+**优先用 deb 离线包安装，不要只用应用商店的玲珑版**：玲珑（ll-cli）每次启动
+都要做容器装配，实测冷启动约 10 秒，而 S1F1 公式计算对每个工作簿各启动一次
+LibreOffice，累积明显拖慢审核；deb 版直接运行二进制（实测 --version 约
+0.2 秒）。同时安装两者时程序自动优先 /opt 的 deb 版，玲珑版保留兜底。
 
 ```sh
 tar -xzf LibreOffice_26.8.0_Linux_x86-64_deb.tar.gz -C /tmp
