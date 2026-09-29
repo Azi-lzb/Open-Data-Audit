@@ -134,3 +134,51 @@ __all__ = [
     "pipeline_kind",
     "probe_engines",
 ]
+
+
+def calculation_engine_preflight(engine_preference: str = ENGINE_AUTO) -> tuple[bool, str]:
+    """S1F1 开跑前的计算引擎预检：不仅定位，还实测能否启动。
+
+    LibreOffice 在 glibc 过旧的系统上会出现"找得到但起不动"（如官方新包
+    装到 UOS20），仅靠路径发现无法暴露；此处真实执行一次 --version 验证。
+    返回 (可用, 面向用户的说明)；不可用时说明包含下一步处理建议。
+    """
+    import subprocess
+
+    if sys.platform == "win32":
+        ok, message = com_available(engine_preference)
+        if ok:
+            return True, f"计算引擎就绪：{message}"
+        return False, f"Excel/WPS 计算引擎不可用：{message}。汇总核查表校验（S1F1）的公式计算必须使用本机 Excel 或 WPS，请确认已安装并可启动。"
+
+    from .libreoffice import _system_command_env, find_calc_engine
+    engine = find_calc_engine()
+    if engine is None:
+        return False, (
+            "未找到 LibreOffice Calc。汇总核查表校验（S1F1）的公式计算必须使用 "
+            "LibreOffice：请安装后重试（离线机通过安装包分发，版本须与系统匹配，"
+            "详见仓库 README「运行依赖」一节），或设置 BASE_AUDIT_SOFFICE 指向 "
+            "soffice、BASE_AUDIT_LIBREOFFICE_DIR 指向安装目录。"
+        )
+    try:
+        completed = subprocess.run(
+            [*engine.command_prefix, "--version"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            timeout=20, check=False, env=_system_command_env(),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"LibreOffice 已找到（{engine.display}）但启动失败：{exc}"
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip().splitlines()
+        head = detail[0] if detail else f"退出码 {completed.returncode}"
+        return False, (
+            f"LibreOffice 已找到（{engine.display}）但无法启动：{head}。"
+            "常见原因是安装包与系统 glibc 不匹配——请改用与本机系统匹配的版本"
+            "（UOS20 等老系统用系统源自带 LibreOffice 或老基线离线包，UOS25 等"
+            "新系统可用官方新包；详见仓库 README「运行依赖」一节）。"
+        )
+    text = (completed.stdout or "").strip()
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    # 玲珑等包装器会先输出 GTK_PATH 等环境提示行，取真正的版本行。
+    version = next((line for line in lines if "LibreOffice" in line), lines[0] if lines else "LibreOffice")
+    return True, f"计算引擎就绪：{version}"

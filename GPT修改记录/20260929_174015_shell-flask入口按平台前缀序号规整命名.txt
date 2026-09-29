@@ -176,6 +176,60 @@ Linux-1-启动审核工具.desktop 启动；打包引擎与冒烟脚本已同步
 - 留观项：目标机离线时若再报 xdg-utils / iproute2 缺失，可进一步软化
   （推荐字段或随包补装）。
 
+第十二轮（用户实测反馈）：UOS20 目标机 LibreOffice glibc 不匹配 + 报错被吞。
+- 用户在 UOS20 目标机跑 S1F1：条件格式提取（纯 Python）正常，公式校验复制
+  节点失败——LibreOffice 26.8 官方包要求 GLIBC 2.33/2.34、GLIBCXX 3.4.29，
+  UOS20（glibc 2.28）不满足；且节点按失败策略跳过后流程未置 FAILED，
+  runner 硬取 outputs["issues"] 抛裸 KeyError('issues')，真实错误被吞。
+- core/src/base_audit/workflow/runner.py：新增 _describe_node_problems；
+  issues 产物缺失时抛 DagFlowError 并携带失败/跳过节点原因，不再裸 KeyError。
+  新增回归测试 core/tests/workflow/test_runner_no_issues_error.py（conftest
+  归入 s1 组）。s1 组 340 通过零失败。
+- LibreOffice 版本策略（README 已写明）：26.8 离线包仅适用 UOS25 等新系统；
+  UOS20 老系统用 UOS 系统源自带 LibreOffice（程序自动发现 PATH、
+  /usr/lib/libreoffice、玲珑版，已核实发现逻辑覆盖）。TDF 老基线离线包
+  （7.6.x）本机网络未能下载验证，暂不提供，需要时再补。
+- 验证：重建 + 冒烟 2/2。
+
+第十三轮（用户需求）：S1F1 计算引擎预检 + UOS20 兼容离线包落地。
+- 用户需求：S1F1 依赖 LibreOffice/Excel/WPS，执行前应先检测引擎存在且可
+  启动再继续；目标机无网络，只能离线包安装（不能用系统源）。
+- engines/__init__.py 新增 calculation_engine_preflight()：Windows 走
+  com_available 实测 COM；Linux 定位 soffice 后真实执行一次 --version——
+  覆盖"找得到但起不动"（glibc 不匹配）的场景，不可用时报出原因与安装
+  建议。workflow/runner.py 两条入口（run_dag_native_audit / run_dag_audit）
+  在 S1F1 流程开跑前接入预检，失败即 DagFlowError，不进入 DAG。
+- 测试：新增 test_engine_preflight.py（4 用例：未安装/启动失败/非零退出/
+  正常）；test_runner_no_issues_error.py 增预检阻断用例；既有"不启动
+  soffice"的调度冒烟与 COM 启动失败测试按原契约打桩预检。s1 组 345
+  通过零失败；全量 780 通过，20 个失败与空表头基线完全一致。
+- LibreOffice 离线包：找到 UOS20 兼容版本 25.8.7（NJU 镜像下载，全部
+  42 包 ELF 审计 GLIBC≤2.28 / GLIBCXX≤3.4.22），已放仓库根目录
+  （gitignore 覆盖）；26.8 仅适用 UOS25。README 重写版本选择指引。
+  25.8.7 需用户上传至 GitHub Release 供目标机下载。
+  补充：用户经 UOS20 机上的 Codex 取得 7.6.7.2 官方离线包并要求评估——
+  全量 42 包审计 GLIBC≤2.17 / GLIBCXX≤3.4.19，兼容性最优，改为推荐
+  标准离线包（一包通吃全系目标机）；25.8.7 降为备选。gitignore 增加
+  /LO_*_deb.tar.gz 覆盖该文件名。
+- 验证：重建 + 冒烟 2/2；本机预检实测输出真实版本号。
+
+第十四轮（用户需求）：本机环境信息可见化。
+- 需求：用户能在设置里看到本机 glibc / Python 版本（报障时可整行复制），
+  或在 S1F1 开跑时显示；并确认 glibc 只影响 LO 刚责场景（答复：纯 Python
+  路径不涉及，冻结程序已按老基线自带，唯 LibreOffice 原生二进制受目标机
+  glibc 约束，即 S1F1 公式校验复制）。
+- 新增 core/src/base_audit/system_info.py：os.confstr 优先、deepin/UOS
+  Python 未注册配置名时回退解析 ldd --version（实测 confstr ValueError，
+  回退后正确取得 2.38）；Windows 标不适用。
+- web_app 状态新增 systemEnvironment（__init__ 注入，白名单式持久化不受
+  影响）；前端高级设置顶部新增"本机运行环境"块（含一键复制）；S1F1 预检
+  日志前增加 [运行环境] 行（native/COM 两入口）。
+- 开发插曲（均已修复并验证）：初始注入误放 reset_general_settings（改到
+  __init__ 与状态字面量）；__init__ 少调用括号致 state 携函数、get_state
+  500——由打包版端到端验证发现。
+- 测试：test_system_info.py 3 用例（conftest 归 s1）；test_web_app 40 通过；
+  s1 组 348 通过；打包版实测 systemEnvironment 完整输出；冒烟 2/2。
+
 删除清单：Linux-0-桌面调度器.sh、Linux-1-启动审核工具.desktop（第七轮）、Linux-4-打包DEB与TARGZ.desktop、
 Linux-5-测试发行包启动.desktop、Linux-6-打包UOS源码验收包.desktop。
 回滚：按本记录恢复 15 个文件名与引用即可（含上述 4 个文件）。回滚：按本记录反向改回 15 个文件名

@@ -613,6 +613,11 @@ def test_native_dag_runs_nodes_without_service_run_flow(tmp_path, monkeypatch):
         lambda _self, path: recalculated.append(Path(path)),
     )
     service.run_flow = lambda **_kwargs: (_ for _ in ()).throw(AssertionError("不得调用旧 run_flow"))
+    # 引擎预检与被测调度逻辑无关：打桩保持本测试"不启动 soffice"的契约。
+    monkeypatch.setattr(
+        "base_audit.engines.calculation_engine_preflight",
+        lambda *a, **k: (True, "预检通过"),
+    )
     result = run_dag_native_audit(
         service=service, template_path=template, input_dir=source_dir, output_dir=tmp_path / "输出",
         period="2026-06", history_path=config,
@@ -669,6 +674,10 @@ def test_audit_runner_reports_engine_start_before_com_session(monkeypatch, tmp_p
     logs = []
     monkeypatch.setattr(runner, "pipeline_kind", lambda _engine: "com")
     monkeypatch.setattr("base_audit.excel_com.ExcelSession", FailingSession)
+    monkeypatch.setattr(
+        "base_audit.engines.calculation_engine_preflight",
+        lambda *a, **k: (True, "预检通过"),
+    )
     with pytest.raises(RuntimeError, match="模拟 COM 启动失败"):
         runner.run_dag_audit(
             service=Service(), template_path=tmp_path / "模板.xlsx", input_dir=tmp_path,

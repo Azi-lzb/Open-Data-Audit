@@ -111,6 +111,9 @@ class WebApi:
     def __init__(self, project_root: Path, *, file_picker_default: str = "系统原生") -> None:
         self.project_root = project_root
         self._file_picker_default = file_picker_default if file_picker_default in FILE_PICKER_MODES else "系统原生"
+        # 本机环境摘要（glibc/Python/LibreOffice）：高级设置展示与报障定位用。
+        from .system_info import system_environment_text
+        self._system_environment_text = system_environment_text()
         hide_application_data_directory(project_root / "data")
         self.settings_store = SettingsStore(project_root / "data" / "用户设置.json")
         self.settings = self.settings_store.load(file_picker_default=self._file_picker_default)
@@ -192,6 +195,8 @@ class WebApi:
             # 旧前端/旧外壳兼容别名：只表示是否导出运行日志 Excel。
             "writeFlowLogs": self.settings.export_run_logs,
             "filePickerMode": self.settings.file_picker_mode,
+            # 本机环境摘要（glibc/Python/LibreOffice）：高级设置展示、报障定位。
+            "systemEnvironment": self._system_environment_text,
             # 桌面外壳提供系统原生对话框；Flask 可覆盖为 false。
             "filePickerSystemNativeAvailable": True,
             "xlsxRenderMode": self.settings.xlsx_render_mode,
@@ -337,6 +342,11 @@ class WebApi:
         return self._refresh_period_config_check()
 
     def get_state(self) -> dict[str, Any]:
+        return self.state
+
+    def refresh_system_environment(self) -> dict[str, Any]:
+        """刷新本机环境摘要（glibc/Python/LibreOffice）；高级设置展示用。"""
+        self.state["systemEnvironment"] = self._system_environment_text
         return self.state
 
     def initialize_config(self) -> dict[str, Any]:
@@ -503,6 +513,7 @@ class WebApi:
         self.state["confirmBeforeRun"] = True
         self.state["uiTheme"] = "浅色"
         self.state["filePickerMode"] = self._file_picker_default
+        self.state["systemEnvironment"] = self._system_environment_text
         self.state["conditionalFormatEvaluator"] = "PYTHON"
         self.state["conditionalFormatRuleReader"] = "DIRECT_OOXML"
         self.state["formulaRegionWriter"] = "DIRECT_OOXML"

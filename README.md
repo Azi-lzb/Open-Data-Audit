@@ -26,6 +26,20 @@
 规则不入库），已放在 [GitHub Release「Libreoffice」](https://github.com/Azi-lzb/Open-Data-Audit/releases/tag/Needed)
 （210MB，内网不便时也可用 U 盘/共享介质拷贝）。目标机安装：
 
+**版本与系统匹配（重要）**：LibreOffice 官方离线包同样受 glibc 约束。离线机
+请按目标系统选择：
+
+- **推荐统一用 7.6.7.2 离线包**——全部 42 个安装包 ELF 符号审计：GLIBC 最大
+  2.17、GLIBCXX 最大 3.4.19，**UOS20（glibc 2.28）/ UOS25 等全系目标机通吃**；
+- 25.8.7 为备选（审计 GLIBC ≤2.28 / GLIBCXX ≤3.4.22，UOS20 卡线通过）；
+- 26.8 按新系统基线构建（实测要求 glibc ≥2.34），**仅适用 UOS25 等新系统**，
+  装到 UOS20 会在公式计算时报 GLIBC 版本缺失。
+
+程序会自动发现安装的 LibreOffice（PATH、/usr/lib/libreoffice/program/soffice、
+玲珑商店版、/opt/libreoffice* 均在检索范围内）。**S1F1（汇总核查表校验）开跑前
+会先做计算引擎预检**：引擎缺失或无法启动（如安装包与系统 glibc 不匹配）会立即
+报出原因和处理建议，不再跑到中途才失败。
+
 ```sh
 tar -xzf LibreOffice_26.8.0_Linux_x86-64_deb.tar.gz -C /tmp
 cd /tmp/LibreOffice*_deb/DEBS && sudo dpkg -i *.deb

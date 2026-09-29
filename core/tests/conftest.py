@@ -21,6 +21,8 @@ _SYSTEM_TEST_FILES = {
         "test_combine_settings.py",
         "test_conditional_compare.py",
         "test_conditional_engine.py",
+        "test_engine_preflight.py",
+        "test_system_info.py",
         "test_conditional_evaluators.py",
         "test_conditional_excel_float.py",
         "test_conditional_format.py",
@@ -49,6 +51,7 @@ _SYSTEM_TEST_FILES = {
         "test_golden_summary_flow.py",
         "test_node_flow_config.py",
         "test_workflow_core.py",
+        "test_runner_no_issues_error.py",
     },
     "s2": {
         "test_period_compare.py",

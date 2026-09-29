@@ -1558,6 +1558,13 @@ function applySettingsEggState(){
 /* ---- 高级设置页签：与“组合工作表配置”共用同一套彩蛋 ----
    （连点左侧“设置中心”导航 5 次，本机记忆）。隐藏只影响界面可见性，
    已保存的高级配置（生成/写入/求值器等）继续生效。 */
+function copySysEnv(btn){
+  var text=document.getElementById('sysEnvText')?document.getElementById('sysEnvText').textContent:'';
+  if(!text){return;}
+  function done(ok){btn.textContent=ok?'已复制':'复制失败';setTimeout(function(){btn.textContent='复制';},1800);}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){done(true);},function(){done(false);});}
+  else{var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();var ok=false;try{ok=document.execCommand('copy');}catch(e){}document.body.removeChild(ta);done(ok);}
+}
 function hideAdvancedSettings(){
   localStorage.setItem('uiSettingsAdvancedUnlocked','0');
   applySettingsEggState();
@@ -1806,6 +1813,11 @@ function renderAdvanced(){
   pane.innerHTML= ''
     +'<div class="advanced-zone" id="advancedZone">'
     +'<div class="advanced-zone-head"><h3 class="advanced-zone-title">高级设置</h3><span class="advanced-zone-badge">开发者 / 兼容性验证</span><button class="btn tiny" onclick="hideAdvancedSettings()">隐藏</button></div>'
+    +group('本机运行环境')
+    +card([
+      row('环境摘要','运行失败时把这一行复制给支持人员，即可定位系统与引擎差异（glibc 过旧、LibreOffice 不匹配等）。',
+        '<span id="sysEnvText" style="flex:1;text-align:right;word-break:break-all">'+esc(s.systemEnvironment||'未获取')+'</span><button type="button" class="btn tiny" onclick="copySysEnv(this)">复制</button>'),
+    ])
     +group('文件选择')
     +card([
       row('文件/目录选择方式','系统原生适合桌面外壳；Tk 依赖 python3-tk；浏览器内置支持粘贴路径。Flask 默认 Tk，桌面外壳默认系统原生。适用于全部功能的路径与文件选择弹窗。',

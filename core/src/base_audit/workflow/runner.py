@@ -30,6 +30,19 @@ class DagFlowError(RuntimeError):
     pass
 
 
+def _describe_node_problems(node_runs) -> str:
+    """汇总失败/被跳过节点的原因，用于无 issues 产出时的可诊断报错。"""
+    parts = []
+    for run in node_runs or ():
+        status = getattr(run.status, "value", str(run.status))
+        if status in ("FAILED", "SKIPPED"):
+            reason = getattr(run, "error", None) or getattr(run, "reason", None)
+            if reason:
+                node_id = getattr(run, "node_id", "?")
+                parts.append(f"节点「{node_id}」{status}：{reason}")
+    return "；".join(parts) or "未记录节点失败原因"
+
+
 def run_dag_native_audit(
     *, service: AuditService, template_path: Path, input_dir: Path, output_dir: Path,
     period: str, history_path: Path, selected_files=None, external_path: Path | None = None,
@@ -47,6 +60,16 @@ def run_dag_native_audit(
     log = on_step or (lambda _text: None)
     batch_id = datetime.now().strftime("%Y%m%d%H%M%S")
     definition = definition or default_workflows()["dag:汇总核查表校验"]
+    if definition.workflow_id == "dag:汇总核查表校验":
+        # S1F1 公式计算强依赖本机计算引擎；先实测可启动再开跑，避免跑到
+        # “公式校验复制”才发现 LibreOffice 缺失或与系统 glibc 不匹配。
+        from ..engines import calculation_engine_preflight
+        from ..system_info import system_environment_text
+        log(f"[运行环境] {system_environment_text()}")
+        ok, message = calculation_engine_preflight()
+        log(f"[计算引擎预检] {message}")
+        if not ok:
+            raise DagFlowError(f"汇总核查表校验未开始：{message}")
     flow_name = (
         "汇总核查表校验" if definition.workflow_id == "dag:汇总核查表校验"
         else str(definition.settings.get("flow_name") or definition.name)
@@ -75,9 +98,15 @@ def run_dag_native_audit(
                               {"history": MetadataArtifact(payload={"history": old_history})})
         if result.status.value == "FAILED":
             raise RuntimeError(result.error or "DAG 流程执行失败")
-        issues = list(result.outputs["issues"].issues)
+        issues_artifact = result.outputs.get("issues")
+        if issues_artifact is None:
+            # 节点按失败策略跳过后流程可能不置 FAILED，但下游必备产物缺失；
+            # 此时把节点失败原因直接带给用户，而不是抛裸 KeyError('issues')。
+            detail = result.error or _describe_node_problems(result.node_runs)
+            raise DagFlowError(f"流程未产出审核结果（缺少 issues 产物）：{detail}")
+        issues = list(issues_artifact.issues)
         current = issues
-        resolved = list(result.outputs["issues"].metadata.get("resolved_issues") or ())
+        resolved = list(issues_artifact.metadata.get("resolved_issues") or ())
         # DAG 的历史富化节点已在导航/结果输出前完成分类；此处只持久化历史资产。
         write_history_xlsx(history_path, merge_history(old_history, current))
         final_workbooks = result.outputs.get("final_workbooks")
@@ -196,6 +225,15 @@ def run_dag_audit(
     audit_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     history_path, history_sheet, legacy_history_path = service._history_storage(history_path)
     definition = definition or default_workflows()["dag:汇总核查表校验"]
+    if definition.workflow_id == "dag:汇总核查表校验":
+        # 与 native 入口同口径：先实测 Excel/WPS COM 可用再开跑。
+        from ..engines import calculation_engine_preflight
+        from ..system_info import system_environment_text
+        log(f"[运行环境] {system_environment_text()}")
+        ok, message = calculation_engine_preflight(engine_preference)
+        log(f"[计算引擎预检] {message}")
+        if not ok:
+            raise DagFlowError(f"汇总核查表校验未开始：{message}")
     flow_name = (
         "汇总核查表校验" if definition.workflow_id == "dag:汇总核查表校验"
         else str(definition.settings.get("flow_name") or definition.name)
