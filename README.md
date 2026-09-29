@@ -15,4 +15,23 @@
 
 使用与打包入口见 [Flask 外壳说明](shell-flask/README.md)。公开仓库没有附带 Word 使用说明，打包脚本允许在缺少该文档时继续构建。
 
+## 运行依赖：LibreOffice Calc（离线安装包不入库）
+
+逐笔统计（S1）、报表采集（S2）、大集中统计（S3）的 Excel 读写与条件格式处理依赖
+**LibreOffice Calc**（Windows 侧对应 Excel/WPS）。目标机已装有 LibreOffice 或能联网
+安装的，无需额外处理；目标机无网络且未安装时，需要用 LibreOffice 官方离线包安装
+（本机使用版本 **26.8.0，Linux x86-64 deb 版**，约 210MB）。
+
+离线安装包**不在本仓库**（超过 GitHub 单文件 100MB 上限，且第三方二进制按仓库
+规则不入库），通过 U 盘/内网共享等介质随审核工具的 DEB 一起分发。目标机安装：
+
+```sh
+tar -xzf LibreOffice_26.8.0_Linux_x86-64_deb.tar.gz -C /tmp
+cd /tmp/LibreOffice*_deb/DEBS && sudo dpkg -i *.deb
+```
+
+装完 LibreOffice 后再安装审核工具的 DEB（`dist/` 构建产物同样不入库，见打包
+脚本说明）。审核工具启动与冒烟不依赖 LibreOffice，仅执行涉及 Excel 的功能
+（如 S1 汇总核查表校验）时需要。
+
 提交前运行 `python tools/check_public_snapshot.py` 检查已暂存文件，防止把真实配置或数据文件带入公开仓库。

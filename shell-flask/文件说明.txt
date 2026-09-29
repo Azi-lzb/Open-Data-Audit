@@ -37,6 +37,14 @@ README.md                      完整开发、打包、分发文档
 dist/                          构建产物输出目录（不入版本库）
 __pycache__/                   Python 缓存（不入版本库）
 
+【离线依赖：LibreOffice】
+S1F1（汇总核查表校验）等功能依赖 LibreOffice Calc。目标机没装且无网络时，用
+仓库根目录的 LibreOffice_26.8.0_Linux_x86-64_deb.tar.gz（约 210MB，不入 git，
+经 GitHub Release 或随包 U 盘分发）：
+  tar -xzf LibreOffice_*_deb.tar.gz -C /tmp && cd /tmp/LibreOffice*_deb/DEBS
+  sudo dpkg -i *.deb
+装完 LibreOffice 再安装 base-audit-v3 的 DEB 即可。
+
 【常见问题】
 选文件/选文件夹用哪种窗口？  发行包默认用系统原生 Tk 对话框（已随包内置，无需安装）；
                               源码模式若系统没装 python3-tk 会自动退回浏览器内置选文件，

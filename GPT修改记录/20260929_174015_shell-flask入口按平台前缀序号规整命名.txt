@@ -154,6 +154,18 @@ Linux-1-启动审核工具.desktop 启动；打包引擎与冒烟脚本已同步
   test_web_app 37 通过。
 - 用户本机需重装新 DEB 后生效（用户数据在 ~/.local/share 不受影响）。
 
+第十轮：LibreOffice 离线依赖包的入库处理。
+- 用户提出把根目录 LibreOffice_26.8.0_Linux_x86-64_deb.tar.gz（210MB，
+  S1F1 依赖 LibreOffice Calc 的离线安装包）提交入库。技术上不可行：
+  GitHub 单文件 100MB 硬上限会直接拒收推送；且第三方大二进制按仓库
+  规则（构建产物不入库）也不应进 git 历史。
+- 处理：.gitignore 增加 /LibreOffice_*_deb.tar.gz 防误暂存；
+  文件说明.txt 增补离线安装步骤（解压 DEBS/ 后 dpkg -i）；
+  分发方案（用户决策）：不入库、不上传，随包介质（U 盘/内网共享）分发；
+  根 README 新增「运行依赖：LibreOffice Calc」一节写清依赖、版本、离线
+  安装步骤与不入库原因，shell-flask README 补指引。
+- 用户已手工回归：源码模式全功能正常、DEB 版 S1F1 正常。
+
 删除清单：Linux-0-桌面调度器.sh、Linux-1-启动审核工具.desktop（第七轮）、Linux-4-打包DEB与TARGZ.desktop、
 Linux-5-测试发行包启动.desktop、Linux-6-打包UOS源码验收包.desktop。
 回滚：按本记录恢复 15 个文件名与引用即可（含上述 4 个文件）。回滚：按本记录反向改回 15 个文件名

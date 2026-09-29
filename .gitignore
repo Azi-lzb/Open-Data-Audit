@@ -27,3 +27,7 @@
 *.xlsx
 !/config/*.xlsx
 !/config/默认配置/*.xlsx
+
+# LibreOffice 离线安装包（约 210MB）：S1F1 等功能的运行依赖，经 GitHub
+# Release 或随包介质分发，不入 git（超 GitHub 单文件 100MB 上限）。
+/LibreOffice_*_deb.tar.gz
