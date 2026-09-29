@@ -23,7 +23,8 @@
 （本机使用版本 **26.8.0，Linux x86-64 deb 版**，约 210MB）。
 
 离线安装包**不在本仓库**（超过 GitHub 单文件 100MB 上限，且第三方二进制按仓库
-规则不入库），通过 U 盘/内网共享等介质随审核工具的 DEB 一起分发。目标机安装：
+规则不入库），已放在 [GitHub Release「Libreoffice」](https://github.com/Azi-lzb/Open-Data-Audit/releases/tag/Needed)
+（210MB，内网不便时也可用 U 盘/共享介质拷贝）。目标机安装：
 
 ```sh
 tar -xzf LibreOffice_26.8.0_Linux_x86-64_deb.tar.gz -C /tmp
