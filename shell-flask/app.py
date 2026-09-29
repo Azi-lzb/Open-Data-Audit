@@ -91,14 +91,20 @@ class FlaskApi(WebApi):
 
         # 用户可能先运行过桌面外壳，用户设置中保留了“系统原生”。该模式在
         # Flask 中不存在，若不迁移，所有顶部“选择”都会返回 500 而没有对话框。
-        # Tk 缺失时退到始终可用的浏览器内置模式，不再阻塞启动。
         selected_mode = str(self.state.get("filePickerMode") or "")
-        replacement = "Tk 对话框" if tk_available else "浏览器内置"
-        if selected_mode == "系统原生" or (selected_mode == "Tk 对话框" and not tk_available):
+        if selected_mode == "系统原生":
+            replacement = "Tk 对话框" if tk_available else "浏览器内置"
             self.state["filePickerMode"] = replacement
             self.settings.file_picker_mode = replacement
             self.settings_store.save(self.settings)
             self._log(f"Flask 已将不可用的文件选择方式切换为“{replacement}”")
+        elif selected_mode == "Tk 对话框" and not tk_available:
+            # Tk 仅在当前环境缺失（如源码模式未装 python3-tk）：本次会话退回
+            # “浏览器内置”兜底，但不改写持久偏好——换到自带 Tk 的发行包、或
+            # 装好 python3-tk 后，原生对话框自动恢复，无需用户重新设置。
+            self.state["filePickerMode"] = "浏览器内置"
+            self._log("当前 Python 未安装 Tcl/Tk，本次会话退回“浏览器内置”选择文件；"
+                      "偏好仍保留“Tk 对话框”。")
 
     def browse_dir(self, path: str = "", mode: str = "") -> dict[str, Any]:
         """列出目录内容（浏览器端目录浏览的数据源；mode 过滤文件扩展名）。"""
