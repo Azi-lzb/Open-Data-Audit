@@ -4,26 +4,45 @@ import argparse
 import atexit
 import json
 import os
+import re
 import signal
 import socket
 import subprocess
 import sys
 import threading
 import time
-import webbrowser
 from pathlib import Path
 
-# 旧实例 PID 锁文件（core/data 是程序运行数据目录，升级保留）。
-# UOS DEB 将其放在用户数据目录，避免向 /opt 写入；源码布局保持原路径。
-PROJECT_ROOT = Path(
-    os.environ.get("BASE_AUDIT_PROJECT_ROOT")
-    or (Path(__file__).resolve().parent.parent / "core")
-).expanduser()
-PID_FILE = PROJECT_ROOT / "data" / "app.pid"
+# 旧实例 PID 锁文件（core/data 是程序运行数据目录，升级保留）。冻结版由启动器
+# 指向每位用户的数据目录；源码版沿用仓库内 core/data。
+_configured_project = os.environ.get("BASE_AUDIT_PROJECT_ROOT", "").strip()
+_configured_core = (
+    os.environ.get("BASE_AUDIT_CORE_DIR", "").strip()
+    or os.environ.get("BASE_AUDIT_CORE_ROOT", "").strip()
+)
+if _configured_project:
+    PID_CORE = Path(_configured_project).expanduser().resolve()
+elif _configured_core:
+    PID_CORE = Path(_configured_core).expanduser().resolve()
+else:
+    PID_CORE = Path(__file__).resolve().parent.parent / "core"
+PID_FILE = PID_CORE / "data" / "app.pid"
 
 _KNOWN_COMMAND_MARKERS = (
-    "\\shell-flask\\", "/shell-flask/", "基础数据审核工具_flask", "run.py", "base-audit-v3",
+    "\\shell-flask\\", "/shell-flask/", "基础数据审核工具_flask", "run.py", "/app/base-audit-v3",
 )
+
+
+def _system_command_env() -> dict[str, str]:
+    """PyInstaller 会设置 LD_LIBRARY_PATH；系统子进程应恢复目标机原值。"""
+    env = os.environ.copy()
+    if "LD_LIBRARY_PATH_ORIG" in env:
+        original = env.pop("LD_LIBRARY_PATH_ORIG")
+        if original:
+            env["LD_LIBRARY_PATH"] = original
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+    return env
 
 
 def _process_is_alive(pid: int) -> bool:
@@ -63,18 +82,42 @@ def _process_matches(pid: int) -> bool:
             result = subprocess.run(
                 ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
                 capture_output=True, text=True, encoding="utf-8", errors="ignore",
-                timeout=3, check=False,
+                timeout=3, check=False, env=_system_command_env(),
             )
         except (OSError, subprocess.TimeoutExpired):
             return False
         cmdline = result.stdout.casefold()
         return any(marker.casefold() in cmdline for marker in _KNOWN_COMMAND_MARKERS)
     try:
-        with open(f"/proc/{pid}/cmdline", "rb") as fh:
-            cmdline = fh.read().decode("utf-8", "ignore")
+        proc_dir = Path("/proc") / str(pid)
+        command = proc_dir.joinpath("cmdline").read_bytes().split(b"\0")
+        cwd = Path(os.readlink(proc_dir / "cwd")).resolve()
+        executable = Path(os.readlink(proc_dir / "exe")).resolve()
     except OSError:
         return False
-    return any(marker in cmdline for marker in _KNOWN_COMMAND_MARKERS)
+    runs_entrypoint = any(Path(arg.decode("utf-8", "ignore")).name == "run.py" for arg in command if arg)
+    try:
+        proc_env = proc_dir.joinpath("environ").read_bytes().split(b"\0")
+    except OSError:
+        proc_env = []
+    runs_frozen_entrypoint = executable.name.startswith("base-audit-v3") and any(
+        item == b"BASE_AUDIT_FROZEN=1" for item in proc_env
+    )
+    if not (runs_entrypoint or runs_frozen_entrypoint) or not cwd.name.startswith("shell-flask"):
+        return False
+    if runs_frozen_entrypoint:
+        return True
+    try:
+        source = (cwd / "app.py").read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        source = ""
+    if "base_audit.path_browser" in source and "class FlaskApi" in source:
+        return True
+    # 已删除到回收站的旧验收目录无法再读取 app.py；只清理目录名明确属于本项目的旧副本。
+    path_text = str(cwd)
+    return cwd.name.startswith("shell-flask (deleted)") and any(
+        marker in path_text for marker in ("基础数据审核程序", "基础数据工具", "UOS_V3验收包_")
+    )
 
 
 def _read_lock_pid() -> int:
@@ -97,27 +140,49 @@ def _remove_lock_if_owned(pid: int) -> None:
         pass
 
 
-def _listening_pid(port: int) -> int:
-    """返回监听本机 TCP 端口的 PID；解析 netstat，避免引入 psutil。"""
-    if sys.platform != "win32":
-        return 0
+def _listening_pids() -> dict[int, int]:
+    """返回本机 TCP 监听端口到 PID 的映射；Linux 用 ss，Windows 用 netstat。"""
+    listeners: dict[int, int] = {}
+    if sys.platform == "win32":
+        try:
+            result = subprocess.run(
+                ["netstat", "-ano", "-p", "tcp"], capture_output=True,
+                text=True, encoding="mbcs", errors="ignore", check=False,
+                env=_system_command_env(),
+            )
+        except OSError:
+            return listeners
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 5 and parts[0].upper() == "TCP" and parts[3].upper() == "LISTENING":
+                try:
+                    port = int(parts[1].rsplit(":", 1)[-1].rstrip("]"))
+                    listeners[port] = int(parts[-1])
+                except ValueError:
+                    continue
+        return listeners
+
     try:
         result = subprocess.run(
-            ["netstat", "-ano", "-p", "tcp"], capture_output=True,
-            text=True, encoding="mbcs", errors="ignore", check=False,
+            ["ss", "-H", "-ltnp"], capture_output=True,
+            text=True, encoding="utf-8", errors="ignore", timeout=3, check=False,
+            env=_system_command_env(),
         )
-    except OSError:
-        return 0
-    suffixes = (f":{port}", f"]:{port}")
+    except (OSError, subprocess.TimeoutExpired):
+        return listeners
     for line in result.stdout.splitlines():
         parts = line.split()
-        # TCP / 本地地址 / 远程地址 / 状态（语言无关）/ PID
-        if len(parts) >= 5 and parts[0].upper() == "TCP" and parts[1].endswith(suffixes):
-            try:
-                return int(parts[-1])
-            except ValueError:
-                continue
-    return 0
+        if len(parts) < 6 or parts[0] != "LISTEN":
+            continue
+        match = re.search(r"\bpid=(\d+)\b", line)
+        if not match:
+            continue
+        try:
+            port = int(parts[3].rsplit(":", 1)[-1].rstrip("]"))
+        except ValueError:
+            continue
+        listeners[port] = int(match.group(1))
+    return listeners
 
 
 def _can_bind(port: int) -> bool:
@@ -145,20 +210,22 @@ def _prepare_instance(requested_port: int) -> int:
         print(f"[提示] 已清理死进程遗留的应用锁（pid {locked_pid}）。")
         locked_pid = 0
 
-    listener_pid = _listening_pid(requested_port)
-    if listener_pid and _process_matches(listener_pid):
-        # PID 正在监听指定端口，且命令行可识别为本工具。即使此前一次失败
-        # 启动覆盖了 app.pid，也能回收遗留 Flask 服务；其它程序不受影响。
+    listeners = _listening_pids()
+    for port in range(requested_port, requested_port + 20):
+        listener_pid = listeners.get(port, 0)
+        if not listener_pid or not _process_matches(listener_pid):
+            continue
+        # 接管本工具旧副本在 8750-8769 上的监听；不触碰其它程序。
         try:
             os.kill(listener_pid, signal.SIGTERM)
         except OSError:
             pass
         deadline = time.monotonic() + 3.0
-        while time.monotonic() < deadline and not _can_bind(requested_port):
+        while time.monotonic() < deadline and not _can_bind(port):
             time.sleep(0.1)
-        if _can_bind(requested_port):
+        if _can_bind(port):
             _remove_lock_if_owned(listener_pid)
-            print(f"[提示] 已关闭旧 Flask 实例（pid {listener_pid}），当前实例接管端口。")
+            print(f"[提示] 已清理旧审核服务（pid {listener_pid}，端口 {port}），当前实例重新使用首选端口。")
 
     selected_port = _first_available_port(requested_port)
     if selected_port != requested_port:
@@ -199,7 +266,18 @@ def main() -> int:
 
     url = f"http://127.0.0.1:{args.port}/"
     if not args.no_browser:
-        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        def _open_browser() -> None:
+            if sys.platform == "win32":
+                import webbrowser
+                webbrowser.open(url)
+            else:
+                opener = shutil.which("xdg-open")
+                if opener:
+                    subprocess.Popen([opener, url], env=_system_command_env(),
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        import shutil
+        threading.Timer(1.0, _open_browser).start()
     app.run(host="127.0.0.1", port=args.port, debug=False)
     return 0
 

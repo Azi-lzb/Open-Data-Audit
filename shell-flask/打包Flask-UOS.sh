@@ -45,11 +45,14 @@ cp "$SCRIPT_DIR/run.py" "$PKG/"
 cp "$SCRIPT_DIR/requirements.txt" "$PKG/"
 cp "$SCRIPT_DIR/README.md" "$PKG/"
 cp "$SCRIPT_DIR/启动Flask-UOS.sh" "$PKG/"
-cp "$SCRIPT_DIR/打包Flask-UOS.sh" "$SCRIPT_DIR/打包Flask-DEB-UOS.sh" "$PKG/"
+cp "$SCRIPT_DIR/打包Flask-UOS.sh" "$SCRIPT_DIR/打包Flask-Linux.sh" "$PKG/"
+cp "$SCRIPT_DIR/打包Flask-DEB.sh" "$SCRIPT_DIR/打包Flask-TARGZ.sh" "$PKG/"
+cp "$SCRIPT_DIR/测试启动Linux包.sh" "$PKG/"
 cp "$SCRIPT_DIR/UOS桌面入口.sh" "$PKG/"
-cp "$SCRIPT_DIR/启动Flask-UOS.desktop" "$SCRIPT_DIR/打包Flask-DEB-UOS.desktop" \
-    "$SCRIPT_DIR/打包Flask-UOS.desktop" "$PKG/"
-chmod 755 "$PKG/启动Flask-UOS.sh" "$PKG/打包Flask-UOS.sh" "$PKG/打包Flask-DEB-UOS.sh" \
+cp "$SCRIPT_DIR/启动Flask-UOS.desktop" "$SCRIPT_DIR/打包Flask-Linux.desktop" \
+    "$SCRIPT_DIR/打包Flask-UOS.desktop" "$SCRIPT_DIR/测试启动Linux包.desktop" "$PKG/"
+chmod 755 "$PKG/启动Flask-UOS.sh" "$PKG/打包Flask-UOS.sh" "$PKG/打包Flask-Linux.sh" \
+    "$PKG/打包Flask-DEB.sh" "$PKG/打包Flask-TARGZ.sh" "$PKG/测试启动Linux包.sh" \
     "$PKG/UOS桌面入口.sh" "$PKG/"*.desktop
 
 # ---- 共享核心：后端 + 前端 + 使用说明 ----

@@ -19,6 +19,18 @@ from pathlib import Path
 LINGLONG_APP_DEFAULT = "org.libreoffice.libreoffice"
 
 
+def _system_command_env() -> dict[str, str]:
+    """Frozen PyInstaller apps restore the host loader path for LibreOffice/ll-cli."""
+    env = os.environ.copy()
+    if "LD_LIBRARY_PATH_ORIG" in env:
+        original = env.pop("LD_LIBRARY_PATH_ORIG")
+        if original:
+            env["LD_LIBRARY_PATH"] = original
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+    return env
+
+
 class LibreOfficeUnavailableError(RuntimeError):
     """Raised when a native LibreOffice Calc process cannot be used."""
 
@@ -94,7 +106,7 @@ def _find_linglong_engine() -> CalcEngine | None:
     try:
         listed = subprocess.run(
             [ll_cli, "list"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, timeout=15, check=False,
+            text=True, timeout=15, check=False, env=_system_command_env(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -213,6 +225,7 @@ class LibreOfficeCalculator:
                 text=True,
                 timeout=15,
                 check=False,
+                env=_system_command_env(),
             )
         except (OSError, subprocess.TimeoutExpired):
             return "版本未识别"
@@ -264,7 +277,7 @@ class LibreOfficeCalculator:
             try:
                 completed = subprocess.run(
                     command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                    timeout=self.timeout_seconds, check=False,
+                    timeout=self.timeout_seconds, check=False, env=_system_command_env(),
                 )
             except subprocess.TimeoutExpired as exc:
                 raise TimeoutError("LibreOffice 公式计算超过 {} 秒：{}".format(self.timeout_seconds, workbook_path.name)) from exc

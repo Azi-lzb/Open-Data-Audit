@@ -10,7 +10,19 @@ case "$ACTION" in
         STATUS=$?
         ;;
     deb)
-        sh "$SCRIPT_DIR/打包Flask-DEB-UOS.sh" "$@"
+        sh "$SCRIPT_DIR/打包Flask-DEB.sh" "$@"
+        STATUS=$?
+        ;;
+    targz)
+        sh "$SCRIPT_DIR/打包Flask-TARGZ.sh" "$@"
+        STATUS=$?
+        ;;
+    test)
+        sh "$SCRIPT_DIR/测试启动Linux包.sh" "$@"
+        STATUS=$?
+        ;;
+    linux)
+        sh "$SCRIPT_DIR/打包Flask-Linux.sh" "$@"
         STATUS=$?
         ;;
     source)

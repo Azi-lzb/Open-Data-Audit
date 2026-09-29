@@ -92,9 +92,10 @@ Win7 包不在 EXE 旁散放 DLL。目标机使用系统 UCRT；裸 Win7 报缺
 
 在文件管理器中打开 `shell-flask/`，双击对应的桌面入口：
 
-- `启动Flask-UOS.desktop`：启动本机服务并打开浏览器；关闭服务按 `Ctrl+C`。
-- `打包Flask-DEB-UOS.desktop`：生成供安装使用的自包含 DEB。
-- `打包Flask-UOS.desktop`：生成源码 ZIP/TAR 验收包。
+- `启动Flask-UOS.desktop`：后台启动本机服务并打开浏览器，不弹终端。
+- `打包Flask-Linux.desktop`：构建自包含发行包（DEB + tar.gz）。
+- `测试启动Linux包.desktop`：对最新产物做本机启动冒烟。
+- `打包Flask-UOS.desktop`：生成源码 ZIP/TAR 验收包（内含全套 Linux 打包/测试脚本）。
 
 入口文件在版本库中带有 Linux 可执行权限，正常同步后不需要手动运行 `chmod`。UOS
 对从源码目录直接双击的 `.desktop` 入口可能仍会显示一次“允许启动/信任此启动器”提示；
@@ -102,41 +103,58 @@ Win7 包不在 EXE 旁散放 DLL。目标机使用系统 UCRT；裸 Win7 报缺
 避开源码快捷方式的信任提示，安装生成的 DEB 后从应用菜单启动“基础数据审核工具 V3”；
 该菜单入口由 DEB 安装到系统应用目录。文件管理器也可以直接运行 `.sh` 脚本，但是否双击
 执行取决于 UOS 的文件管理器设置。纯源码启动需要 Python 3.8+ 及 `requirements.txt`
-依赖；UOS20 自带的 Python 3.7 不满足源码启动要求。
+依赖；UOS20 自带的 Python 3.7 不满足源码启动要求（发行包不受影响，见下）。
 
-### 自包含 DEB
+### 冻结发行包（DEB + tar.gz，自带 Python）
 
-DEB 使用 Linux 版 PyInstaller `onedir`，把 Python 3.12、Flask 和共享核心冻结后放进安装包；
-目标机不依赖系统 Python。Windows 的 `打包Flask.bat` 同样调用 `build_exe.py`，由 PyInstaller
-生成 Windows 单文件 EXE；Linux 和 Windows 产物需在各自平台构建。
-
-在终端构建：
+终端入口按用途分开，共用同一构建引擎 `打包Flask-Linux.sh`：
 
 ```sh
-cd shell-flask
-PYTHON=python3.12 sh 打包Flask-DEB-UOS.sh
+/bin/sh ./启动Flask-UOS.sh        # 前台调试运行（源码模式）
+/bin/sh ./打包Flask-DEB.sh        # 冻结+审计，仅出 DEB
+/bin/sh ./打包Flask-TARGZ.sh      # 冻结+审计，仅出 tar.gz（DEB 备用方案）
+/bin/sh ./打包Flask-Linux.sh      # 冻结+审计，一次出 DEB + tar.gz
+/bin/sh ./测试启动Linux包.sh        # 本机实测 dist/ 最新 .deb 与 .tar.gz 能否启动
 ```
 
-也可双击 `打包Flask-DEB-UOS.desktop`。构建机会自动建立隔离环境并安装依赖，首次构建需要网络；
-需要 `dpkg-deb` 和 Python 3.12。若 Python 3.12 不在 PATH，可把 `PYTHON` 指向其完整路径。
-输出在 `shell-flask/dist/`，带 `.sha256` 校验文件。默认包使用仓库中仅含表头的公开配置。
-`--with-local-config` 会从本机 `config-real/` 读取正式配置，仅供本人验证，禁止外发。
+- **DEB**：文件管理器双击安装到 `/opt/base-audit-v3/`，注册应用菜单
+  「基础数据审核工具 V3」（`base-audit-v3` 命令同效）。
+- **tar.gz 便携包**：DEB 的备用方案——目标机无 root、包管理受限或不想安装时，
+  解压到任意可写目录，双击其中 `shell-flask/启动Flask-UOS.desktop` 或运行
+  `shell-flask/启动Flask-UOS.sh`；启动器自动识别发行包布局。
+- **测试启动Linux包.sh**：打包后、分发前的本机实测（解包→启动→HTTP 200 与页面
+  标题校验→释放端口→汇总）；可随产物拷到 UOS/麒麟目标机做安装前预检，
+  测试机不需要 Python。
 
-DEB 安装文件位于 `/opt/base-audit-v3/`；从应用菜单打开“基础数据审核工具 V3”，
-或终端运行 `base-audit-v3`。首次启动把包内六册配置复制到
-`~/.local/share/base-audit-v3/config/`，运行数据保存在同目录下；升级不会覆盖已有用户配置。
-LibreOffice Calc 仍需由目标系统提供，`xdg-open` 使用系统桌面版本，Tk 运行资源由 PyInstaller
-收集（若构建环境不带 Tk，仍可使用“浏览器内置”文件选择方式）。
+引擎默认**不用构建机系统 Python**，而是下载 python-build-standalone 的自包含
+CPython 3.12.14（glibc 2.17 基线构建，含 Tcl/Tk）并用 PyInstaller 冻结，因此
+**在一台 UOS 25 上构建的包同样能运行在 UOS 20（glibc 2.28）/ 麒麟 V10 / UOS 25**；
+构建机只需 `dpkg-deb`、`tar`、`objdump`（binutils）、`sha256sum` 和网络（首次，
+官方 PyPI 失败自动改用镜像）。产物文件名含构建系统、Python 版本、**实测最低
+glibc** 与架构（如 `..._uos-25_py3.12.14_glibc2.25_amd64.deb`）——构建后逐个
+ELF 审计 GLIBC/GLIBCXX 符号版本，超过目标基线（默认 glibc 2.28，即 UOS20）时
+构建失败并列出超标文件，取代旧的“到最老目标系统上构建”要求。
 
-**跨 UOS 版本**：PyInstaller 不携带 Linux glibc，CPU 架构也必须匹配。
-要让一份包兼容 UOS20 和 UOS25，应在最旧目标系统 UOS20 上、使用 Python 3.12 构建，
-然后分别在 UOS20/UOS25 实机验收。UOS20 构建机可通过 `PYTHON=/完整路径/python3.12`
-指定独立构建解释器；DEB 安装后不要求目标机安装该解释器。
+**跨机器/跨芯片**：PyInstaller 不能交叉编译，不同 CPU 架构需到对应机器上打包；
+`amd64` 与 `arm64`（飞腾/鲲鹏）打包机自动下载对应架构解释器，其它架构回退该机
+系统 Python（`--python` 可指定解释器）。UOS 与麒麟（Kylin V10 等 Debian 系）
+均适用：DEB 依赖只有 libc6/libcrypt1/libstdc++6/xdg-utils/iproute2，tar.gz
+完全免安装。
 
-**验收状态**：现有 UOS 验收报告记录了自动回归和主要业务实物检查；
-PyInstaller DEB 形态、跨 UOS 版本启动及最终浏览器人工操作仍需在真实 UOS 环境复验。逐笔系统的组合流程与
-S1-F05「制作联合模板」在 UOS 使用共享核心的 native/openpyxl 实现；
-只有确实依赖 Excel/WPS COM 原生语义的能力限于 Windows。
+**配置边界**：默认打包使用仓库公开 `config/` 的空表头配置（构建时仍做隐私
+清理校验，机构参照/审核历史所在表只保留表头）；`--with-local-config` 从本机
+不入库的 `config-real/` 读取正式配置，仅供本人验证，禁止外发。首次启动把包内
+六册配置复制到 `~/.local/share/base-audit-v3/config/`，运行数据保存在同目录下；
+升级或换便携包目录不会覆盖已有用户配置。LibreOffice Calc 仍需目标系统提供；
+本仓库未提供使用说明 DOCX 时发行包不含该文档（放回仓库根目录或 `core/` 即可
+自动带入）。
+
+**验收状态**：2026-09-29 在 UOS Desktop 25 上完成全流程构建并对 DEB 与 tar.gz
+做了解包冒烟（均 HTTP 200、端口释放干净，tar.gz 便携模式自动识别通过），冻结包
+实测最低 glibc 2.25（来源 lxml `getentropy`）。UOS 20 / 麒麟 V10 / arm64 实机
+安装与业务全流程仍待真机验收。逐笔系统的组合流程与 S1-F05「制作联合模板」在
+UOS 使用共享核心的 native/openpyxl 实现；只有确实依赖 Excel/WPS COM 原生语义
+的能力限于 Windows。
 
 ## 测试
 

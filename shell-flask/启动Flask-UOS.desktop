@@ -2,7 +2,7 @@
 Version=1.0
 Type=Application
 Name=启动 Flask 审核工具（UOS）
-Comment=启动本机审核服务并打开浏览器
-Exec=sh -c "d=$(dirname \"$1\"); exec sh \"$d/UOS桌面入口.sh\" start" sh "%k"
-Terminal=true
+Comment=后台启动本机审核服务并打开浏览器
+Exec=sh -c "set -f; IFS=; cd \\${1%%/*}; exec sh ./启动Flask-UOS.sh --background" sh "%k"
+Terminal=false
 Categories=Office;

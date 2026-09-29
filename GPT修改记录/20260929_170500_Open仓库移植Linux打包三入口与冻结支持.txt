@@ -1,0 +1,61 @@
+时间：2026-09-29 17:05（Asia/Shanghai）
+执行者：ZCode（GLM-5.3）
+修改前/后 commit：修改前为公开仓库首次快照（尚未确认提交）；本批修改待用户确认后提交。
+WIP 情况：私有工作目录（Close 侧 ZIP 副本）保持原样未改；本记录只描述 Open 仓库变更。
+
+修改目的：把私有工作副本上已验证的 Linux 打包线（统一引擎 + DEB/tar.gz/启动冒烟
+三入口 + 自包含 CPython 冻结 + glibc 审计）及其功能前置（PyInstaller 冻结运行时
+支持）移植到 Open 仓库；保留公开仓库的 config-real/ 数据边界与精简定制。
+
+修改/新增文件（Open 仓库）：
+- shell-flask/app.py、shell-flask/run.py：自私有副本移植冻结运行时支持——按
+  BASE_AUDIT_CORE_DIR/CORE_ROOT/PROJECT_ROOT/FRONTEND_DIR 环境定位冻结资源、
+  用户数据目录与旧实例识别（BASE_AUDIT_FROZEN）、xdg-open 前恢复系统
+  LD_LIBRARY_PATH。私有副本上当日多轮构建与 HTTP 冒烟均基于此版本。
+- core/src/base_audit/engines/libreoffice.py：移植 _system_command_env——冻结态
+  启动 LibreOffice/玲珑程序前恢复宿主机动态库路径（纯新增，不改业务语义）。
+- shell-flask/requirements.txt：同步依赖说明注释（版本要求不变）。
+- shell-flask/启动Flask-UOS.sh：移植新版（冻结/源码双模式 + tar.gz 便携发行包
+  布局自动检测 + --background 后台启动与日志/通知）。
+- shell-flask/启动Flask-UOS.desktop、打包Flask-UOS.desktop：移植新版桌面入口。
+- shell-flask/打包Flask-Linux.sh：新增统一构建引擎（python-build-standalone
+  CPython 3.12.14 / glibc 2.17 基线、amd64/arm64 自动适配、PyInstaller 6.22.3、
+  GLIBC/GLIBCXX 符号审计、DEB+tar.gz 双产物、镜像回退）。Open 适配：缺使用说明
+  DOCX 时提示并继续；--with-local-config 读取本机 config-real/（缺失即报错）。
+- shell-flask/打包Flask-DEB.sh、打包Flask-TARGZ.sh、测试启动Linux包.sh、
+  打包Flask-Linux.desktop、测试启动Linux包.desktop：新增三入口及桌面入口。
+- shell-flask/UOS桌面入口.sh：动作拆分为 deb/targz/test/linux。
+- shell-flask/打包Flask-UOS.sh：随包脚本清单换为三入口新脚本（保留其
+  config-real/ 公开配置语义）。
+- shell-flask/README.md：UOS/麒麟章节重写为三入口工作流（保留 .desktop 信任
+  提示与数据边界说明）。
+- 删除 shell-flask/打包Flask-DEB-UOS.sh、打包Flask-DEB-UOS.desktop：旧 DEB
+  构建器，其逻辑由 打包Flask-Linux.sh 完整继承。
+- 本记录。
+
+逻辑或文档变化：仅平台启动/打包层与冻结运行时适配；S1/S2/S3 业务规则、配置
+结构未动。config-real/ 数据边界保持：默认打包用公开空表头配置并做隐私清理
+校验；--with-local-config 仅本人验证、禁止外发。
+
+实际检查（均在 Open 仓库工作目录执行）：
+- sh -n 七个 shell 脚本通过；app.py/run.py py_compile 通过。
+- 打包Flask-Linux.sh 完整构建：无 DOCX 提示后继续；空表头配置通过六册隐私
+  清理校验；审计实测最低 glibc 2.25 / GLIBCXX 无（目标 ≤2.28）；DEB 与
+  tar.gz 双产出（dist/ 属忽略目录，不入库）。
+- 测试启动Linux包.sh：DEB（安装模式，端口 8800）与 tar.gz（便携自动识别，
+  8805）均 HTTP 200、标题「V3 基础数据审核工具」、端口释放；汇总通过 2 失败 0。
+- tools/check_public_snapshot.py：需 git 暂存后运行，本环境无 git 命令，待
+  用户提交前执行（见报告）。
+
+未执行项/已知限制：私有副本与 Open 的业务核心仍有已知差距未随本批同步
+（core/src 的 conditional_format.py、node_flow_config.py、workflow/compiler.py
+及 19 个测试文件的私有侧更新；其中 node_flow_config.py 的公开版含 config-real
+优先读取适配，直接覆盖会丢功能，需单独做业务同步+匿名化审查）；Windows 侧
+bat/pywebview 差异未同步；UOS20/麒麟/arm64 实机未测。
+
+删除清单：shell-flask/打包Flask-DEB-UOS.sh、打包Flask-DEB-UOS.desktop（逻辑
+由新引擎完整继承）。回滚：删除新增文件并恢复上述两个旧入口即可。
+
+【组件版本】
+不升级。S1/S2/S3 业务规则、对外业务契约与配置结构未修改；此为 Linux 平台
+发行与冻结运行时适配。

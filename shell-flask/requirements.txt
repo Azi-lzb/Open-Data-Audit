@@ -1,5 +1,7 @@
+# 当前项目核心使用 Python 3.8 语法（S3 表达式解析器）；Flask 3 与 openpyxl 3.1+
+# 作为正式运行依赖。DEB 使用 PyInstaller 冻结此 Python 环境，不依赖目标机 Python。
 flask>=3.0
 openpyxl>=3.1
-lxml>=4.9   # openpyxl 的 C 加速 XML 后端：大工作簿解析/保存显著提速
+lxml>=4.9  # openpyxl 的 C 加速 XML 后端
 xlrd>=2.0
 pywin32>=306 ; sys_platform == "win32"

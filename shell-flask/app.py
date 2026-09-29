@@ -23,21 +23,37 @@ from typing import Any
 
 from flask import Flask, jsonify, request
 
-# 冻结态从安装目录寻找随包资源；UOS DEB 可把可写运行目录放在用户目录。
+# 冻结态（PyInstaller）__file__ 指向临时解包目录，须按 exe 位置定位 core。
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
-# 打包布局优先使用显式资源根；开发布局使用仓库共享 core/。
-CORE = Path(os.environ.get("BASE_AUDIT_CORE_ROOT") or ROOT / "core").expanduser()
-if not (CORE / "frontend" / "web" / "index.html").is_file() and not (CORE / "src" / "base_audit").is_dir():
-    CORE = ROOT.parent / "core"
-if (CORE / "src").is_dir() and str(CORE / "src") not in sys.path:
+# DEB 的冻结程序把可变数据放在用户目录；源码和冻结程序未指定时仍按项目布局定位。
+configured_core = (
+    os.environ.get("BASE_AUDIT_CORE_DIR", "").strip()
+    or os.environ.get("BASE_AUDIT_CORE_ROOT", "").strip()
+)
+if configured_core:
+    CORE = Path(configured_core).expanduser().resolve()
+else:
+    # 打包布局优先：exe 同级的 core/；开发布局：shell-flask 平级的 ../core。
+    CORE = ROOT / "core"
+    if not (CORE / "src" / "base_audit").is_dir():
+        CORE = ROOT.parent / "core"
+if str(CORE / "src") not in sys.path:
     sys.path.insert(0, str(CORE / "src"))
 
 from base_audit.path_browser import browse_directory  # noqa: E402
 from base_audit.web_app import WebApi  # noqa: E402
 
 
-PROJECT_ROOT = Path(os.environ.get("BASE_AUDIT_PROJECT_ROOT") or CORE).expanduser()
-FRONTEND_DIR = Path(os.environ.get("BASE_AUDIT_FRONTEND_DIR") or CORE / "frontend").expanduser()
+configured_project_root = os.environ.get("BASE_AUDIT_PROJECT_ROOT", "").strip()
+PROJECT_ROOT = (
+    Path(configured_project_root).expanduser().resolve()
+    if configured_project_root else CORE
+)
+configured_frontend = os.environ.get("BASE_AUDIT_FRONTEND_DIR", "").strip()
+FRONTEND_DIR = (
+    Path(configured_frontend).expanduser().resolve()
+    if configured_frontend else CORE / "frontend"
+)
 
 def _browse_dir(path: str = "", mode: str = "") -> dict[str, Any]:
     """使用 core 的受控路径浏览器，所有外壳得到相同的过滤/磁盘入口语义。"""
@@ -49,7 +65,14 @@ def _open_with_default_app(path: Path) -> None:
     if sys.platform == "win32":
         os.startfile(str(path))  # noqa: S606 - 本机默认程序打开
     else:
-        subprocess.Popen(["xdg-open", str(path)])
+        env = os.environ.copy()
+        if "LD_LIBRARY_PATH_ORIG" in env:
+            original = env.pop("LD_LIBRARY_PATH_ORIG")
+            if original:
+                env["LD_LIBRARY_PATH"] = original
+            else:
+                env.pop("LD_LIBRARY_PATH", None)
+        subprocess.Popen(["xdg-open", str(path)], env=env)
 
 
 class FlaskApi(WebApi):
