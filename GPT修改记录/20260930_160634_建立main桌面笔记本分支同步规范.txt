@@ -1,0 +1,36 @@
+时间：2026-09-30 16:06:34（Asia/Shanghai）。
+执行者：Codex。
+用户授权：当前分支改为 desktop，推送 GitHub 并同步到 main，采用 main/desktop/laptop 分支结构；参考旧项目 AGENTS.md 的双机 Git 规范。
+参考文件：旧项目 AGENTS.md，仅参考双机分支流程；当前公开仓库的配置与双仓库约束以本项目规则为准。
+修改前 commit：17df7240348587b92128d3af60130b8901bf51e0。
+修改后 commit：以包含本记录的 Git 提交为准，完成后在对话中报告。
+分支：codex/windows-two-entries 已改名为 desktop；origin 保持 https://github.com/Azi-lzb/Open-Data-Audit.git。
+
+初始 Git 核对：
+- GitHub 默认分支为 main；远端 main 为 7902c28c61dc3f90789c3c70786a032388a3d246，desktop/laptop 尚未建立。
+- 已执行 git fetch origin；远端 main 是本地 17df724 的祖先，可以快进同步，无远端独有提交。
+- 本地 main 同为 7902c28；当前开发分支包含已完成的图标、版本、Windows 入口与真实配置测试来源调整。
+- 索引初始为空。保留用户 config/1、config/2 修改，以及 external/ 和 shell-flask/build-win7-venv/；记录两份工作簿 SHA-256 到被忽略的 test-output/git-branch-sync-wip.json，后续核对。
+
+目的与实际修改文件：
+- AGENTS.md：增加双机分支与同步流程。Desktop 使用 desktop，笔记本使用 laptop，main 作为已确认的最新共同代码基线。
+- 本修改记录。
+
+同步方案：
+- 仅提交上述治理说明与记录；将已有代码提交 17df724 一并推送。
+- 本轮三个分支从同一最新提交建立/快进，当前工作区继续使用 desktop。
+- main 与 desktop/laptop 使用正常推送，不强推；确认 GitHub 三个分支的提交一致并配置远端跟踪。
+- 后续机器分支在开始开发前从 origin/main 更新，完成且经用户授权后同步到 main；缺失或分叉时先核对并按用户明确方案处理。
+
+验证与限制：
+- 本轮未修改业务实现、配置或测试；不重复业务回归。
+- 同一代码版本已完成定向测试 187 passed，以及 core 全量 824 passed / 7 skipped / 3 failed / 0 errors。用户已接受三项缺 LibreOffice 的模拟 Linux 预检失败和平台/Excel COM 跳过项。
+- tools/check_public_snapshot.py 已通过：2 个暂存文件，0 个工作簿；实际暂存文件与上述两份治理文件一致，git diff --cached --check 通过。
+- 推送后核对 GitHub 三个分支的提交与现有 WIP，最终结果由完成后的终端记录和对话报告确认。
+
+配置及 VBA 迁移影响：无；配置版本、真实配置、原始业务文件、测试数据和构建产物不纳入公开仓库。
+删除清单：无文件删除；本地原 codex/windows-two-entries 分支只改名，提交历史保留。
+回滚提示：治理说明可通过本次提交 diff 回退；分支调整需先核对后续提交，再使用正常提交/合并方式处理，不强推、不覆盖工作区配置。
+
+【组件版本】
+纯 Git 治理与文档修改，不升级。产品保持 V26.1.0.0，业务功能和配置组件版本不变。
