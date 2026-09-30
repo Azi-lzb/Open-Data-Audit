@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook, load_workbook
 
+from config_paths import resolve_test_config
+
 from base_audit.systems.s2_report_collection.config_check import check_s2_config
 from base_audit.systems.s2_report_collection.config import load_config, load_unit_settings, write_default_config
 from base_audit.systems.s2_report_collection.external_engine import ExternalComparisonEngine
@@ -26,9 +28,6 @@ from base_audit.systems.s2_report_collection.models import (
 from base_audit.systems.s2_report_collection.period_engine import PeriodComparisonEngine
 from base_audit.systems.s2_report_collection.rule_engine import RuleEngine
 from base_audit.systems.s2_report_collection.unit_conversion import convert_amount, to_yuan
-
-
-ROOT = Path(__file__).resolve().parents[2]
 
 
 def _write_general_settings(
@@ -87,8 +86,8 @@ def _make_config(path: Path, *, source: str = "元", external: str = "元", outp
 
 def test_shipped_s2_configs_keep_global_unit_settings_in_main_workbook() -> None:
     for path in (
-        ROOT / "config/2.报表采集系统_配置.xlsx",
-        ROOT / "config/默认配置/2.报表采集系统_配置.xlsx",
+        resolve_test_config("2.报表采集系统_配置.xlsx"),
+        resolve_test_config("默认配置/2.报表采集系统_配置.xlsx"),
     ):
         report = check_s2_config(path)
         assert report["passed"], report["issues"]

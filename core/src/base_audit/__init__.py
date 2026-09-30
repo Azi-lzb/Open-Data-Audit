@@ -1,3 +1,8 @@
-"""基础数据审核工具。"""
+"""审核工具。"""
 
-__version__ = "0.1.0"
+def __getattr__(name: str):
+    if name == "__version__":
+        from .app_identity import load_product_info
+
+        return load_product_info()["version"]
+    raise AttributeError(name)

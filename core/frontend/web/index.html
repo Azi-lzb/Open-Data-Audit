@@ -5,7 +5,8 @@
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>V3 基础数据审核工具</title>
+<title>__AUDIT_APP_TITLE__</title>
+<link rel="icon" type="image/png" href="__AUDIT_ICON_URL__">
 <style>
 :root{
   --bg:#f2f5f9;
@@ -998,7 +999,7 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:12.5px}
       <p>如对审核流程有优化建议，欢迎提出。</p>
       <p>如对界面操作有改进意见，欢迎反馈。</p>
     </div>
-    <p class="about-version">审核工具 V1.0.0</p>
+    <p class="about-version" id="appVersion">__AUDIT_APP_TITLE__</p>
     <div class="about-actions">
       <button class="btn" onclick="closeAbout()">知道了</button>
     </div>
@@ -3263,6 +3264,7 @@ function renderExplanation(s){
 }
 async function refresh(){
   let s=await bridge.api.get_state();state=s;
+  if(s.appInfo){document.title=s.appInfo.title;document.getElementById('appVersion').textContent=s.appInfo.title}
   // 背景颜色以后端保存的设置为准（localStorage 仅用于启动前预应用，避免闪白）。
   applyTheme(s.uiTheme||'浅色');
   showRunDetailLogs=!!s.showRunDetailLogs;

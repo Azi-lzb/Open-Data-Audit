@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
+from config_paths import resolve_test_config
+
 from base_audit.systems.s3_central_statistics.common_config_check import check_common_config
 from base_audit.systems.s3_central_statistics.config import (
     ALERT_SHEET,
@@ -20,8 +22,7 @@ from base_audit.systems.s3_central_statistics.config import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-FORMAL_CONFIG = REPO_ROOT / "config" / COMMON_CONFIG_NAME
+FORMAL_CONFIG = resolve_test_config(COMMON_CONFIG_NAME)
 
 
 def _sha256(path: Path) -> str:

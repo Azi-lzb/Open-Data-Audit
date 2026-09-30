@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from config_paths import resolve_test_config
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -128,7 +130,7 @@ def test_expression_requires_previous_token_frequency_too(expression_schema) -> 
 
 
 def test_real_config_expression_groups_follow_date_gate(expression_schema) -> None:
-    config = load_central_config(ROOT.parent / "config" / "3.1大集中执行比较_配置.xlsx")
+    config = load_central_config(resolve_test_config("3.1大集中执行比较_配置.xlsx"))
     compiler = (compile_five_segment_rules if expression_schema == SCHEMA_FIVE_SEGMENT_V1
                 else compile_complex_rules)
     compiled = compiler(config)

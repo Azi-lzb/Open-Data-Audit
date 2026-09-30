@@ -32,6 +32,7 @@ if not getattr(sys, "frozen", False) and str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from base_audit.settings import hide_application_data_directory
+from base_audit.app_identity import app_title
 
 
 def main() -> int:
@@ -39,7 +40,7 @@ def main() -> int:
 
     multiprocessing.freeze_support()   # 打包 EXE 中多进程渲染的必需入口
     hide_application_data_directory(CORE / "data")
-    parser = argparse.ArgumentParser(description="基础数据审核工具（pywebview 统一外壳）")
+    parser = argparse.ArgumentParser(description=app_title())
     parser.add_argument("--cli", action="store_true", help="使用命令行模式")
     parser.add_argument("--template", type=Path, help="审核模板")
     parser.add_argument("--input", type=Path, help="报送文件目录")

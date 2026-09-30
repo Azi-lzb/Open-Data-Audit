@@ -8,6 +8,8 @@ import unittest
 import zipfile
 from pathlib import Path
 
+from config_paths import resolve_test_config
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -137,7 +139,7 @@ class FastOoxmlCompileTests(unittest.TestCase):
     """场景 5/6：openpyxl 重存/删表后可编译；3.3 无金融表单映射可编译。"""
 
     def _template(self) -> Path:
-        template = ROOT.parent / "config" / "3.3大集中指标比较拆分_配置.xlsx"
+        template = resolve_test_config("3.3大集中指标比较拆分_配置.xlsx")
         if not template.is_file():
             self.skipTest("缺少 3.3 正式配置")
         return template
@@ -196,7 +198,7 @@ class DeleteSheetIntegrityTests(unittest.TestCase):
 
         from base_audit.systems.s3_central_statistics.fast_ooxml import FastOoxmlRenderer
 
-        template = ROOT.parent / "config" / "3.3大集中指标比较拆分_配置.xlsx"
+        template = resolve_test_config("3.3大集中指标比较拆分_配置.xlsx")
         if not template.is_file():
             self.skipTest("缺少 3.3 正式配置")
         with tempfile.TemporaryDirectory() as folder:

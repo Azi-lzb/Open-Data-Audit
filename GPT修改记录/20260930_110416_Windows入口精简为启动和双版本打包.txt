@@ -1,0 +1,42 @@
+时间：2026-09-30 11:04:16（Asia/Shanghai）
+执行者：Codex
+修改前/后 commit：7902c28c61dc3f90789c3c70786a032388a3d246 → 7902c28c61dc3f90789c3c70786a032388a3d246（未提交）
+工作分支：codex/windows-two-entries；由 main 创建工作分支，未修改 main 历史。
+WIP 情况：修改前 config/1.逐笔统计系统_配置.xlsx、config/2.报表采集系统_配置.xlsx 已有未提交修改；external/、shell-flask/build-win7-venv/ 为已有未跟踪目录。上述 WIP 未改动；两份配置工作簿及启动脚本的 SHA-256 前后相同。
+
+修改目的：按用户要求只保留 Windows 的启动和双版本打包两个入口，序号顺延为 1、2。
+范围：公共平台外壳的 Windows 构建入口治理；不涉及 S1/S2/S3 业务功能或配置版本。
+
+重命名/移动：
+- shell-flask/Windows-4-打包双版本.bat → shell-flask/Windows-2-打包双版本.bat
+- shell-flask/Windows-2-打包Win10Win11.bat → shell-flask/windows-build/build-modern.bat
+- shell-flask/Windows-3-打包Win7.bat → shell-flask/windows-build/build-win7.bat
+修改：
+- shell-flask/build_windows_all.py：改为依次调用两个内部脚本，共用发布目录。
+- shell-flask/build_exe.py：同步脚本说明。
+- shell-flask/build_win7.py：同步脚本说明及便携版退出提示中的入口名称。
+- shell-flask/README.md、shell-flask/文件说明.txt：Windows 使用流程统一为 1 启动、2 双版本打包。
+新增：本修改记录。
+
+逻辑变化：移动后的内部脚本以自身父目录作为 shell-flask 根目录，保留既有 core、虚拟环境、依赖、runtime、缓存和输出位置；除路径锚点外，两个内部脚本与 HEAD 版本的构建逻辑逐字一致。双版本入口的 Win10/11 → Win7 顺序、共享输出目录、失败阻断和产物完整性检查维持原有语义。
+配置及 VBA 迁移影响：无。
+
+实际验证：
+- python -m py_compile shell-flask/build_windows_all.py shell-flask/build_exe.py shell-flask/build_win7.py：3 个文件通过。
+- Windows 定向检查（临时 Python 验证脚本，经标准输入执行；不新增长期测试模块）：7 passed / 0 skipped / 0 failed / 0 errors。
+  1. 顶层仅有 Windows-1、Windows-2 两个入口；内部构建逻辑与原版本一致；三个新位置的 bat 为 ASCII + CRLF。
+  2. 在含空格的临时项目目录，通过真实 cmd.exe 执行新的 Windows-2 入口，以桩构建器验证双版本成功、Win10/11 失败立即中止、Win7 失败保留未完成标记、产物缺失拒绝完成，共 4 项。
+  3. 通过真实 cmd.exe 执行两个内部脚本的路径预检片段，从无关工作目录与含空格路径核对 shell-flask/core 定位，共 2 项。
+- git diff --check：通过。
+- 活跃文件中的旧入口名引用检查：无残留；历史修改记录和历史组件 CHANGELOG 不追改。
+- 配置 WIP 及 Windows-1 的 SHA-256 保持一致。
+
+未新增长期测试理由：本次为可回滚的平台入口命名及文件位置调整，业务实现未变；定向调用和路径验证覆盖本次变化。
+未执行项：未重新执行两套完整 PyInstaller 构建；未执行打包 EXE/Office 真机验收、S1/S2/S3 业务回归或 Linux/UOS 回归。桩构建器的调用通过不能代替完整发行包验收。
+已知问题：无新增已知问题。
+
+删除清单：旧三个顶层 Windows-2/3/4 文件路径退出入口目录，内容均已移动保留；未删除构建逻辑、配置或产物。
+回滚提示：仅反向移动本次三个脚本并恢复五份引用/说明文件；保留两份配置工作簿和 external/build-win7-venv WIP。仅针对本批文件回滚，勿重置整棵工作树。
+
+【组件版本】
+不升级。平台外壳入口治理，不改变业务规则、对外业务契约或配置结构；VERSION_MANIFEST 和各 Sx-Fxx/Sx-CFG-xx CHANGELOG 无需更新。

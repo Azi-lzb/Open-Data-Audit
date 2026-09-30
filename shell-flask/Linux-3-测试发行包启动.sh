@@ -16,7 +16,7 @@ set -u
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 DIST=${FLASK_DIST_DIR:-$SCRIPT_DIR/dist}
 
-for tool in curl tar mktemp grep sed; do
+for tool in curl tar mktemp grep sed find; do
     command -v "$tool" >/dev/null 2>&1 || { echo "[错误] 缺少 $tool。" >&2; exit 2; }
 done
 
@@ -25,13 +25,14 @@ FAIL_COUNT=0
 NEXT_PORT=8800
 
 if [ $# -eq 0 ]; then
-    NEWEST_DEB=$(cd "$DIST" 2>/dev/null && ls -t base-audit-v3_*.deb 2>/dev/null | head -1 || true)
-    NEWEST_TGZ=$(cd "$DIST" 2>/dev/null && ls -t base-audit-v3_*.tar.gz 2>/dev/null | head -1 || true)
+    NEWEST_DEB=$(cd "$DIST" 2>/dev/null && ls -t 审核工具_V*_*.deb 2>/dev/null | head -1 || true)
+    # UOS 源码验收包也带产品版本，但不属于本入口测试的冻结发行包。
+    NEWEST_TGZ=$(cd "$DIST" 2>/dev/null && ls -t 审核工具_V*_*.tar.gz 2>/dev/null | grep -v '^审核工具_V[^_]*_UOS_' | head -1 || true)
     # set -- 为整体替换，追加用 "set -- "$@" 新项"，否则 tar.gz 会覆盖 .deb。
     [ -n "$NEWEST_DEB" ] && set -- "$DIST/$NEWEST_DEB"
     [ -n "$NEWEST_TGZ" ] && set -- "$@" "$DIST/$NEWEST_TGZ"
     if [ $# -eq 0 ]; then
-        echo "[错误] $DIST 下没有 base-audit-v3_*.deb / *.tar.gz 产物；请先打包或指定产物路径。" >&2
+        echo "[错误] $DIST 下没有 审核工具_V*_*.deb / *.tar.gz 产物；请先打包或指定产物路径。" >&2
         exit 2
     fi
 fi
@@ -81,10 +82,43 @@ test_one() {  # $1=产物绝对/相对路径
                 break
                 ;;
         esac
-        if [ ! -x "$ROOT/app/base-audit-v3" ] || [ ! -f "$ROOT/shell-flask/Linux-1-启动审核工具.sh" ]; then
-            FAILURE="包内缺少 app/base-audit-v3 或 shell-flask/Linux-1-启动审核工具.sh"
+        if [ ! -s "$ROOT/app/executable-name.txt" ]; then
+            FAILURE="包内缺少 app/executable-name.txt，无法验证新版冻结程序名称"
             break
         fi
+        FROZEN_NAME=$(sed -n '1p' "$ROOT/app/executable-name.txt")
+        case "$FROZEN_NAME" in
+            '审核工具_V'*) FROZEN_VERSION=${FROZEN_NAME#审核工具_V} ;;
+            *) FAILURE="冻结程序名称不符合审核工具版本命名：$FROZEN_NAME"; break ;;
+        esac
+        if ! printf '%s\n' "$FROZEN_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+            FAILURE="冻结程序名称中的版本无效：$FROZEN_NAME"
+            break
+        fi
+        case "$LABEL" in
+            "审核工具_V${FROZEN_VERSION}_"*) : ;;
+            *) FAILURE="产物文件名与冻结程序版本不一致：$LABEL / $FROZEN_NAME"; break ;;
+        esac
+        tab=$(printf '\t')
+        cr=$(printf '\r')
+        case "$FROZEN_NAME" in
+            ''|.|..|*/*|*'\'*|*..*|*' '*|*"$tab"*|*"$cr"*) FAILURE="冻结程序名称含非法路径字符：$FROZEN_NAME"; break ;;
+        esac
+        if [ ! -x "$ROOT/app/$FROZEN_NAME" ] || [ ! -f "$ROOT/shell-flask/Linux-1-启动审核工具.sh" ]; then
+            FAILURE="包内缺少可执行文件 app/$FROZEN_NAME 或 shell-flask/Linux-1-启动审核工具.sh"
+            break
+        fi
+        FROZEN_ICON=$(find "$ROOT/app" -type f -path '*/assets/app-icon.png' -print | head -n1)
+        FROZEN_MANIFEST=$(find "$ROOT/app" -type f -path '*/版本管理/VERSION_MANIFEST.json' -print | head -n1)
+        if [ ! -s "$ROOT/版本管理/VERSION_MANIFEST.json" ] \
+            || [ ! -s "$ROOT/core/frontend/assets/app-icon.png" ] \
+            || [ ! -s "$ROOT/core/frontend/assets/app-icon.ico" ] \
+            || [ -z "$FROZEN_ICON" ] || [ ! -s "$FROZEN_ICON" ] \
+            || [ -z "$FROZEN_MANIFEST" ] || [ ! -s "$FROZEN_MANIFEST" ]; then
+            FAILURE="包内缺少版本清单或前端应用图标资源"
+            break
+        fi
+        echo "       冻结程序 app/$FROZEN_NAME；版本清单与应用图标资源齐全。"
 
         echo "[3/4] 启动冻结服务（不弹浏览器，端口 $NEXT_PORT 起）..."
         LOG=$T/server.log
@@ -121,10 +155,21 @@ test_one() {  # $1=产物绝对/相对路径
             FAILURE="首页 HTTP $CODE（预期 200）"
             break
         fi
-        case "$TITLE" in
-            *基础数据审核工具*) : ;;
-            *) FAILURE="页面标题异常：「$TITLE」" ; break ;;
-        esac
+        if [ "$TITLE" != "审核工具 V$FROZEN_VERSION" ]; then
+            FAILURE="页面标题异常：「$TITLE」（预期：审核工具 V$FROZEN_VERSION）"
+            break
+        fi
+        ASSET_CODE=$(curl -s --max-time 10 -o "$T/app-icon.png" -w '%{http_code}' "http://127.0.0.1:$PORT/assets/app-icon.png")
+        if [ "$ASSET_CODE" != "200" ] || [ ! -s "$T/app-icon.png" ]; then
+            FAILURE="应用图标资源 HTTP $ASSET_CODE 或返回空文件"
+            break
+        fi
+        FAVICON_CODE=$(curl -s --max-time 10 -o "$T/favicon.ico" -w '%{http_code}' "http://127.0.0.1:$PORT/favicon.ico")
+        if [ "$FAVICON_CODE" != "200" ] || [ ! -s "$T/favicon.ico" ]; then
+            FAILURE="favicon HTTP $FAVICON_CODE 或返回空文件"
+            break
+        fi
+        echo "       应用图标与 favicon 均可通过 HTTP 获取。"
 
         echo "[4/4] 关闭服务并确认端口释放 ..."
         kill "$PID" 2>/dev/null || true

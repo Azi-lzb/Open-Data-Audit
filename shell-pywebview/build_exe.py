@@ -3,9 +3,9 @@
 用法：python build_exe.py [--win7]
 由 打包pywebview.bat / 打包pywebview-Win7.bat 调用；bat 负责选择解释器。
 
-产物布局（dist/）：
-  基础数据审核工具[_Win7].exe   ← PyInstaller onefile，内嵌前端页面
-  core/                         ← 统一业务核心（src + frontend + data + 历史审核配置）
+产物布局（由 PYWEBVIEW_DIST_DIR 指定，默认 dist/）：
+  产品名[_Win7兼容]_V产品版本.exe ← PyInstaller onefile，内嵌前端页面
+  core/                         ← 统一业务核心（src + frontend + 空 data）
   config/                       ← 节点流程配置模板（供统计人员维护）
 模板、历史库、用户设置均为 EXE 同级外部目录，升级不覆盖。
 """
@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -28,8 +29,12 @@ if not (_REPO_CORE / "src" / "base_audit").is_dir():
         f"[错误] 未找到仓库根目录统一核心：{_REPO_CORE}\\src\\base_audit\n"
         "       打包脚本必须与 core\\ 处于同一仓库根目录下。")
 CORE = _REPO_CORE
-DIST = ROOT / "dist"
+DIST = Path(os.environ.get("PYWEBVIEW_DIST_DIR") or ROOT / "dist")
 CONFIG_TEMPLATE = ROOT.parent / "config"
+if str(CORE / "src") not in sys.path:
+    sys.path.insert(0, str(CORE / "src"))
+
+from base_audit.app_identity import app_title, executable_stem, icon_path, load_product_info, manifest_path
 
 COMMON_HIDDEN = [
     "base_audit.excel_com",
@@ -62,8 +67,15 @@ def build(win7: bool) -> int:
     if not (CORE / "frontend" / "web" / "index.html").is_file():
         raise SystemExit("[错误] 未找到前端 index.html")
 
-    name = "基础数据审核工具_Win7" if win7 else "基础数据审核工具"
-    DIST.mkdir(exist_ok=True)
+    product = load_product_info()
+    name = executable_stem("pywebview", win7=win7)
+    icon = icon_path(".ico")
+    manifest = manifest_path()
+    assets = CORE / "frontend" / "assets"
+    for label, path in (("应用图标", icon), ("版本清单", manifest), ("应用资产目录", assets)):
+        if not path.exists():
+            raise SystemExit(f"[错误] 未找到{label}：{path}")
+    DIST.mkdir(parents=True, exist_ok=True)
 
     args = [
         "--onefile", "--noconsole", "--clean",
@@ -71,10 +83,16 @@ def build(win7: bool) -> int:
         "--paths", str(CORE / "src"),
         # 冻结态 launch_web 从 _MEIPASS/web 读前端页面。
         "--add-data", f"{CORE / 'frontend' / 'web'}{os_pathSep()}web",
+        "--add-data", f"{manifest}{os_pathSep()}版本管理",
+        "--add-data", f"{assets}{os_pathSep()}assets",
+        "--icon", str(icon),
         "--distpath", str(DIST),
         "--workpath", str(ROOT / "build"),
         "--specpath", str(ROOT / "build"),
     ]
+    if sys.platform == "win32":
+        version_file = write_version_file(name, product)
+        args += ["--version-file", str(version_file)]
     # Tk 是高级设置中可选的文件选择器，不能因为默认使用系统对话框而被漏打包。
     for mod in COMMON_HIDDEN + ["webview", "webview.platforms.edgechromium", "tkinter", "tkinter.filedialog"]:
         args += ["--hidden-import", mod]
@@ -98,20 +116,23 @@ def os_pathSep() -> str:
 
 
 def assemble_core() -> None:
-    """把统一核心复制到 dist/core（外部目录：升级 EXE 不覆盖用户数据）。"""
+    """更新发行核心代码，同时保留已有的外部用户数据。"""
     target = DIST / "core"
-    if target.exists():
-        shutil.rmtree(target)
-    target.mkdir(parents=True)
-    for item in ("src", "frontend", "data"):
+    target.mkdir(parents=True, exist_ok=True)
+    for item in ("src", "frontend"):
         src = CORE / item
         if src.is_dir():
+            existing = target / item
+            if existing.exists():
+                shutil.rmtree(existing)
             shutil.copytree(src, target / item, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    # New release folders receive an empty data directory; existing data is never copied or removed.
+    (target / "data").mkdir(exist_ok=True)
     history = CORE / "历史审核配置.xlsx"
-    if history.is_file():
+    if history.is_file() and not (target / history.name).exists():
         shutil.copy2(history, target / history.name)
     config = CORE / "跨期比较配置.xlsx"
-    if config.is_file():
+    if config.is_file() and not (target / config.name).exists():
         shutil.copy2(config, target / config.name)
     # tests 属于开发基线，不进发行包。
 
@@ -129,6 +150,52 @@ def assemble_config_template() -> None:
         target,
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "node_modules"),
     )
+
+
+def _numeric_version(version: str) -> tuple[int, int, int, int]:
+    parts = version.split(".")
+    if len(parts) != 4 or any(not part.isdecimal() for part in parts):
+        raise SystemExit(f"[错误] Windows PE 版本必须是四段数字：{version}")
+    numeric = tuple(int(part) for part in parts)
+    if any(value > 65535 for value in numeric):
+        raise SystemExit(f"[错误] 产品版本超出 Windows PE 范围：{version}")
+    return numeric
+
+
+def write_version_file(name: str, product: dict) -> Path:
+    """生成 PyInstaller PE 版本资源；版本只读取统一产品清单。"""
+    version = str(product["version"])
+    numeric = _numeric_version(version)
+    strings = {
+        "CompanyName": "V3",
+        "FileDescription": app_title(),
+        "FileVersion": version,
+        "InternalName": name,
+        "OriginalFilename": name + ".exe",
+        "ProductName": str(product["name"]),
+        "ProductVersion": version,
+    }
+    rows = ",\n        ".join(
+        f"StringStruct({key!r}, {value!r})"
+        for key, value in strings.items()
+    )
+    source = (
+        "VSVersionInfo(\n"
+        f"    ffi=FixedFileInfo(filevers={numeric!r}, prodvers={numeric!r}),\n"
+        "    kids=[\n"
+        "        StringFileInfo([\n"
+        "            StringTable('040904B0', [\n"
+        f"                {rows}\n"
+        "            ])\n"
+        "        ]),\n"
+        "        VarFileInfo([VarStruct('Translation', [1033, 1200])])\n"
+        "    ]\n"
+        ")\n"
+    )
+    target = ROOT / "build" / f"version-resource-{name}.txt"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(source, encoding="utf-8")
+    return target
 
 
 if __name__ == "__main__":

@@ -1,9 +1,9 @@
 #!/bin/sh
 # 打包 UOS/麒麟 源码发行包：组装 + zip/tar.gz + SHA256。
-# 产物：dist/基础数据审核工具_UOS_<日期>.zip（及 .sha256）
+# 产物：dist/审核工具_V<产品版本>_UOS_<日期>.zip（及 .sha256）
 #
 # 包内布局（app.py 同时兼容开发布局与打包布局）：
-#   基础数据审核工具_UOS_<日期>/
+#   审核工具_V<产品版本>_UOS_<日期>/
 #   ├─ app.py, run.py, requirements.txt, README.md, Linux-1-启动审核工具.sh
 #   ├─ core/{src,frontend,基础数据审核工具使用说明.docx}   ← 业务核心与前端
 #   └─ config/                                                ← 三册配置
@@ -20,15 +20,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CORE="$ROOT/core"
 DIST="$SCRIPT_DIR/dist"
-VERSION="$(date +%Y%m%d)"
-PKG_NAME="基础数据审核工具_UOS_$VERSION"
-PKG="$DIST/$PKG_NAME"
 
 WITH_LOCAL_CONFIG=0
 [ "$1" = "--with-local-config" ] && WITH_LOCAL_CONFIG=1
 
 [ -d "$CORE/src/base_audit" ] || { echo "[错误] 未找到共享核心：$CORE"; exit 1; }
 [ -f "$CORE/frontend/web/index.html" ] || { echo "[错误] 未找到共享前端 index.html"; exit 1; }
+[ -f "$ROOT/版本管理/VERSION_MANIFEST.json" ] || { echo "[错误] 未找到版本清单：版本管理/VERSION_MANIFEST.json"; exit 1; }
+[ -s "$CORE/frontend/assets/app-icon.png" ] || { echo "[错误] 未找到应用图标：core/frontend/assets/app-icon.png"; exit 1; }
+[ -s "$CORE/frontend/assets/app-icon.ico" ] || { echo "[错误] 未找到 favicon 图标：core/frontend/assets/app-icon.ico"; exit 1; }
 
 PY=""
 for candidate in python3 python; do
@@ -36,6 +36,17 @@ for candidate in python3 python; do
 done
 [ -n "$PY" ] || { echo "[错误] 未找到 python3，请先安装 Python 3。"; exit 1; }
 
+IDENTITY_PYTHONPATH=$CORE/src${PYTHONPATH:+:$PYTHONPATH}
+APP_VERSION=$(PYTHONPATH="$IDENTITY_PYTHONPATH" "$PY" -m base_audit.app_identity --version) || {
+    echo "[错误] 无法从版本清单读取产品版本。"; exit 1;
+}
+if ! printf '%s\n' "$APP_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "[错误] 版本清单中的产品版本不是 V年份.大版本.中版本.小版本：$APP_VERSION"; exit 1
+fi
+
+mkdir -p "$DIST"
+PKG_NAME="审核工具_V${APP_VERSION}_UOS_$(date +%Y%m%d)"
+PKG="$DIST/$PKG_NAME"
 rm -rf "$PKG"
 mkdir -p "$PKG"
 
@@ -54,6 +65,8 @@ chmod 755 "$PKG/Linux-1-启动审核工具.sh" "$PKG/Linux-4-打包UOS源码验�
 mkdir -p "$PKG/core"
 cp -r "$CORE/src" "$PKG/core/src"
 cp -r "$CORE/frontend" "$PKG/core/frontend"
+mkdir -p "$PKG/版本管理"
+cp "$ROOT/版本管理/VERSION_MANIFEST.json" "$PKG/版本管理/VERSION_MANIFEST.json"
 # 使用说明在仓库根目录（历史版本曾在 core/ 下，两处都找一次）。
 for DOCX in "$ROOT/基础数据审核工具使用说明.docx" "$CORE/基础数据审核工具使用说明.docx"; do
     if [ -f "$DOCX" ]; then cp "$DOCX" "$PKG/core/"; break; fi

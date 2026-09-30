@@ -89,6 +89,9 @@ for tool in curl wget; do
 done
 [ -d "$ROOT/core/src/base_audit" ] || { echo "[错误] 缺少共享核心：$ROOT/core/src/base_audit" >&2; exit 1; }
 [ -f "$ROOT/core/frontend/web/index.html" ] || { echo '[错误] 缺少前端 index.html。' >&2; exit 1; }
+[ -f "$ROOT/版本管理/VERSION_MANIFEST.json" ] || { echo '[错误] 缺少版本清单：版本管理/VERSION_MANIFEST.json。' >&2; exit 1; }
+[ -s "$ROOT/core/frontend/assets/app-icon.png" ] || { echo '[错误] 缺少应用图标：core/frontend/assets/app-icon.png。' >&2; exit 1; }
+[ -s "$ROOT/core/frontend/assets/app-icon.ico" ] || { echo '[错误] 缺少 favicon 图标：core/frontend/assets/app-icon.ico。' >&2; exit 1; }
 if [ ! -f "$ROOT/基础数据审核工具使用说明.docx" ] && [ ! -f "$ROOT/core/基础数据审核工具使用说明.docx" ]; then
     echo '[提示] 未提供使用说明 DOCX；继续构建，发行包不含该文档。'
 fi
@@ -197,6 +200,27 @@ if [ ! -x "$BUILD_ENV/bin/python" ] || \
 fi
 BUILD_PY=$BUILD_ENV/bin/python
 
+# 产品版本与程序名称都从共享身份模块读取；DEB 的日期版本仍只作构建批次元数据。
+IDENTITY_PYTHONPATH=$ROOT/core/src${PYTHONPATH:+:$PYTHONPATH}
+APP_VERSION=$(PYTHONPATH="$IDENTITY_PYTHONPATH" "$BUILD_PY" -m base_audit.app_identity --version) || {
+    echo '[错误] 无法从版本清单读取产品版本。' >&2; exit 1;
+}
+APP_TITLE=$(PYTHONPATH="$IDENTITY_PYTHONPATH" "$BUILD_PY" -m base_audit.app_identity --title) || {
+    echo '[错误] 无法读取产品标题。' >&2; exit 1;
+}
+LINUX_NAME=$(PYTHONPATH="$IDENTITY_PYTHONPATH" "$BUILD_PY" -m base_audit.app_identity --linux-name) || {
+    echo '[错误] 无法读取 Linux 冻结程序名称。' >&2; exit 1;
+}
+if ! printf '%s\n' "$APP_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "[错误] 版本清单中的产品版本不是 V年份.大版本.中版本.小版本：$APP_VERSION" >&2
+    exit 1
+fi
+if [ "$APP_TITLE" != "审核工具 V$APP_VERSION" ] || [ "$LINUX_NAME" != "审核工具_V$APP_VERSION" ]; then
+    echo "[错误] 产品身份输出与审核工具命名约定不一致：title=$APP_TITLE，linux-name=$LINUX_NAME，version=$APP_VERSION" >&2
+    exit 1
+fi
+echo "[产品] $APP_TITLE；Linux 可执行文件：$LINUX_NAME"
+
 echo '[依赖] 安装 Flask 运行库和 PyInstaller（首次需网络）...'
 # 官方 PyPI 直连失败时自动改用国内镜像；设 PIP_MIRROR_FALLBACK=none 可禁用。
 PIP_MIRROR_FALLBACK=${PIP_MIRROR_FALLBACK:-https://pypi.tuna.tsinghua.edu.cn/simple}
@@ -222,12 +246,15 @@ trap 'rm -rf -- "$STAGE"' EXIT HUP INT TERM
 PAYLOAD=$STAGE$RELEASE
 PYI_DIST=$STAGE/pyinstaller-dist
 mkdir -p "$PAYLOAD/app" "$PAYLOAD/shell-flask" "$PAYLOAD/core/frontend" \
+    "$PAYLOAD/版本管理" \
     "$PAYLOAD/config/默认配置" "$STAGE/DEBIAN" "$STAGE/usr/bin" \
-    "$STAGE/usr/share/applications" "$DIST" "$PYI_DIST"
+    "$STAGE/usr/share/applications" "$STAGE/usr/share/pixmaps" "$DIST" "$PYI_DIST"
 
 echo "[PyInstaller] 冻结 Flask、共享核心和 Python $VENV_EXPECT 运行时 ..."
-set -- --noconfirm --clean --onedir --name base-audit-v3 \
+set -- --noconfirm --clean --onedir --name "$LINUX_NAME" \
     --paths "$ROOT/core/src" \
+    --add-data "$ROOT/core/frontend/assets:assets" \
+    --add-data "$ROOT/版本管理/VERSION_MANIFEST.json:版本管理" \
     --collect-submodules base_audit \
     --collect-all flask \
     --collect-all openpyxl \
@@ -249,13 +276,13 @@ set -- "$@" "$SCRIPT_DIR/run.py"
     tail -40 "$STAGE/pyinstaller.log" >&2 || true
     exit 1
 }
-[ -x "$PYI_DIST/base-audit-v3/base-audit-v3" ] || { echo '[错误] PyInstaller 未生成 Linux 启动程序。' >&2; exit 1; }
+[ -x "$PYI_DIST/$LINUX_NAME/$LINUX_NAME" ] || { echo "[错误] PyInstaller 未生成 Linux 启动程序：$LINUX_NAME。" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # glibc 兼容性审计：扫描冻结目录全部 ELF 的 GLIBC/GLIBCXX 符号版本需求。
 # ---------------------------------------------------------------------------
 echo '[审计] 扫描冻结产物 ELF 符号版本（GLIBC / GLIBCXX）...'
-FROZEN_DIR=$PYI_DIST/base-audit-v3
+FROZEN_DIR=$PYI_DIST/$LINUX_NAME
 max_symbol_version() {  # $1=目录 $2=前缀(GLIBC/GLIBCXX)；输出最大版本号
     find "$1" -type f -exec objdump -T {} + 2>/dev/null || true
 }
@@ -293,7 +320,10 @@ fi
 # 组装发行内容（DEB 与 tar.gz 共用同一 payload）。
 # ---------------------------------------------------------------------------
 cp -R "$FROZEN_DIR/." "$PAYLOAD/app/"
+printf '%s\n' "$LINUX_NAME" > "$PAYLOAD/app/executable-name.txt"
 cp -R "$ROOT/core/frontend/." "$PAYLOAD/core/frontend/"
+cp "$ROOT/版本管理/VERSION_MANIFEST.json" "$PAYLOAD/版本管理/VERSION_MANIFEST.json"
+cp "$ROOT/core/frontend/assets/app-icon.png" "$STAGE/usr/share/pixmaps/base-audit-v3.png"
 for doc in "$ROOT/基础数据审核工具使用说明.docx" "$ROOT/core/基础数据审核工具使用说明.docx"; do
     if [ -f "$doc" ]; then cp "$doc" "$PAYLOAD/core/"; break; fi
 done
@@ -345,7 +375,7 @@ PY
 fi
 
 DEB_VERSION=$(date +%Y.%m.%d.%H%M%S)
-ARTIFACT_BASE=base-audit-v3_${DEB_VERSION}_${BUILD_OS}_py${PY_FULL_VERSION}_glibc${MIN_GLIBC}_${ARCH}
+ARTIFACT_BASE=审核工具_V${APP_VERSION}_${DEB_VERSION}_${BUILD_OS}_py${PY_FULL_VERSION}_glibc${MIN_GLIBC}_${ARCH}
 
 cat > "$STAGE/usr/bin/base-audit-v3" <<SH
 #!/bin/sh
@@ -359,9 +389,10 @@ cat > "$STAGE/usr/share/applications/base-audit-v3.desktop" <<DESKTOP
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=基础数据审核工具 V3
+Name=$APP_TITLE
 Comment=后台启动本机 Flask 审核工具
 Exec=base-audit-v3 --background
+Icon=/usr/share/pixmaps/base-audit-v3.png
 Terminal=false
 Categories=Office;
 DESKTOP
@@ -383,6 +414,8 @@ GLIBC_VERSION=$(getconf GNU_LIBC_VERSION 2>/dev/null | sed 's/^glibc[[:space:]]*
 [ -n "$GLIBC_VERSION" ] || GLIBC_VERSION=unknown
 {
     printf 'Package base: %s\n' "$ARTIFACT_BASE"
+    printf 'Application: %s\n' "$APP_TITLE"
+    printf 'Application version (VERSION_MANIFEST.json): %s\nDEB package version (build timestamp): %s\n' "$APP_VERSION" "$DEB_VERSION"
     printf 'Bundled Python: %s (python-build-standalone, %s)\n' "$PY_FULL_VERSION" "$INTERPRETER_SOURCE"
     printf 'Architecture: %s\nTk: %s\n' "$ARCH" "$TK_STATUS"
     printf 'PyInstaller: %s\n' "$PYINSTALLER_PIN"
@@ -398,7 +431,7 @@ GLIBC_VERSION=$(getconf GNU_LIBC_VERSION 2>/dev/null | sed 's/^glibc[[:space:]]*
 find "$STAGE" -type d -exec chmod 755 {} +
 find "$STAGE" -type f -exec chmod 644 {} +
 chmod 755 "$STAGE/usr/bin/base-audit-v3" \
-    "$PAYLOAD/app/base-audit-v3" \
+    "$PAYLOAD/app/$LINUX_NAME" \
     "$PAYLOAD/shell-flask/Linux-1-启动审核工具.sh"
 
 FINISHED=
@@ -436,13 +469,17 @@ echo '[提示] 目标机仍需桌面会话、xdg-utils、iproute2 和 LibreOffic
 echo '[提示] 配置和运行数据保存在 ~/.local/share/base-audit-v3/，升级不覆盖已有用户数据。'
 for f in "$DIST/${ARTIFACT_BASE}".*; do echo "[留档] $f"; done
 
-# 收尾清理历史批次：默认只保留最新一批 base-audit-v3_* 产物，避免 dist/ 堆积
+# 收尾清理历史批次：默认只保留最新一批审核工具_V*_时间戳_* 产物，避免 dist/ 堆积
 # 旧包误发；需同时留档多批时设 FLASK_KEEP_BUILDS=N（不小于 1）。
 KEEP_BUILDS=${FLASK_KEEP_BUILDS:-1}
 case "$KEEP_BUILDS" in ''|*[!0-9]*) KEEP_BUILDS=1 ;; esac
 [ "$KEEP_BUILDS" -lt 1 ] && KEEP_BUILDS=1
-ls -- "$DIST" 2>/dev/null | sed -n 's/^base-audit-v3_\([0-9][0-9.]*\)_.*/\1/p' | sort -ru \
+ls -- "$DIST" 2>/dev/null \
+    | sed -n -e 's/^审核工具_V[^_]*_\([0-9][0-9.]*\)_.*/\1/p' \
+             -e 's/^base-audit-v3_\([0-9][0-9.]*\)_.*/\1/p' \
+    | sort -ru \
     | tail -n +"$((KEEP_BUILDS + 1))" | while IFS= read -r stamp; do
+        rm -f -- "$DIST/审核工具_V"*"_${stamp}_"*
         rm -f -- "$DIST/base-audit-v3_${stamp}"_*
-        echo "[清理] 已删除旧批次产物 base-audit-v3_${stamp}_*"
+        echo "[清理] 已删除旧时间戳批次产物：$stamp"
     done

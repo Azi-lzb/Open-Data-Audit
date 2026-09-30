@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .app_identity import app_title, icon_path, load_product_info, render_app_page
+
 from .discovery import (
     classify_source_files,
     detect_period,
@@ -172,6 +174,7 @@ class WebApi:
         saved_input = self.settings.last_input_dir
         saved_output = self.settings.last_output_dir
         self.state: dict[str, Any] = {
+            "appInfo": load_product_info(),
             "busy": False,
             "cancelRequested": False,
             "status": "就绪",
@@ -2626,8 +2629,8 @@ def launch_web(project_root: Path) -> None:
         raise RuntimeError("本地界面文件缺失")
     page = _bridge_alias_page(html)
     # 使用操作系统原生标题栏（最小化/最大化/关闭由系统提供），界面内不再自绘。
-    webview.create_window("审核工具", page.as_uri(), js_api=WebApi(project_root), width=1180, height=820, min_size=(900, 650), frameless=False)
-    webview.start(gui="edgechromium")
+    webview.create_window(app_title(), page.as_uri(), js_api=WebApi(project_root), width=1180, height=820, min_size=(900, 650), frameless=False)
+    webview.start(gui="edgechromium", icon=str(icon_path(".ico")))
 
 
 def _bridge_alias_page(html: Path) -> Path:
@@ -2639,7 +2642,7 @@ def _bridge_alias_page(html: Path) -> Path:
     """
     import tempfile
 
-    source = html.read_text(encoding="utf-8")
+    source = render_app_page(html.read_text(encoding="utf-8"))
     if "</head>" not in source:
         raise RuntimeError("本地界面文件缺失 <head>，无法注入桥接别名")
     alias = (

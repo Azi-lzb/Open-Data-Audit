@@ -28,6 +28,7 @@ EXPECTED_CONFIGS = {
     "S3-CFG-00", "S3-CFG-01", "S3-CFG-02", "S3-CFG-03",
 }
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+PRODUCT_VERSION_RE = re.compile(r"^\d{2}\.\d+\.\d+\.\d+$")
 
 
 @pytest.fixture(scope="module")
@@ -39,7 +40,12 @@ def manifest() -> dict:
 def test_manifest_is_valid_json_with_core_sections(manifest: dict) -> None:
     for section in ("product", "systems", "features", "configs"):
         assert section in manifest, section
-    assert manifest["product"]["id"] == "V3"
+    product = manifest["product"]
+    assert product["id"] == "V3"
+    assert product["name"] == "审核工具"
+    assert PRODUCT_VERSION_RE.fullmatch(product["version"])
+    assert product["changelog"] == "版本管理/产品发布/CHANGELOG.md"
+    assert (ROOT / product["changelog"]).is_file()
     assert set(manifest["systems"]) == {"S1", "S2", "S3"}
 
 

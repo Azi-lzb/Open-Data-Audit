@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook, load_workbook
 
+from config_paths import resolve_test_config
+
 from base_audit.systems.s2_report_collection.config import load_config, write_default_config
 from base_audit.systems.s2_report_collection.config_check import check_s2_config, format_config_report
 from base_audit.systems.s2_report_collection.models import IndicatorConfig, IndicatorRecord, PeriodBandConfig, ReportAuditConfig, SourceRef
@@ -23,7 +25,10 @@ def _record(code: str, value: float | Decimal, *, period: str, value_type: str =
 
 
 def test_formal_and_default_s2_configs_pass_read_only_check() -> None:
-    for path in (ROOT / "config/2.报表采集系统_配置.xlsx", ROOT / "config/默认配置/2.报表采集系统_配置.xlsx"):
+    for path in (
+        resolve_test_config("2.报表采集系统_配置.xlsx"),
+        resolve_test_config("默认配置/2.报表采集系统_配置.xlsx"),
+    ):
         report = check_s2_config(path)
         assert report["passed"], format_config_report(report)
         checks = {check["id"]: check for check in report["checks"]}

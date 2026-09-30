@@ -21,7 +21,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 
 # 冻结态（PyInstaller）__file__ 指向临时解包目录，须按 exe 位置定位 core。
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
@@ -42,6 +42,7 @@ if str(CORE / "src") not in sys.path:
 
 from base_audit.path_browser import browse_directory  # noqa: E402
 from base_audit.web_app import WebApi  # noqa: E402
+from base_audit.app_identity import load_product_info, render_app_page  # noqa: E402
 
 
 configured_project_root = os.environ.get("BASE_AUDIT_PROJECT_ROOT", "").strip()
@@ -421,10 +422,22 @@ def create_app() -> Flask:
 
     @app.get("/")
     def index():
-        html = (FRONTEND_DIR / "web" / "index.html").read_text(encoding="utf-8")
+        info = load_product_info()
+        html = render_app_page(
+            (FRONTEND_DIR / "web" / "index.html").read_text(encoding="utf-8"),
+            "/assets/app-icon.png?v=" + info["version"],
+        )
         if "</head>" not in html:
             raise RuntimeError("本地界面文件缺失 <head>，无法注入 Flask 桥接层")
         return html.replace("</head>", _BRIDGE_JS + "</head>", 1)
+
+    @app.get("/assets/<path:filename>")
+    def asset(filename: str):
+        return send_from_directory(str(FRONTEND_DIR / "assets"), filename)
+
+    @app.get("/favicon.ico")
+    def favicon():
+        return send_from_directory(str(FRONTEND_DIR / "assets"), "app-icon.ico")
 
     @app.post("/api/<method>")
     def call(method: str):

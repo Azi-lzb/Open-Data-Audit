@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
+from config_paths import resolve_test_config
+
 from base_audit.systems.s3_central_statistics.config import (
     ACTION_RULE_SHEET,
     COMPARISON_CONFIG_NAME,
@@ -27,9 +29,8 @@ from base_audit.web_app import WebApi
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_DIR = REPO_ROOT / "config"
-COMMON_CONFIG = CONFIG_DIR / COMMON_CONFIG_NAME
-COMPARISON_CONFIG = CONFIG_DIR / COMPARISON_CONFIG_NAME
+COMMON_CONFIG = resolve_test_config(COMMON_CONFIG_NAME)
+COMPARISON_CONFIG = resolve_test_config(COMPARISON_CONFIG_NAME)
 FORMAL_CONFIGS_READY = COMMON_CONFIG.is_file() and COMPARISON_CONFIG.is_file()
 
 

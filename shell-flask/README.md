@@ -1,8 +1,18 @@
-# 基础数据审核工具（Flask 外壳：Windows + 统信 UOS/麒麟）
+# 审核工具（Flask 外壳：Windows + 统信 UOS/麒麟）
 
 `shell-flask` 是跨平台 Flask 外壳，与 `shell-pywebview`（仅
 Windows）共用 `core` 的唯一业务核心（`base_audit` 后端 +
 `frontend` 前端 + `tests` 测试）。本目录只放外壳与平台启动/打包脚本。
+
+窗口标题、关于页面与程序文件名统一读取 `版本管理/VERSION_MANIFEST.json`。
+当前整包版本为 `V26.1.0.0`（年份.大版本.中版本.小版本），对应：
+
+- pywebview：`审核工具_V26.1.0.0.exe`
+- Flask Win10/11：`审核工具_Flask_V26.1.0.0.exe`
+- Flask Win7：`审核工具_Flask_Win7兼容_V26.1.0.0.exe`
+- UOS/Linux 可执行程序：`审核工具_V26.1.0.0`
+
+图标采用 `core/frontend/assets/app-icon.png` 的红色图形，Windows 程序使用同源 `.ico`。
 
 ## 架构
 
@@ -18,25 +28,23 @@ Windows）共用 `core` 的唯一业务核心（`base_audit` 后端 +
 ## Windows 运行与打包
 
 ```bat
-Windows-1-启动审核工具.bat                 :: 运行（源码模式，绑定根目录 core；--packed 用打包版）
-Windows-2-打包Win10Win11.bat                 :: Win10/11 64 位推荐 EXE（Python 3.11/3.12）
-Windows-3-打包Win7.bat            :: Win7 兼容 EXE（32 位，Python 3.7/3.8）
-Windows-4-打包双版本.bat       :: 两个 EXE 放在同一个发布文件夹（推荐对外分发）
+Windows-1-启动审核工具.bat     :: 运行（源码模式，绑定根目录 core；--packed 用打包版）
+Windows-2-打包双版本.bat       :: 构建 Win10/11 与 Win7 两个 EXE，放在同一个发布文件夹
 ```
 
 ### Windows 双发行形态（同一业务核心）
 
-推荐运行 `Windows-4-打包双版本.bat`。它在 `dist\` 下新建一个目录，把两个
+运行 `Windows-2-打包双版本.bat`。它在 `dist\` 下新建一个目录，把两个
 EXE 与共用的 `core\`、`config\` 放在一起；用户按自己的 Windows 版本选择
-对应 EXE。单独运行两个旧入口时仍分别输出 `win10-*`、`win7-*` 目录。
+对应 EXE。两套构建脚本保存在 `windows-build/`，由双版本入口依次调用。
 不要把旧 `dist\core\data` 或旧 `dist\config` 当作发布内容；它们可能包含
 本机运行数据。合并发布目录的布局为：
 
 ```
 dist\
 └─ windows-YYYYMMDD_HHMMSS\
-   ├─ 基础数据审核工具_Flask.exe          ← Win10/11
-   ├─ 基础数据审核工具_Flask_Win7兼容.exe  ← Win7
+   ├─ 审核工具_Flask_V26.1.0.0.exe          ← Win10/11
+   ├─ 审核工具_Flask_Win7兼容_V26.1.0.0.exe  ← Win7
    ├─ core\                              ← src、frontend 与空的 data 目录
    ├─ config\                            ← 当前正式配置副本
    ├─ 运行库修复\                         ← Win7 缺运行库时使用
@@ -44,11 +52,12 @@ dist\
 ```
 
 两个 EXE 都从仓库根目录同一份 `core\` 与 `config\` 生成。Win10/11 用户
-双击无后缀的推荐版；Win7 用户双击带
-`Win7兼容` 后缀的版本。若用启动器验证打包版：`Windows-1-启动审核工具.bat --packed`
+双击带 `Flask` 标记的推荐版；Win7 用户双击带
+`Win7兼容` 标记的版本。若用启动器验证打包版：`Windows-1-启动审核工具.bat --packed`
 启动推荐版，`Windows-1-启动审核工具.bat --packed win7` 启动 Win7 版。
 
-`Windows-2-打包Win10Win11.bat` 首次会从本机 64 位 Python 3.11/3.12 创建仓库根目录
+双版本打包的 Win10/11 阶段（内部 `windows-build/build-modern.bat`）首次会从
+本机 64 位 Python 3.11/3.12 创建仓库根目录
 `.venv`，并安装 `requirements-win10win11-build.txt`；复制来的旧 `.venv`
 不可运行时改用独立的 `.venv-flask-build`。本机已有的 Conda Python 3.11
 也可用于创建该环境；其它位置可设置 `PYTHON_MODERN` 指向解释器。
@@ -58,7 +67,7 @@ Win7 使用独立的 32 位 Python 3.7/3.8 环境。
 > 便携目录/ZIP。`build_win7.py portable` 会明确报错；历史产物留在原处，
 > 请只分发本次生成的时间戳目录。
 
-`Windows-3-打包Win7.bat` 使用已验证的 32 位 Python；旧虚拟环境失效时创建
+Win7 阶段（内部 `windows-build/build-win7.bat`）使用已验证的 32 位 Python；旧虚拟环境失效时创建
 `build-win7-venv-rebuilt`，不会复用原有坏环境。可通过 `PYTHON_WIN7`
 指定其它 32 位 Python 3.7/3.8。离线依赖缓存包括：
 

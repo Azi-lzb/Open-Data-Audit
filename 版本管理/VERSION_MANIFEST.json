@@ -1,10 +1,13 @@
 {
   "product": {
     "id": "V3",
-    "name": "基础数据审核工具",
-    "description": "V3 是产品身份/项目代号，不是任何组件的版本号；唯一版本号形如 vMAJOR.MINOR.PATCH。"
+    "name": "审核工具",
+    "version": "26.1.0.0",
+    "version_scheme": "YY.MAJOR.MINOR.PATCH（年份.大版本.中版本.小版本）",
+    "changelog": "版本管理/产品发布/CHANGELOG.md",
+    "description": "V3 是产品身份/项目代号；整包发布版本使用年份.大版本.中版本.小版本，业务功能和配置使用独立的组件 SemVer。"
   },
-  "version_scheme": "SemVer（vMAJOR.MINOR.PATCH）：PATCH=不改变外部契约的修复/优化；MINOR=向后兼容的新增能力；MAJOR=不兼容语义/结构/契约变化。",
+  "version_scheme": "功能/配置组件 SemVer（vMAJOR.MINOR.PATCH）：PATCH=不改变外部契约的修复/优化；MINOR=向后兼容的新增能力；MAJOR=不兼容语义/结构/契约变化。",
   "baseline_note": "v1.0.0 为版本管理体系建立时的基线版本；此前历史修改未逐项倒推版本号，可通过 GPT修改记录/ 与 Git 历史追溯。",
   "systems": {
     "S1": {

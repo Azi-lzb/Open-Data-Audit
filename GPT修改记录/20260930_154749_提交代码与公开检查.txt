@@ -1,0 +1,38 @@
+时间：2026-09-30 15:47:49（Asia/Shanghai）。
+执行者：Codex。
+用户授权：本轮明确表示“没事 可以git 提交了”；按已完成的工作范围创建本地提交。
+修改前 commit：7902c28c61dc3f90789c3c70786a032388a3d246。
+修改后 commit：以包含本记录的 Git 提交为准；提交生成后在对话中报告编号。
+分支：codex/windows-two-entries；origin 为公开 Open-Data-Audit。
+WIP：仅纳入此前完成的代码、资源、测试与说明；保留用户已有 config/1、config/2 修改，external/ 原始输入与 shell-flask/build-win7-venv/ 本机环境；config-real/、test-output/ 与 dist/build 等产出继续被忽略。
+
+提交目的与范围：
+- Windows 常用入口收敛为 1 启动、2 双版本打包，内部脚本移动到 windows-build/。
+- pywebview/Flask 显示名称统一为审核工具，红色无文字图标与 V26.1.0.0 版本统一进入窗口、浏览器及 Windows 产物。
+- 纳入此前已完成的 Linux/UOS 命名、资源与脚本同步；按用户要求没有继续 Linux 打包。
+- 测试统一逐文件优先 config-real，缺失才回退 config；默认快照独立选择。
+- 提交三份既有修改记录与本记录、测试规则、版本清单及产品 CHANGELOG。
+
+本轮实际修改：
+- 版本管理/产品发布/CHANGELOG.md：补充真实配置重跑结果及记录链接，Git 状态改为通过提交历史定位。
+- core/tests/test_app_identity.py：移除文件末尾多余空行，修正首次暂存检查发现的格式问题，不改变测试语义。
+- 本修改记录。
+本轮未新增业务代码或测试用例；此前已完成的 26 个变更 Python 文件编译检查通过，提交准备只补充文档和修正空行。
+
+验证与限制：
+- 已完成定向测试 187 passed / 0 skipped / 0 failed / 0 errors。
+- 已完成 core 全量 824 passed / 7 skipped / 3 failed / 0 errors；剩余 3 项缺 LibreOffice 的模拟 Linux 预检失败，原 20 项配置失败已通过。
+- 7 项跳过含 6 项 Linux/UOS 专属测试和 1 项 Excel COM 探测未通过的真机用例。共用 COM 黄金流程 4 项通过，但现有记录没有明确所选引擎，不把它等同于 WPS 专项验收。
+- 完整回归前后 config-real 与 config 的 24 份工作簿 SHA-256 一致。
+- 提交前对实际暂存内容运行 tools/check_public_snapshot.py、git diff --cached --check 与文件范围核对；检查结果留在本地 test-output/commit-public-check.log。
+- 前端 JavaScript 语法检查及所有变更 Python 文件编译检查纳入提交前检查。
+- 本轮只补充文档，无需重复已完成的业务回归。Win7/UOS 真机及完整真实报送数据/VBA 对拍未执行。
+
+Git 作者：优先使用已配置的作者信息；未配置时沿用仓库已有提交的 Azi-lzb 及其 GitHub noreply 邮箱，仅在本次提交命令使用，不更改用户全局 Git 配置。
+删除清单：本轮无新增删除；此前三个顶层 Windows 脚本路径的移动一起提交，脚本内容保留。
+回滚：通过本次提交的 diff 按需要回退；不要覆盖仍留在工作区的配置、原始图像及本机环境。
+配置及 VBA 迁移影响：无；真实配置、测试数据、验收产出和构建产物不纳入公开代码。
+
+【组件版本】
+本轮提交准备为文档/留痕治理，不升级版本。
+产品整包首次发布基线 V26.1.0.0 随已完成的品牌与版本调整纳入提交；业务功能和六份配置组件版本保持原登记。

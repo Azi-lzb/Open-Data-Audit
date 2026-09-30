@@ -19,23 +19,24 @@ rem  ASCII-only + CRLF on purpose: cmd parses batch files in the ANSI
 rem  codepage, so Chinese text or LF endings break the script.
 rem ==============================================================
 setlocal EnableExtensions
-cd /d "%~dp0"
+set "SHELL_DIR=%~dp0..\"
+cd /d "%SHELL_DIR%"
 
 rem ---- [0/4] Shared core: the repo-root core\ is the ONLY source ----------
 rem All shells (flask / pywebview) and all build scripts use this one core.
 rem A stale per-shell copy would silently ship old code (real incident:
 rem the pywebview snapshot lagged 3 minutes and shipped the pre-fix build).
-if not exist "%~dp0..\core\src\base_audit" (
-  echo [ERROR] Repo-root core not found: %~dp0..\core\src\base_audit
+if not exist "%SHELL_DIR%..\core\src\base_audit" (
+  echo [ERROR] Repo-root core not found: %SHELL_DIR%..\core\src\base_audit
   echo         Keep shell-flask inside the repository root, next to core\.
   pause
   exit /b 1
 )
-echo [core] sharing repo-root core: %~dp0..\core
+echo [core] sharing repo-root core: %SHELL_DIR%..\core
 
 set "PY="
-set "RT=%~dp0runtime\python38"
-set "RTF=%~dp0runtime\python38-full"
+set "RT=%SHELL_DIR%runtime\python38"
+set "RTF=%SHELL_DIR%runtime\python38-full"
 
 rem ---- [1/4] Locate a Win7-capable interpreter: 3.8 best, 3.7 ok ----
 rem runtime\python38-full (complete win32) is the PyInstaller build env:
@@ -98,10 +99,10 @@ rem ---- [2/4] Isolated env + pinned dependencies ----
 rem A copied venv can still point to the old checkout. Keep it for diagnosis;
 rem create a separate environment when its interpreter is unusable.
 set "VPY=%PY%"
-set "VENV_DIR=%~dp0build-win7-venv"
+set "VENV_DIR=%SHELL_DIR%build-win7-venv"
 if exist "%VENV_DIR%\Scripts\python.exe" (
   "%VENV_DIR%\Scripts\python.exe" -c "import sys,struct,pyexpat;sys.exit(0 if sys.version_info[:2] in ((3,7),(3,8)) and struct.calcsize('P')==4 else 1)" >nul 2>nul
-  if errorlevel 1 set "VENV_DIR=%~dp0build-win7-venv-rebuilt"
+  if errorlevel 1 set "VENV_DIR=%SHELL_DIR%build-win7-venv-rebuilt"
 )
 if not exist "%VENV_DIR%\Scripts\python.exe" (
   %PY% -m venv "%VENV_DIR%"
@@ -169,7 +170,7 @@ if errorlevel 1 (
 rem ---- [3/4] Build ----
 for /f %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "BUILD_STAMP=%%T"
 if not defined BUILD_STAMP set "BUILD_STAMP=%RANDOM%-%RANDOM%"
-if not defined FLASK_DIST_DIR set "FLASK_DIST_DIR=%~dp0dist\win7-%BUILD_STAMP%"
+if not defined FLASK_DIST_DIR set "FLASK_DIST_DIR=%SHELL_DIR%dist\win7-%BUILD_STAMP%"
 echo [output] %FLASK_DIST_DIR%
 echo [3/4] Building onefile EXE with PyInstaller 4.10 ...
 %VPY% build_exe.py --win7
@@ -197,7 +198,7 @@ if exist "%RTF%\python.exe" (
 )
 echo [BOOT] Preparing full Python 3.8.10 win32 for PyInstaller ...
 if not exist "build" mkdir "build"
-set "FSETUP=%~dp0build\python-3.8.10.exe"
+set "FSETUP=%SHELL_DIR%build\python-3.8.10.exe"
 if not exist "%FSETUP%" (
   powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('https://www.python.org/ftp/python/3.8.10/python-3.8.10.exe','%FSETUP%')"
   if errorlevel 1 (
@@ -216,7 +217,7 @@ exit /b 0
 :bootstrap_python38
 echo [BOOT] No Python 3.7/3.8 found - downloading Python 3.8.10 embeddable win32 ...
 if not exist "build" mkdir "build"
-set "RTZIP=%~dp0build\python-3.8.10-embed-win32.zip"
+set "RTZIP=%SHELL_DIR%build\python-3.8.10-embed-win32.zip"
 if not exist "%RTZIP%" (
   powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-win32.zip','%RTZIP%')"
   if errorlevel 1 (
@@ -245,7 +246,7 @@ exit /b %errorlevel%
 :bootstrap_getpip
 %PY% -m pip --version >nul 2>nul
 if not errorlevel 1 exit /b 0
-set "GETPIP=%~dp0build\get-pip-38.py"
+set "GETPIP=%SHELL_DIR%build\get-pip-38.py"
 echo [BOOT] Installing pip via get-pip.py for Python 3.8 ...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('https://bootstrap.pypa.io/pip/3.8/get-pip.py','%GETPIP%')"
 if errorlevel 1 (

@@ -92,6 +92,22 @@ if /i "%PACKED_KIND%"=="WIN7" (
     for %%F in ("%~dp0dist\*Win7*.exe") do if not defined PACKED if exist "%%~fF" set "PACKED=%%~fF"
 ) else (
     for /f "delims=" %%D in ('dir /b /ad /o-d "%~dp0dist\windows-*" 2^>nul') do (
+        for %%F in ("%~dp0dist\%%D\*_Flask_V*.exe") do if not defined PACKED if exist "%%~fF" set "PACKED=%%~fF"
+    )
+    for /f "delims=" %%D in ('dir /b /ad /o-d "%~dp0dist\win10-*" 2^>nul') do (
+        for %%F in ("%~dp0dist\%%D\*_Flask_V*.exe") do if not defined PACKED if exist "%%~fF" set "PACKED=%%~fF"
+    )
+    for %%F in ("%~dp0dist\*_Flask_V*.exe") do if not defined PACKED if exist "%%~fF" set "PACKED=%%~fF"
+    rem Backward compatibility for the previous lower-case v version marker.
+    for /f "delims=" %%D in ('dir /b /ad /o-d "%~dp0dist\windows-*" 2^>nul') do (
+        for %%F in ("%~dp0dist\%%D\*_Flask_v*.exe") do if not defined PACKED if exist "%%~fF" set "PACKED=%%~fF"
+    )
+    for /f "delims=" %%D in ('dir /b /ad /o-d "%~dp0dist\win10-*" 2^>nul') do (
+        for %%F in ("%~dp0dist\%%D\*_Flask_v*.exe") do if not defined PACKED if exist "%%~fF" set "PACKED=%%~fF"
+    )
+    for %%F in ("%~dp0dist\*_Flask_v*.exe") do if not defined PACKED if exist "%%~fF" set "PACKED=%%~fF"
+    rem Backward compatibility for releases made before filenames included the version.
+    for /f "delims=" %%D in ('dir /b /ad /o-d "%~dp0dist\windows-*" 2^>nul') do (
         for %%F in ("%~dp0dist\%%D\*Flask.exe") do if not defined PACKED if exist "%%~fF" set "PACKED=%%~fF"
     )
     for /f "delims=" %%D in ('dir /b /ad /o-d "%~dp0dist\win10-*" 2^>nul') do (

@@ -10,13 +10,15 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook, load_workbook
 
+from config_paths import resolve_test_config
+
 from base_audit.systems.s3_central_statistics.forms_config_check import check_forms_config
 from base_audit.web_app import WebApi
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-COMMON_CONFIG = REPO_ROOT / "config" / "3.0大集中通用配置.xlsx"
-FORMAL_CONFIG = REPO_ROOT / "config" / "3.3大集中指标比较拆分_配置.xlsx"
+COMMON_CONFIG = resolve_test_config("3.0大集中通用配置.xlsx")
+FORMAL_CONFIG = resolve_test_config("3.3大集中指标比较拆分_配置.xlsx")
 FORMAL_CONFIGS_READY = COMMON_CONFIG.is_file() and FORMAL_CONFIG.is_file()
 
 

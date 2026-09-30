@@ -13,6 +13,7 @@
 **/venv/
 **/__pycache__/
 /.pytest_cache/
+/.pytest-tmp-v3/
 *.pyc
 *.log
 *.csv

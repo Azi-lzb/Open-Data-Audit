@@ -23,6 +23,8 @@ from tempfile import TemporaryDirectory
 
 from openpyxl import Workbook, load_workbook
 
+from config_paths import resolve_test_config
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -519,7 +521,7 @@ class DefinedNameFormulaDependencyTests(unittest.TestCase):
 
     def test_9_real_33_contract_still_holds(self) -> None:
         """3.3 真实配置：报表清单必需、金融表单映射非依赖（不回归）。"""
-        template = ROOT.parent / "config" / "3.3大集中指标比较拆分_配置.xlsx"
+        template = resolve_test_config("3.3大集中指标比较拆分_配置.xlsx")
         if not template.is_file():
             self.skipTest("缺少 3.3 正式配置")
         compiled = TemplateCompiler(template).compile()

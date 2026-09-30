@@ -9,23 +9,24 @@ rem large workbook can use a modern 64-bit Python without weakening Win7.
 rem ASCII-only + CRLF on purpose (cmd parses batch in the ANSI codepage).
 rem ============================================================
 setlocal EnableExtensions EnableDelayedExpansion
-cd /d "%~dp0"
+set "SHELL_DIR=%~dp0..\"
+cd /d "%SHELL_DIR%"
 
-if not exist "%~dp0..\core\src\base_audit" (
-    echo [ERROR] Repo-root core not found: %~dp0..\core\src\base_audit
+if not exist "%SHELL_DIR%..\core\src\base_audit" (
+    echo [ERROR] Repo-root core not found: %SHELL_DIR%..\core\src\base_audit
     echo         Keep shell-flask inside the repository root next to core\.
     pause
     exit /b 1
 )
-echo [core] sharing repo-root core: %~dp0..\core
+echo [core] sharing repo-root core: %SHELL_DIR%..\core
 
-set "VENV_DIR=%~dp0..\.venv"
+set "VENV_DIR=%SHELL_DIR%..\.venv"
 set "PY=%VENV_DIR%\Scripts\python.exe"
 if exist "%PY%" (
     "%PY%" -c "import struct,sys;sys.exit(0 if struct.calcsize('P')==8 and sys.version_info[:2] in ((3,11),(3,12)) else 1)" >nul 2>nul
     if errorlevel 1 (
-        set "VENV_DIR=%~dp0..\.venv-flask-build"
-        set "PY=%~dp0..\.venv-flask-build\Scripts\python.exe"
+        set "VENV_DIR=%SHELL_DIR%..\.venv-flask-build"
+        set "PY=%SHELL_DIR%..\.venv-flask-build\Scripts\python.exe"
     )
 )
 if not exist "%PY%" (
@@ -78,7 +79,7 @@ if errorlevel 1 (
 echo [environment] Windows 10/11 64-bit: %PY%
 for /f %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "BUILD_STAMP=%%T"
 if not defined BUILD_STAMP set "BUILD_STAMP=%RANDOM%-%RANDOM%"
-if not defined FLASK_DIST_DIR set "FLASK_DIST_DIR=%~dp0dist\win10-%BUILD_STAMP%"
+if not defined FLASK_DIST_DIR set "FLASK_DIST_DIR=%SHELL_DIR%dist\win10-%BUILD_STAMP%"
 echo [output] %FLASK_DIST_DIR%
 "%PY%" build_exe.py
 if errorlevel 1 (

@@ -1,0 +1,71 @@
+时间：2026-09-30 15:31:59（Asia/Shanghai）
+执行者：Codex，主模型完成配置来源调整、测试与 diff 审查，未委派子 Agent。
+修改前/后 commit：7902c28c61dc3f90789c3c70786a032388a3d246 → 7902c28c61dc3f90789c3c70786a032388a3d246（未提交）。
+工作分支：codex/windows-two-entries；origin 为 https://github.com/Azi-lzb/Open-Data-Audit.git。
+WIP：保留此前 Windows 入口、图标、名称与版本工作，以及用户已有 config/1、config/2 修改；未 commit/push/merge/rebase/创建 PR。
+
+修改目的：
+用户要求用 config-real 中的真实配置重新测试，并确定以后优先使用该目录，对应文件不存在时才使用 config。
+用户在本次执行期间放入真实配置；最终 6 份正式配置与 6 份默认快照均存在，本次来源核对 12/12 选中 config-real。
+
+新增文件：
+- core/tests/config_paths.py：resolve_test_config 逐文件选择真实配置，缺失时回退公开配置；只返回路径，不创建或修改工作簿。
+- core/tests/test_config_paths.py：8 项用例，覆盖真实配置优先、目录/文件缺失回退、默认快照独立选择、非文件回退、无文件不创建及相对路径约束。
+- 本修改记录。
+
+修改文件：
+- core/tests/test_percentage_point_compare.py：S2 百分点兼容路径读取真实指标配置。
+- core/tests/test_rule_action_engine.py：S3 正式动作数量、结转与表达式契约测试统一选择真实配置。
+- core/tests/test_s2_config_check.py、test_s2_units.py：正式配置和默认快照分别按相对路径选择，业务断言保持原标准。
+- core/tests/test_s3_common_config_check.py、test_s3_comparison_config_check.py、test_s3_config_check_ui.py、test_s3_forms_config_check.py：3.0/3.1/3.2/3.3 配置检查使用真实工作簿。
+- core/tests/test_s3_rollover_dates.py：真实结转规则按优先路径装载。
+- core/tests/test_ooxml_structure.py、test_fast_delete_defined_names.py：3.3 正式表单编译、结构与删表测试使用真实模板；写入场景仍使用临时副本。
+- core/tests/conftest.py：新增配置路径测试登记到 S1/S2/S3 共享组，保留此前身份测试归类。
+- core/tests/TEST_GROUPS.md、rules/07_测试与发布.md：固定真实配置优先、逐文件回退、默认快照独立与原件保护口径。
+
+逻辑与配置影响：
+只调整测试配置来源及测试规则。未调整业务核心、平台外壳、工作簿内容、配置结构或 VBA 语义；未降低正式规则/模板/单位/百分点断言，也未将原失败改为跳过。
+不存在真实文件时，返回 config 中对应路径；公开空表头不满足正式业务契约时仍按实际失败报告。
+默认快照读取 config-real/默认配置/ 对应工作簿，缺失才回退 config/默认配置/；不会拿当前正式配置顶替默认快照。
+
+实际测试：
+环境：本机 Windows，Python 3.12.10，pytest 9.1.1，openpyxl 3.1.5。
+1. 定向：新增配置路径测试及上述 11 个受影响测试模块。
+   python -m pytest -q -rs core/tests/test_config_paths.py core/tests/test_percentage_point_compare.py core/tests/test_rule_action_engine.py core/tests/test_s2_config_check.py core/tests/test_s2_units.py core/tests/test_s3_common_config_check.py core/tests/test_s3_comparison_config_check.py core/tests/test_s3_config_check_ui.py core/tests/test_s3_forms_config_check.py core/tests/test_s3_rollover_dates.py core/tests/test_ooxml_structure.py core/tests/test_fast_delete_defined_names.py --basetemp=test-output/config-real-targeted-temp --junitxml=test-output/config-real-targeted.xml
+   187 passed / 0 skipped / 0 failed / 0 errors，49.83 秒。
+2. 最终 core 全量：覆盖全部 S1/S2/S3 测试组与共享测试。
+   为本次子进程设置 XDG_CACHE_HOME=<仓库>/test-output/config-real-cache。
+   python -m pytest -q -rs core/tests --basetemp=test-output/config-real-full-retry-temp -o faulthandler_timeout=60 --junitxml=test-output/config-real-full-retry.xml
+   总计 834 项：824 passed / 7 skipped / 3 failed / 0 errors，115.49 秒。
+3. 剩余失败与上一轮修改前基线逐项比较：原 23 项中 20 项通过，剩余 3 项一致，新增失败 0。
+4. 修改的 14 个 Python 测试/辅助文件编译检查通过；git diff --check 通过。
+
+剩余 3 项失败：
+- golden/test_golden_native_flow.py::test_dag_native_flow_golden_contract
+- golden/test_golden_native_flow.py::test_s1_business_outputs_are_identical_when_run_log_export_changes
+- test_native_uos.py::test_dag_audit_dispatches_to_native
+均是在本机模拟 Linux/native 分支时，真实引擎预检找不到 LibreOffice Calc；并非 UOS 真机业务运行失败。
+
+7 项跳过：
+- test_engine_preflight.py 4 项与 test_system_info.py 2 项：仅 Linux/UOS 分支，本机 Windows 跳过。
+- test_office_expression.py::test_adapter_evaluate_and_cell_fallback_with_real_excel：本轮探测本机无可用 Excel COM；未执行该真实 Excel 用例。与之前全量的跳过数不同，单独列明，不算通过。
+
+执行期间情况与输入保护：
+- 首次全量在 test_native_uos.py::test_recalculate_stages_and_replaces_only_after_success 处停滞，未产出完整结果；保留 test-output/config-real-full.log，不将它计为完成的回归。
+- 该用例改用项目内 XDG_CACHE_HOME 后单独运行 1 passed / 0 skipped / 0 failed / 0 errors，0.81 秒。确认本次 pytest 进程身份后只终止该停滞进程，未终止用户办公软件；随后从头完成全量重跑。
+- 初始校验快照在 15:11:29；S1 真实配置的文件变动时间为 15:14:33，早于定向测试启动时间 15:16:03。保留该外部变动，未用旧内容覆盖；S2/S3 配置与默认快照相对初始快照未改变。
+- 最终完整回归前重新建立快照，回归后比较 config-real 与 config 下全部 24 份工作簿 SHA-256：24/24 一致，改动 0。测试仅在临时副本上修改工作簿。
+- 实际来源、哈希与 JUnit/日志保存在被忽略的 test-output/config-real-selected.json、config-real-full-retry-before.json、config-real-full-retry-after.json、config-real-targeted.xml/log、config-real-full-retry.xml/log。
+- config-real 与 test-output 均确认被 Git 忽略；真实配置和测试产出未进入公开代码变更。
+
+未执行项与范围：
+未重新打包 Windows/Linux 程序；未执行 UOS/LibreOffice 真机验收；未用完整真实业务报送数据进行端到端重跑或 VBA 对拍。真实配置下的自动测试通过不能替代这些验收。
+
+删除清单：无。
+回滚提示：只回退本次测试路径辅助文件、11 个测试模块的配置路径改动、共享分组与两份测试规则文档；保留此前图标/身份相关 WIP 和用户配置，不整份覆盖 conftest.py 或 TEST_GROUPS.md。
+
+【组件版本】
+系统：S1/S2/S3 测试治理。
+涉及测试：S2-F01、S3-F01、S3-F04、S3-F05 及三组共享配置路径测试。
+功能组件、六份配置组件：均不升级；测试来源修正，不改变业务契约或配置内容。
+整包发布版本：不升级，仍为 V26.1.0.0；本次没有程序发布。

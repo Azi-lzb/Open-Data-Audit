@@ -1,0 +1,91 @@
+时间：2026-09-30 14:47:25（Asia/Shanghai）
+执行者：Codex；主模型完成结构查证、集成与 diff 审查；三个子 Agent 分别处理 Windows 构建、Linux 构建和身份测试。
+修改前/后 commit：7902c28c61dc3f90789c3c70786a032388a3d246 → 7902c28c61dc3f90789c3c70786a032388a3d246（未提交）。
+工作分支：codex/windows-two-entries；origin 为 Open-Data-Audit，未修改 main 历史，未 commit/push/merge/rebase/创建 PR。
+WIP：本次沿用前一任务的 Windows 入口整理；config/1.逐笔统计系统_配置.xlsx、config/2.报表采集系统_配置.xlsx 为用户既有修改；external/ 和 shell-flask/build-win7-venv/ 为既有未跟踪目录，原内容保留。
+两份配置 SHA-256 前后保持：
+1.逐笔统计系统_配置.xlsx：8AB0B6F67D56DFF55CBCF2B01F0DFBEB9B003C9AD1E3504BA0C12830C7D25D92
+2.报表采集系统_配置.xlsx：60740C95C9F0970315CC2A31C031C8950C29A2476FFEC66B59C6465C7ABA04CF
+
+修改目的：
+统一 pywebview、Flask 的名称与红色图标，在窗口、浏览器、关于页面及可执行程序文件名中显示整包发布版本。
+用户确认整包编号为 V年份.大版本.中版本.小版本；本次首次登记 V26.1.0.0。
+本次为跨系统公共外壳/界面治理，不调整 S1-F01~F05、S2-F01、S3-F01~F05 的业务规则或六册配置结构。
+用户最终确认 Windows 两个界面已满足要求，并明确 Linux 打包无需继续处理；此后未新增 Linux 打包/验证操作。
+
+新增文件：
+- core/src/base_audit/app_identity.py：共用产品名称、版本、图标路径、页面渲染及产物命名。
+- core/frontend/assets/app-icon.png、app-icon.ico：透明背景、无文字的红色图形；ICO 含 16/20/24/32/40/48/64/128/256 多种尺寸。
+- core/tests/test_app_identity.py：身份来源、四段版本、命名、资源定位、HTML 转义与 CLI 检查。
+- 版本管理/产品发布/CHANGELOG.md：首次整包发布基线。
+- 本修改记录。
+
+修改文件：
+- .gitattributes：ICO 作为二进制资源。
+- .gitignore：排除本次测试产生的 /.pytest-tmp-v3/ 临时目录。
+- core/src/base_audit/__init__.py：__version__ 延迟读取统一清单，移除旧硬编码 0.1.0。
+- core/src/base_audit/web_app.py：appInfo 状态、标题、原生图标、临时 HTML 的绝对图标 URI。
+- core/frontend/web/index.html：浏览器 favicon、标题及关于页面版本占位符，刷新时显示 appInfo。
+- shell-flask/app.py：统一页面渲染、受控静态资源路径及 favicon 路由。
+- shell-flask/run.py：启动说明显示统一标题；支持仓库与 UOS 源码包布局；新可执行文件名进入旧实例识别。
+- shell-pywebview/run.py：启动说明读取统一标题。
+- shell-flask/build_exe.py、build_windows_all.py、build_win7.py、Windows-1-启动审核工具.bat：动态文件名、内嵌清单/资产、PE 图标与四段版本、合并输出完整性检查及 Win7 说明。
+- shell-pywebview/build_exe.py：动态文件名、图标/PE 版本、内嵌清单、独立输出目录参数；复制核心代码时保留既有 data，不复制源码运行数据。
+- shell-flask/Linux-1/2/3/4 四个脚本：版本化可执行文件名及定位记录、版本/图标打包、菜单图标、启动验证及源码包布局；冻结包自动验证排除 UOS 源码压缩包。修改已保留，Linux 打包后续由用户安排。
+- shell-flask/README.md、文件说明.txt：同步名称、版本及发行布局。
+- core/tests/test_version_manifest.py、conftest.py、TEST_GROUPS.md：产品清单字段检查；身份测试登记为 S1/S2/S3 共享组；产物名称断言从清单取版本，后续升级无需硬编码两份产品版本。
+- 版本管理/VERSION_MANIFEST.json、README.md、rules/11_版本管理与组件编号.md：产品编号规则及发布版本；既有功能与配置 SemVer 独立保留。
+
+逻辑变化：
+产品显示名为“审核工具”，V3 仍为内部项目代号。product.version 保存四段数字，界面与文件名统一加大写 V。
+V26.1.0.1 表示缺陷修复/局部逻辑修改；V26.1.1.0 表示现有 S1/S2/S3 新功能；V26.2.0.0 表示新增大的平台系统。更大段升级时重置后续段；重打相同代码不自动升级版本。
+冻结包读取 _MEIPASS 内清单，源码从仓库清单读取；版本失效时明确失败，避免显示猜测版本。
+PE 数字版本和字符串版本均为 26.1.0.0。生成的资源文本已由真实 PyInstaller 解析器验证，使用解析器提供的构造器名称。
+Flask 图标地址带版本查询参数，避免旧 favicon 缓存；pywebview 临时 HTML 使用绝对文件 URI。
+core 仍为唯一业务实现，外壳只负责显示和启动/构建适配。
+
+图标处理：
+输入为 external/中国人民银行_logo.png 与 external/images.jpg；原图保留。
+使用内置 image_gen 编辑，透明背景，模型由内置工具管理，未使用 CLI/API fallback。
+最终处理提示规格：参照两张原图，仅提取并保留红色图形标志，移除全部中英文文字及背景，保留原图形形状和红色，透明底，不添加文字或其他元素。
+选定生成文件从 Codex generated_images 复制到 core/frontend/assets/app-icon.png；Pillow 仅用于 ICO 格式转换与尺寸导出，不用于图像内容编辑。
+成品保存路径：
+C:/Users/AZI/Desktop/VibeCode/3.open-data-audit/core/frontend/assets/app-icon.png
+C:/Users/AZI/Desktop/VibeCode/3.open-data-audit/core/frontend/assets/app-icon.ico
+
+实际验证：
+1. 身份/版本清单/共享 WebApi 定向 pytest：63 passed / 0 skipped / 0 failed / 0 errors，最终一轮耗时 30.87 秒。
+   范围：core/tests/test_app_identity.py、test_version_manifest.py、test_web_app.py。
+2. core 全量回归：797 passed / 6 skipped / 23 failed / 0 errors，119.13 秒。
+   将 HEAD 的源码与测试解到被忽略的 test-output/branding-baseline，并复制相同的本机配置输入；失败所属 12 个模块对照：164 passed / 0 skipped / 23 failed / 0 errors，14.83 秒。
+   全部 23 个失败用例在修改前 HEAD 复现，未新增失败。既有失败主要涉及公开空表头配置缺少正式规则/单位设置，以及本机缺少 LibreOffice Calc。跳过为 6 项 Linux/UOS 分支检查。
+   未为消除上述失败修改业务逻辑或用户配置。日志保留在 test-output/branding-regression.log 与 branding-baseline-regression.log/xml。
+3. 9 个相关运行/构建 Python 文件通过 Python 3.8 语法兼容检查；Windows 入口和内部 bat 保持 ASCII + CRLF；Linux 脚本通过 sh -n。
+4. pywebview、Flask Win10/11 与 Flask Win7 可执行程序实际构建完成。
+   PE 图标资源内容与多尺寸 ICO 一致；PE 属性文件/产品版本均为 26.1.0.0。
+   最终三个 EXE 的内嵌清单与当前 VERSION_MANIFEST.json 全量一致，内嵌 PNG/ICO 与 core 资产逐字节一致；双版本目录无 BUILD_INCOMPLETE。
+5. 使用 computer-use 查看 pywebview 原生窗口，确认红色标题栏图标、“审核工具 V26.1.0.0”及关于页面。
+   浏览器实际查看 Flask 页面，标题与关于页面相同，favicon 指向 /assets/app-icon.png?v=26.1.0.0。
+   Flask 两种 Windows EXE 在本机 Windows 11 启动检查：HTTP 200、appInfo、PNG 与 favicon 内容正确，测试服务均已关闭。
+   用户亲自查看后确认 pywebview 与 Flask 均满足要求。
+6. 用户提出无需继续 Linux 打包之前，WSL Ubuntu 24.04 amd64 构建及两种冻结包启动检查已完成：2 passed / 0 failed；实测最低 glibc 2.25，低于目标 2.28；未作 UOS 真机验收。已有产物只留在忽略目录，收到最后指示后不继续 Linux 流程、不作为本次交付重点。
+7. git diff --check 通过；HEAD、origin 及两份用户配置的 SHA-256 保持一致。
+8. 测试临时目录递归清理被自动审批策略阻止，未重复删除；保留目录并加入 .gitignore，防止验收副本进入公开仓库。
+
+Windows 最终成品：
+- shell-pywebview/dist/release-V26.1.0.0/审核工具_V26.1.0.0.exe
+- shell-flask/dist/windows-20260930_143849/审核工具_Flask_V26.1.0.0.exe
+- shell-flask/dist/windows-20260930_143849/审核工具_Flask_Win7兼容_V26.1.0.0.exe
+发行时复制对应整个目录（含 core/config），不只复制 EXE。
+Win7 包附微软签名有效的 vc_redist_2019.x86.exe（14.29.30157.0），从本机既有官方运行库缓存只读复制，未安装运行库或修改旧仓库。
+历史发行目录、用户原有基础数据审核工具.exe、config/external/venv WIP 保留。
+
+未执行项：
+未执行 Win7 SP1 或 UOS 真机验收；Win7 EXE 的本次启动检查是在 Windows 11 上完成。
+未追加真实业务数据审核/VBA 对拍；本次不改变业务流程、输出协议或配置/VBA 迁移语义。
+已知问题：上述 23 项既有回归失败；用户正式配置和 LibreOffice 环境需按独立业务验收安排，不能将本次界面/启动检查视为全部业务验收。
+
+删除清单：本次无源文件或原始数据删除；前一批 Windows 入口移动详见 20260930_110416 记录；测试临时清理未执行。
+回滚：仅撤回本记录列出的代码/规则/公开图标资源与产品基线字段；保留用户 config、external、虚拟环境、旧发行包和运行数据。不要重置整棵工作树。前一批入口整理可独立保留。
+【组件版本】
+业务功能与配置不升级，17 个组件版本保持原值；产品发布版本首次登记为 V26.1.0.0，并新增产品发布 CHANGELOG。

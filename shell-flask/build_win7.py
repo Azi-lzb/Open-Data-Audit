@@ -1,4 +1,4 @@
-"""Win7 发行包收尾工具（由 Windows-3-打包Win7.bat 调用，Python 3.7/3.8 可运行）。
+"""Win7 发行包收尾工具（由 windows-build/build-win7.bat 调用，Python 3.7/3.8 可运行）。
 
 唯一子命令：
   exe-extras   PyInstaller 产物收尾：生成《运行环境说明-Win7.txt》（GBK，
@@ -27,11 +27,15 @@ DIST = Path(os.environ.get("FLASK_DIST_DIR") or ROOT / "dist")
 REDIST = ROOT / "redist"
 REDIST_2019 = REDIST / "vc_redist_2019.x86.exe"   # VS2019 线 14.29，官方支持 Win7 SP1
 REDIST_LATEST = REDIST / "vc_redist.x86.exe"      # VS2022 线，新系统兜底
+if str(CORE / "src") not in sys.path:
+    sys.path.insert(0, str(CORE / "src"))
+
+from base_audit.app_identity import app_title, executable_stem
 
 
 # GBK + CRLF：Win7 记事本（ANSI）双击即可正常阅读。
 README_TEXT = """\
-基础数据审核工具（Flask 版）Windows 7 运行说明
+{app_title}（Flask 版）Windows 7 运行说明
 ================================================
 
 一、本包特点
@@ -41,7 +45,7 @@ README_TEXT = """\
 3. 依赖 Windows 系统运行库；缺少时使用本包的离线安装程序修复。
 
 二、启动方法
-1. 双击 基础数据审核工具_Flask_Win7兼容.exe
+1. 双击 {executable_name}
    （exe 必须与本目录的 core 文件夹保持同级，升级 exe 时不要覆盖 core）；
 
 三、常见问题
@@ -60,7 +64,10 @@ README_TEXT = """\
 
 def write_readme(path: Path) -> None:
     with open(path, "w", encoding="gbk", newline="\r\n") as handle:
-        handle.write(README_TEXT)
+        handle.write(README_TEXT.format(
+            app_title=app_title(),
+            executable_name=executable_stem("flask", win7=True) + ".exe",
+        ))
 
 
 def copy_redist_repair(target: Path) -> None:
@@ -98,7 +105,7 @@ def main(argv: list[str]) -> int:
     """唯一入口：exe-extras（便携版模式已移除）。"""
     if len(argv) == 2 and argv[1] == "portable":
         print("[错误] 便携版模式已移除（2026-09-21 用户要求：发行只保留 EXE 形态）。\n"
-              "       请直接运行 Windows-3-打包Win7.bat 生成 EXE + core + config。")
+              "       请运行 Windows-2-打包双版本.bat 生成两个 EXE + core + config。")
         return 2
     if len(argv) != 2 or argv[1] != "exe-extras":
         print(__doc__)

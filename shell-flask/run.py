@@ -13,6 +13,14 @@ import threading
 import time
 from pathlib import Path
 
+_IDENTITY_SRC = Path(__file__).resolve().parent / "core" / "src"
+if not (_IDENTITY_SRC / "base_audit").is_dir():
+    _IDENTITY_SRC = Path(__file__).resolve().parent.parent / "core" / "src"
+if not getattr(sys, "frozen", False) and str(_IDENTITY_SRC) not in sys.path:
+    sys.path.insert(0, str(_IDENTITY_SRC))
+
+from base_audit.app_identity import app_title, load_product_info
+
 # 旧实例 PID 锁文件（core/data 是程序运行数据目录，升级保留）。冻结版由启动器
 # 指向每位用户的数据目录；源码版沿用仓库内 core/data。
 _configured_project = os.environ.get("BASE_AUDIT_PROJECT_ROOT", "").strip()
@@ -29,7 +37,8 @@ else:
 PID_FILE = PID_CORE / "data" / "app.pid"
 
 _KNOWN_COMMAND_MARKERS = (
-    "\\shell-flask\\", "/shell-flask/", "基础数据审核工具_flask", "run.py", "/app/base-audit-v3",
+    "\\shell-flask\\", "/shell-flask/", "基础数据审核工具_flask", "审核工具_flask",
+    "run.py", "/app/base-audit-v3",
 )
 
 
@@ -100,7 +109,9 @@ def _process_matches(pid: int) -> bool:
         proc_env = proc_dir.joinpath("environ").read_bytes().split(b"\0")
     except OSError:
         proc_env = []
-    runs_frozen_entrypoint = executable.name.startswith("base-audit-v3") and any(
+    runs_frozen_entrypoint = executable.name.startswith(
+        ("base-audit-v3", load_product_info()["name"] + "_V")
+    ) and any(
         item == b"BASE_AUDIT_FROZEN=1" for item in proc_env
     )
     if not (runs_entrypoint or runs_frozen_entrypoint) or not cwd.name.startswith("shell-flask"):
@@ -249,7 +260,7 @@ def main() -> int:
 
     multiprocessing.freeze_support()   # 打包 EXE 中多进程渲染的必需入口
 
-    parser = argparse.ArgumentParser(description="基础数据审核工具（Flask 版）")
+    parser = argparse.ArgumentParser(description=app_title() + "（Flask 版）")
     parser.add_argument("--port", type=int, default=8750, help="本地服务端口")
     parser.add_argument("--no-browser", action="store_true", help="不自动打开浏览器窗口")
     args = parser.parse_args()

@@ -11,6 +11,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DIST_ROOT = ROOT / "dist"
+CORE_SRC = ROOT.parent / "core" / "src"
+if str(CORE_SRC) not in sys.path:
+    sys.path.insert(0, str(CORE_SRC))
+
+from base_audit.app_identity import executable_stem
 
 
 def main() -> int:
@@ -29,8 +34,8 @@ def main() -> int:
     env = os.environ.copy()
     env["FLASK_DIST_DIR"] = str(output)
     for label, script in (
-        ("Windows 10/11", "Windows-2-打包Win10Win11.bat"),
-        ("Windows 7", "Windows-3-打包Win7.bat"),
+        ("Windows 10/11", "windows-build/build-modern.bat"),
+        ("Windows 7", "windows-build/build-win7.bat"),
     ):
         print("[build] {} -> {}".format(label, output), flush=True)
         result = subprocess.run(
@@ -44,8 +49,8 @@ def main() -> int:
             return result.returncode
 
     required = (
-        "基础数据审核工具_Flask.exe",
-        "基础数据审核工具_Flask_Win7兼容.exe",
+        executable_stem("flask") + ".exe",
+        executable_stem("flask", win7=True) + ".exe",
         "core/frontend/web/index.html",
         "config",
         "运行库修复",

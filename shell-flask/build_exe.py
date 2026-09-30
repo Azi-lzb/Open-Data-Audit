@@ -1,10 +1,10 @@
 """Flask 外壳打包入口（unified 统一核心）。
 
 用法：python build_exe.py [--win7]
-由 Windows-2-打包Win10Win11.bat / Windows-3-打包Win7.bat 调用；bat 负责选择解释器。
+由 windows-build/build-modern.bat / build-win7.bat 调用；bat 负责选择解释器。
 
 产物布局（由 FLASK_DIST_DIR 指定，可为独立目录或 dist/windows-时间戳）：
-  基础数据审核工具_Flask.exe / 基础数据审核工具_Flask_Win7兼容.exe
+  产品名_外壳标识_V产品版本.exe
   core/                              ← 统一业务核心（src + frontend + 空 data）
   config/                            ← 正式配置副本
 模板、历史库、用户设置均为 EXE 同级外部目录，升级不覆盖。
@@ -31,6 +31,10 @@ if not (_REPO_CORE / "src" / "base_audit").is_dir():
 CORE = _REPO_CORE
 DIST = Path(os.environ.get("FLASK_DIST_DIR") or ROOT / "dist")
 CONFIG_TEMPLATE = ROOT.parent / "config"
+if str(CORE / "src") not in sys.path:
+    sys.path.insert(0, str(CORE / "src"))
+
+from base_audit.app_identity import app_title, executable_stem, icon_path, load_product_info, manifest_path
 
 COMMON_HIDDEN = [
     "base_audit.excel_com",
@@ -105,8 +109,15 @@ def build(win7: bool) -> int:
     ):
         raise SystemExit("[错误] Win7 构建必须输出到 dist\\win7-时间戳\\ 或 dist\\windows-时间戳\\。")
 
-    name = "基础数据审核工具_Flask_Win7兼容" if win7 else "基础数据审核工具_Flask"
-    DIST.mkdir(exist_ok=True)
+    product = load_product_info()
+    name = executable_stem("flask", win7=win7)
+    icon = icon_path(".ico")
+    manifest = manifest_path()
+    assets = CORE / "frontend" / "assets"
+    for label, path in (("应用图标", icon), ("版本清单", manifest), ("应用资产目录", assets)):
+        if not path.exists():
+            raise SystemExit(f"[错误] 未找到{label}：{path}")
+    DIST.mkdir(parents=True, exist_ok=True)
 
     args = [
         # 保留控制台：Flask 服务端日志（端口占用、异常 traceback）直接可见。
@@ -121,7 +132,13 @@ def build(win7: bool) -> int:
         "--distpath", str(DIST),
         "--workpath", str(ROOT / "build"),
         "--specpath", str(ROOT / "build"),
+        "--icon", str(icon),
+        "--add-data", f"{manifest}{os.pathsep}版本管理",
+        "--add-data", f"{assets}{os.pathsep}assets",
     ]
+    if sys.platform == "win32":
+        version_file = write_version_file(name, product)
+        args += ["--version-file", str(version_file)]
     for mod in COMMON_HIDDEN:
         args += ["--hidden-import", mod]
     args += _pywin32_args()
@@ -151,15 +168,63 @@ def build(win7: bool) -> int:
 def assemble_core() -> None:
     """把统一核心复制到 dist/core（外部目录：升级 EXE 不覆盖用户数据）。"""
     target = DIST / "core"
-    if target.exists():
-        shutil.rmtree(target)
-    target.mkdir(parents=True)
+    target.mkdir(parents=True, exist_ok=True)
     for item in ("src", "frontend"):
         src = CORE / item
         if src.is_dir():
+            existing = target / item
+            if existing.exists():
+                shutil.rmtree(existing)
             shutil.copytree(src, target / item, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    (target / "data").mkdir()
+    # 新发行包创建空的外部数据目录；重建已有发行目录时保留用户数据。
+    (target / "data").mkdir(exist_ok=True)
     # tests 属于开发基线，不进发行包。
+
+
+def _numeric_version(version: str) -> tuple[int, int, int, int]:
+    parts = version.split(".")
+    if len(parts) != 4 or any(not part.isdecimal() for part in parts):
+        raise SystemExit(f"[错误] Windows PE 版本必须是四段数字：{version}")
+    numeric = tuple(int(part) for part in parts)
+    if any(value > 65535 for value in numeric):
+        raise SystemExit(f"[错误] 产品版本超出 Windows PE 范围：{version}")
+    return numeric
+
+
+def write_version_file(name: str, product: dict) -> Path:
+    """生成 PyInstaller PE 版本资源；版本只读取统一产品清单。"""
+    version = str(product["version"])
+    numeric = _numeric_version(version)
+    strings = {
+        "CompanyName": "V3",
+        "FileDescription": app_title(),
+        "FileVersion": version,
+        "InternalName": name,
+        "OriginalFilename": name + ".exe",
+        "ProductName": str(product["name"]),
+        "ProductVersion": version,
+    }
+    rows = ",\n        ".join(
+        f"StringStruct({key!r}, {value!r})"
+        for key, value in strings.items()
+    )
+    source = (
+        "VSVersionInfo(\n"
+        f"    ffi=FixedFileInfo(filevers={numeric!r}, prodvers={numeric!r}),\n"
+        "    kids=[\n"
+        "        StringFileInfo([\n"
+        "            StringTable('040904B0', [\n"
+        f"                {rows}\n"
+        "            ])\n"
+        "        ]),\n"
+        "        VarFileInfo([VarStruct('Translation', [1033, 1200])])\n"
+        "    ]\n"
+        ")\n"
+    )
+    target = ROOT / "build" / f"version-resource-{name}.txt"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(source, encoding="utf-8")
+    return target
 
 
 def assemble_config_template() -> None:

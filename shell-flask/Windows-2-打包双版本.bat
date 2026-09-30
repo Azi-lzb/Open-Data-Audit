@@ -1,5 +1,6 @@
 @echo off
 rem Build both Windows EXEs into one timestamped folder under dist\.
+rem Internal builders are in windows-build\.
 rem ASCII-only content for cmd.exe compatibility.
 setlocal EnableExtensions
 cd /d "%~dp0"

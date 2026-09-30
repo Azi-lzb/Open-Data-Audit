@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from config_paths import resolve_test_config
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -26,7 +28,7 @@ from base_audit.systems.s3_central_statistics.rule_action_engine import (
 )
 from base_audit.systems.s3_central_statistics.models import CentralDataset, CentralRecord, ComparisonRow
 
-FORMAL_CONFIG = ROOT.parent / "config" / "3.1大集中执行比较_配置.xlsx"
+FORMAL_CONFIG = resolve_test_config("3.1大集中执行比较_配置.xlsx")
 
 
 def _record(indicator: str, value, *, data_attr: str = "余额", frequency: str = "月",
@@ -281,7 +283,7 @@ def test_prepare_empty_without_action_sheet() -> None:
 
 
 def test_real_config_all_rollover_scene_actions_are_date_gated() -> None:
-    config = load_central_config(ROOT.parent / "config" / "3.1大集中执行比较_配置.xlsx")
+    config = load_central_config(FORMAL_CONFIG)
     rollover = [
         row for row in config.action_rules
         if str(row.get("场景") or "").strip() == "结转"
@@ -392,7 +394,7 @@ def test_expression_sheet_codes_match_groups() -> None:
     import re
     from openpyxl import load_workbook
 
-    config_path = ROOT.parent / "config" / "3.1大集中执行比较_配置.xlsx"
+    config_path = FORMAL_CONFIG
     book = load_workbook(config_path, read_only=True, data_only=True)
     try:
         assert "表达式校验V2" not in book.sheetnames

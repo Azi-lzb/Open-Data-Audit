@@ -89,9 +89,11 @@ _SYSTEM_TEST_FILES = {
     },
 }
 _SHARED_TEST_FILES = {
+    "test_config_paths.py",
     "test_config_guide.py",
     "test_discovery.py",
     "test_path_browser.py",
+    "test_app_identity.py",
     "test_version_manifest.py",
     "test_web_app.py",
 }

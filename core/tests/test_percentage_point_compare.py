@@ -12,6 +12,8 @@ import sys
 import unittest
 from pathlib import Path
 
+from config_paths import resolve_test_config
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -25,7 +27,7 @@ from base_audit.period_compare import (  # noqa: E402
 
 
 def _real_config() -> PeriodConfig:
-    return load_period_config(ROOT.parent / "config" / "2.报表采集系统_配置.xlsx")
+    return load_period_config(resolve_test_config("2.报表采集系统_配置.xlsx"))
 
 
 def _cfg_with(code: str, data_type: str, *, no_unit_convert: bool = True,

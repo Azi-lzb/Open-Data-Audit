@@ -7,10 +7,33 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 FROZEN=0
 FROZEN_APP=
 
+resolve_frozen_app() {  # $1=发行根目录；stdout=冻结程序绝对路径
+    release_root=$1
+    name_file=$release_root/app/executable-name.txt
+    if [ -f "$name_file" ]; then
+        frozen_name=
+        IFS= read -r frozen_name < "$name_file" || [ -n "$frozen_name" ] || return 1
+        tab=$(printf '\t')
+        cr=$(printf '\r')
+        case "$frozen_name" in
+            ''|.|..|*/*|*'\'*|*..*|*' '*|*"$tab"*|*"$cr"*) return 1 ;;
+        esac
+        frozen_path=$release_root/app/$frozen_name
+        [ -f "$frozen_path" ] && [ -x "$frozen_path" ] || return 1
+        printf '%s\n' "$frozen_path"
+    elif [ -x "$release_root/app/base-audit-v3" ]; then
+        # Keep packages made before executable-name.txt was introduced launchable.
+        printf '%s\n' "$release_root/app/base-audit-v3"
+    else
+        return 1
+    fi
+}
+
 if [ -z "${BASE_AUDIT_INSTALL_ROOT:-}" ]; then
     # tar.gz 便携发行包：未显式指定安装根时，检测自身是否位于发行包的 shell-flask/ 内。
     PARENT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-    if [ -x "$PARENT_DIR/app/base-audit-v3" ] && [ -d "$PARENT_DIR/core/frontend" ]; then
+    if { [ -f "$PARENT_DIR/app/executable-name.txt" ] || [ -x "$PARENT_DIR/app/base-audit-v3" ]; } \
+        && [ -d "$PARENT_DIR/core/frontend" ]; then
         BASE_AUDIT_INSTALL_ROOT=$PARENT_DIR
         export BASE_AUDIT_INSTALL_ROOT
     fi
@@ -40,9 +63,12 @@ if [ -n "${BASE_AUDIT_INSTALL_ROOT:-}" ]; then
     export BASE_AUDIT_PROJECT_ROOT=$PROJECT_ROOT
     export BASE_AUDIT_FRONTEND_DIR=$RELEASE/core/frontend
     export BASE_AUDIT_FROZEN=1
-    FROZEN_APP=$RELEASE/app/base-audit-v3
-    if [ ! -x "$FROZEN_APP" ]; then
-        echo "[错误] DEB 冻结程序不存在或不可执行：$FROZEN_APP" >&2
+    if ! FROZEN_APP=$(resolve_frozen_app "$RELEASE"); then
+        if [ -f "$RELEASE/app/executable-name.txt" ]; then
+            echo "[错误] 冻结程序名称文件无效，或对应程序不存在/不可执行：$RELEASE/app/executable-name.txt" >&2
+        else
+            echo "[错误] DEB 冻结程序不存在或不可执行：$RELEASE/app/base-audit-v3" >&2
+        fi
         echo '请重新安装完整 DEB；不要单独复制 shell-flask/。' >&2
         exit 1
     fi
@@ -50,7 +76,16 @@ if [ -n "${BASE_AUDIT_INSTALL_ROOT:-}" ]; then
     PID_FILE=$PROJECT_ROOT/data/app.pid
 else
     APP_DIR=$SCRIPT_DIR
-    PROJECT_ROOT=$SCRIPT_DIR/../core
+    if [ -d "$SCRIPT_DIR/core/src/base_audit" ]; then
+        # Linux-4 的源码验收包把启动器放在项目根目录，而开发布局放在 shell-flask/。
+        PROJECT_ROOT=$SCRIPT_DIR/core
+        export BASE_AUDIT_CORE_DIR=$PROJECT_ROOT
+        export BASE_AUDIT_CORE_ROOT=$PROJECT_ROOT
+        export BASE_AUDIT_PROJECT_ROOT=$PROJECT_ROOT
+        export BASE_AUDIT_FRONTEND_DIR=$PROJECT_ROOT/frontend
+    else
+        PROJECT_ROOT=$SCRIPT_DIR/../core
+    fi
     PID_FILE=$PROJECT_ROOT/data/app.pid
     PYTHON=${PYTHON:-python3}
     if [ -x "$SCRIPT_DIR/.venv/bin/python" ]; then
@@ -87,9 +122,9 @@ if [ "${1:-}" = "--background" ]; then
         exit 0
     fi
     kill -TERM "$APP_PID" 2>/dev/null || true
-    MESSAGE="基础数据审核工具启动失败。详细信息：$LOG_FILE"
+    MESSAGE="审核工具启动失败。详细信息：$LOG_FILE"
     if command -v notify-send >/dev/null 2>&1; then
-        notify-send --urgency=critical '基础数据审核工具' "$MESSAGE" >/dev/null 2>&1 || true
+        notify-send --urgency=critical '审核工具' "$MESSAGE" >/dev/null 2>&1 || true
     fi
     if command -v xdg-open >/dev/null 2>&1 && [ -s "$LOG_FILE" ]; then
         xdg-open "$LOG_FILE" >/dev/null 2>&1 </dev/null &
@@ -115,7 +150,7 @@ if [ "$FROZEN" -eq 0 ]; then
 fi
 
 cd "$APP_DIR"
-echo '[启动] 基础数据审核工具；优先使用 http://127.0.0.1:8750/，仅在其它程序占用时顺延。'
+echo '[启动] 审核工具；优先使用 http://127.0.0.1:8750/，仅在其它程序占用时顺延。'
 if [ "$FROZEN" -eq 1 ]; then
     exec "$FROZEN_APP" "$@"
 fi
