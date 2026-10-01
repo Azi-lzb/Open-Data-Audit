@@ -15,6 +15,10 @@ FORBIDDEN_PARTS = {
     "config-real", "2026-07-31", "test-output", "reference", "dist",
     "runtime", "wheels", "build", "data", "__pycache__",
 }
+# 各配置册的「使用说明」表由 core/src/base_audit/config_guide.py 按配置版本整体
+# 重建，只含静态指引文字，属公开内容；其余表仍必须表头以下为空。若 core 侧表名
+# 变更而此处未同步，检查会重新拦截并暴露差异，失败方向安全。
+GUIDE_SHEET = "使用说明"
 
 
 def main() -> int:
@@ -40,6 +44,8 @@ def main() -> int:
         book = load_workbook(BytesIO(staged), read_only=True, data_only=False)
         try:
             for sheet in book:
+                if sheet.title == GUIDE_SHEET:
+                    continue
                 for row in sheet.iter_rows(min_row=2):
                     if any(cell.value not in (None, "") for cell in row):
                         errors.append(f"发现表头以下内容：{path} / {sheet.title}")

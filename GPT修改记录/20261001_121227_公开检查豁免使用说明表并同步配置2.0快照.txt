@@ -1,0 +1,26 @@
+时间：2026-10-01 12:12:27（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：40875d7（desktop 与 origin/desktop、origin/main 三点同源）；修改后随本记录同提交。
+工作分支：desktop；origin 为 Open-Data-Audit。本次经用户授权提交并推送 desktop；未改动 main、未 merge/rebase/创建 PR。
+WIP：external/（图片素材）与 shell-flask/build-win7-venv/（构建 venv）保持未跟踪，本次未纳入；工作区无其他改动。
+
+修改目的：
+1. 将 2026-09-30 程序自动刷新的配置「使用说明」2.0 快照正式入库。两册文件自 20260930_144725 记录以来 SHA-256 保持不变（8AB0B6F6…、60740C95…），本次原样入库、内容零改动。
+2. 公开快照检查器此前要求 config/ 工作簿所有表"表头以下为空"，未识别 config_guide.py 程序维护的「使用说明」表，导致合法快照被拦。为该表增加定向豁免，其余业务表规则不变。
+
+修改文件：
+- config/1.逐笔统计系统_配置.xlsx：仅「使用说明」表由程序刷新为 2.0（A1 改"配置版本"、B1=2.0、新增 17 格静态指引文字）；业务表零改动。来源：core/src/base_audit/config_guide.py 于 09-30 10:47/10:53 运行期自动刷新（时间线与 dist/windows-20260930_105042 打包记录互证）。
+- config/2.报表采集系统_配置.xlsx：同上，新增 25 格指引文字；业务表零改动。
+- tools/check_public_snapshot.py：新增 GUIDE_SHEET 常量并跳过该表名的检查；常量注释指明与 config_guide.GUIDE_SHEET 的对应关系及"失败方向安全"（若 core 侧改名而此处未同步，检查会重新拦截并暴露差异）。
+- 本修改记录。
+
+排除依据（逐格核对 HEAD 与工作区差异）：
+- 两册仅「使用说明」表变化，新增内容全部为程序 GUIDES 常量中的通用指引文字，无机构资料、规则、业务数据或表单模板。
+- 3.x 系列及其余 config/ 工作簿未动。
+
+验证：
+- python tools/check_public_snapshot.py（暂存两册）：通过，exit=0。
+- 反例：构造 config/_negative_check.xlsx（业务表"指标参照"表头以下有数据 + 「使用说明」表也有数据）→ 检查器仅拦截"指标参照"，exit=1，证明豁免范围精确；临时文件已删除、暂存已还原。
+- 测试评估：tools/ 无既有测试覆盖，本次为提交闸门最小豁免改动，以实测正反两例代替新增测试；不触及 core 业务代码路径，未跑 core/tests 回归。
+
+影响范围：仅公开快照闸门与两册公开配置工作簿；不影响 S1/S2/S3 业务流程、六册配置结构与任何执行链。
