@@ -172,3 +172,34 @@ cd core && PYTHONPATH=src python3 -m pytest tests/ -q
 
 - 业务功能一律改 `core`，两个外壳同时生效；归档线见
   `external/Flask`、`external/pywebview2`（各含归档说明）。
+
+## Windows 打包环境三件套（换机器必读）
+
+Win7 兼容包依赖三样**不入 git** 的本机资源（`wheels/` 与 `.exe` 在公开仓库被
+`check_public_snapshot.py` 禁止，虚拟环境绑定本机解释器），缺失时的补齐方法：
+
+1. **`wheels/`（离线依赖缓存）**：用任意带 SSL 的 Python 在 `shell-flask/` 下执行：
+
+   ```sh
+   python -m pip download --disable-pip-version-check \
+     -r requirements-win7.txt -d wheels \
+     --platform win32 --python-version 3.7 --only-binary=:all:
+   python -m pip download --disable-pip-version-check \
+     -r requirements-win7.txt -d wheels \
+     --platform win32 --python-version 3.8 --only-binary=:all:
+   # pip 可能漏下 <3.8 标记的包，再单独补一次：
+   python -m pip download --disable-pip-version-check \
+     importlib-metadata==4.13.0 packaging==24.0 zipp==3.15.0 \
+     typing-extensions==4.7.1 pyinstaller-hooks-contrib==2024.7 \
+     -d wheels --platform win32 --python-version 3.7 --only-binary=:all:
+   ```
+
+2. **`redist/`（vc_redist 运行库）**：从微软官方下载 `vc_redist.x86.exe` 与
+   `vc_redist_2019.x86.exe` 放入 `shell-flask/redist/`（或从旧发行包复制）。
+   缺失时 Win7 包仍会生成，但不含"运行库修复"附件。
+
+3. **解释器（PYTHON_WIN7）**：指向 3.7/3.8 的 x86 Python（如 conda 环境
+   `HZPBCwin7x86`）；注意此类环境通常无 SSL，依赖只能走 wheels 离线安装。
+
+构建中断续跑：`FLASK_DIST_DIR` 指向既有输出目录重跑 `build-win7.bat` 即可补齐；
+成功后手动删除目录里的 `BUILD_INCOMPLETE.txt`。

@@ -11,6 +11,9 @@
 **/wheels/
 **/.venv/
 **/venv/
+# Win7 打包专用虚拟环境：可由 build-win7.bat 自动重建，绑定本机解释器路径，不入库。
+build-win7-venv/
+build-win7-venv-rebuilt/
 **/__pycache__/
 /.pytest_cache/
 /.pytest-tmp-v3/
