@@ -68,6 +68,8 @@ from .settings import (
     XLSX_RENDER_MODES,
     SettingsStore,
     UI_THEMES,
+    UI_ACCENTS,
+    DEFAULT_UI_ACCENT,
     hide_application_data_directory,
 )
 
@@ -163,7 +165,8 @@ class WebApi:
                 "forms": config_dir / FORM_CONFIG_NAME,
             }
             self.settings_store.sanitized = True
-        # 历史审核配置：优先用上次选择的路径，否则用程序根目录默认文件。
+        # 逐笔统计系统配置：优先用上次选择的路径，否则回填发行目录默认文件，
+        # 界面从启动起就显示默认路径，用户不必再手动搜索绑定。
         self.history_path = (
             Path(self.settings.history_config)
             if self.settings.history_config
@@ -171,6 +174,12 @@ class WebApi:
         )
         bundled_templates = project_root / "templates"
         formal_templates = project_root / "2026-07-31" / "模板文件"
+        # 模板目录仅在本机真实存在时才预填；否则留空，避免发行包/新环境
+        # 显示不存在的死路径。六册配置的默认绑定不受影响。
+        default_template_dir = next(
+            (str(p) for p in (bundled_templates, formal_templates) if p.is_dir()),
+            "",
+        )
         saved_input = self.settings.last_input_dir
         saved_output = self.settings.last_output_dir
         self.state: dict[str, Any] = {
@@ -180,14 +189,12 @@ class WebApi:
             "status": "就绪",
             "log": [],
             "input": saved_input,
-            "templateDir": self.settings.last_template_dir or str(
-                bundled_templates if bundled_templates.is_dir() else formal_templates
-            ),
+            "templateDir": self.settings.last_template_dir or default_template_dir,
             "template": "",
             "templateManual": False,
             "external": self.settings.last_external_file,
-            # 空值表示未绑定自定义历史配置；运行时仍使用根目录默认历史表。
-            "historyConfig": self.settings.history_config,
+            # 未绑定自定义配置时回填默认路径；运行语义不变（此前运行时同样回退该文件）。
+            "historyConfig": self.settings.history_config or str(self.history_path),
             "output": saved_output,
             "outputAuto": not self.settings.output_pinned,
             "outputPinned": self.settings.output_pinned,
@@ -237,8 +244,14 @@ class WebApi:
             "uiTheme": (
                 self.settings.ui_theme
                 if self.settings.ui_theme in UI_THEMES
-                else "浅色"
+                else "日间"
             ),
+            "uiAccent": (
+                self.settings.ui_accent
+                if self.settings.ui_accent in UI_ACCENTS
+                else DEFAULT_UI_ACCENT
+            ),
+            "uiAccentOptions": list(UI_ACCENTS),
             "calculationEngine": (
                 self.settings.calculation_engine
                 if self.settings.calculation_engine in valid_engine_values()
@@ -535,7 +548,7 @@ class WebApi:
         self.state["showPerformanceDiagnostics"] = False
         self.state["writeFlowLogs"] = False
         self.state["confirmBeforeRun"] = True
-        self.state["uiTheme"] = "浅色"
+        self.state["uiTheme"] = "日间"
         self.state["filePickerMode"] = self._file_picker_default
         self.state["systemEnvironment"] = self._system_environment_text
         self.state["conditionalFormatEvaluator"] = "PYTHON"
@@ -687,16 +700,16 @@ class WebApi:
         import os
         path = self.history_path
         if not path.is_file():
-            self.state["status"] = "历史审核配置不存在"
-            self._log(f"未找到历史审核配置：{path}")
+            self.state["status"] = "逐笔统计系统配置不存在"
+            self._log(f"未找到逐笔统计系统配置：{path}")
             return self.state
         try:
             os.startfile(path)
         except Exception as exc:
-            self.state["status"] = "无法打开历史审核配置"
-            self._log(f"打开历史审核配置失败：{exc}")
+            self.state["status"] = "无法打开逐笔统计系统配置"
+            self._log(f"打开逐笔统计系统配置失败：{exc}")
             return self.state
-        self._log(f"已打开历史审核配置：{path}")
+        self._log(f"已打开逐笔统计系统配置：{path}")
         return self.state
 
     def get_history_page(self, query: dict[str, Any] | None = None) -> dict[str, object]:
@@ -727,17 +740,17 @@ class WebApi:
             return {
                 "columns": list(HISTORY_HEADERS), "items": [], "total": 0,
                 "page": page, "pageSize": page_size, "totalPages": 0,
-                "errorTypes": [], "opinions": [], "error": "历史审核配置不存在",
+                "errorTypes": [], "opinions": [], "error": "逐笔统计系统配置不存在",
             }
         workbook = load_workbook(path, read_only=True, data_only=True)
         try:
             if HISTORY_AUDIT_SHEET not in workbook.sheetnames:
-                raise ValueError(f"历史审核配置中缺少“{HISTORY_AUDIT_SHEET}”工作表")
+                raise ValueError(f"逐笔统计系统配置中缺少“{HISTORY_AUDIT_SHEET}”工作表")
             rows = workbook[HISTORY_AUDIT_SHEET].iter_rows(values_only=True)
             headers = [str(value or "").strip() for value in next(rows, ())]
             missing = [name for name in HISTORY_HEADERS if name not in headers]
             if missing:
-                raise ValueError("历史审核配置缺少列：" + "、".join(missing))
+                raise ValueError("逐笔统计系统配置缺少列：" + "、".join(missing))
             positions = {name: headers.index(name) for name in HISTORY_HEADERS}
             total = 0
             error_types: set[str] = set()
@@ -961,7 +974,7 @@ class WebApi:
             self.state["historyConfig"] = value
             self.settings.history_config = value
             self.settings_store.save(self.settings)
-            self._log(f"已选择历史审核配置：{value}")
+            self._log(f"已选择逐笔统计系统配置：{value}")
             self._refresh_config_issues()
         return value
 
@@ -1872,7 +1885,7 @@ class WebApi:
             "pcCurDir": "选择当期（本期）数据目录",
             "pcPreDir": "选择上期数据目录",
             "pcCentral": "选择大集中数据文件",
-            "pcConfig": "选择审核配置.xlsx",
+            "pcConfig": f"选择{CONFIG_WORKBOOK_NAME}",
             "pcOutput": "选择输出目录",
         }
         current = self.state.get(kind) or self.state.get("input") or str(self.project_root)
@@ -1896,7 +1909,7 @@ class WebApi:
                 self.state["pcOutputAuto"] = False
             label = {
                 "pcCurDir": "当期目录", "pcPreDir": "上期目录",
-                "pcCentral": "大集中数据", "pcConfig": "审核配置", "pcOutput": "输出目录",
+                "pcCentral": "大集中数据", "pcConfig": "报表采集系统配置", "pcOutput": "输出目录",
             }[kind]
             self._log(f"跨期比较：{label}已选择")
             self._save_settings()
@@ -1992,7 +2005,7 @@ class WebApi:
         config_report = self._refresh_period_config_check()
         if not config_report["passed"]:
             self._log(format_config_report(config_report))
-            self.state["status"] = "跨期比较失败：审核配置存在阻断错误"
+            self.state["status"] = "跨期比较失败：报表采集系统配置存在阻断错误"
             return False
         cur, pre = self.state.get("pcCurDir"), self.state.get("pcPreDir")
         if not cur or not pre:
@@ -2138,6 +2151,13 @@ class WebApi:
                 self._log("背景颜色只能选择：" + "、".join(UI_THEMES))
             else:
                 self.state["uiTheme"] = candidate
+                self._save_settings()
+        if "uiAccent" in values:
+            candidate = str(values["uiAccent"]).strip()
+            if candidate not in UI_ACCENTS:
+                self._log("主题色只能选择：" + "、".join(UI_ACCENTS))
+            else:
+                self.state["uiAccent"] = candidate
                 self._save_settings()
         if "filePickerMode" in values:
             candidate = str(values["filePickerMode"]).strip()
@@ -2527,7 +2547,12 @@ class WebApi:
         self.settings.ui_theme = (
             str(self.state.get("uiTheme"))
             if self.state.get("uiTheme") in UI_THEMES
-            else "浅色"
+            else "日间"
+        )
+        self.settings.ui_accent = (
+            str(self.state.get("uiAccent"))
+            if self.state.get("uiAccent") in UI_ACCENTS
+            else DEFAULT_UI_ACCENT
         )
         self.settings.file_picker_mode = (
             str(self.state.get("filePickerMode"))

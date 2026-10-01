@@ -1,0 +1,54 @@
+时间：2026-10-01 21:41:43（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成设计、修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与今日前十五轮改动同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：延续今日十五轮修改，无其他用户 WIP。
+验证期间用户手动打开了 Flask 应用占用端口，导致一轮误诊（详见"验证过程"第 3 条）；已确认用户实例已关闭，最终在 8770 端口全新实例完成验收。
+
+修改目的：
+按用户确认的方案实现主题色预设：5 个浅色系（默认蓝/黛青/黛绿/绛紫/赭石，适合白天浅色主题）
++ 5 个深色系（亮蓝/天青/薄荷/琥珀/珊瑚，适合夜间深色/纯黑主题），在设置中心"背景"分组
+下拉选择，立即生效、允许保存（存用户设置），前端按当前主题自动选用对应色板组。
+
+修改文件：
+- core/src/base_audit/settings.py：
+  新增 UI_ACCENTS 白名单与 DEFAULT_UI_ACCENT="默认蓝"；UsersSettings 新增 ui_accent 字段；
+  load 规范化非法值为默认。
+- core/src/base_audit/web_app.py：
+  导入 UI_ACCENTS/DEFAULT_UI_ACCENT；state 新增 uiAccent（白名单校验回退默认）与
+  uiAccentOptions（供前端渲染选项）；update() 新增 uiAccent 分支（白名单校验+保存）；
+  state→settings 回写新增 ui_accent（修复点，见下）。
+- core/frontend/web/index.html：
+  1) ACCENT_PALETTES：10 套色板按浅/深两组，每套覆盖 9 个 accent 系变量
+     （accent/hover/soft/ring/softHover/border/borderStrong/glow/line）；
+  2) applyAccent(name)：按 body 是否含 dark 选色板组，向 documentElement 注入变量并存
+     localStorage（启动前预应用）；applyTheme 末尾调用以跟随主题切换自动换色板组；
+  3) setUiAccent(value)：busy 保护 + bridge.api.update 持久化 + 本地 state/注入同步；
+  4) refresh() 在 applyTheme 后调用 applyAccent（以后端保存值为准）；
+  5) 设置中心"背景"分组新增"主题色"下拉框（选项来自 state.uiAccentOptions）。
+- rules/09_技术实现参考.md：追加"主题色预设"章节（白名单+色板双处维护、对比度要求、
+  新增设置项三处检查清单）。
+
+关键修复（开发中发现）：
+初版浅色系切换不生效。根因：web_app.py 的 state→settings 回写函数同步了 ui_theme 但漏了
+ui_accent——update 分支保存后，任何其他设置的保存都会把旧 ui_accent 写回。补上回写后修复。
+该教训已写入 rules/09"新增设置项三处检查清单"。
+
+实际验证：
+1. pytest：test_web_app.py + test_version_manifest.py + test_config_paths.py 共 56 passed
+   （含初版漏 import 导致的 32 failed 修复后复跑）；最终 test_web_app.py 38 passed。
+2. 浏览器实测（8770 全新实例，1440×900）：
+   - 浅色系逐个切换：黛青 #22677a、黛绿 #2c6e54、绛紫 #6d4a7e、赭石 #8a5a2e 全部正确注入
+     （主按钮/导航选中/品牌标题/路径链接全站跟随，赭石截图经视觉模型判定协调无错乱）；
+   - 深色主题 + 琥珀：#d9a13f 注入正确；刷新页面后保持 #d9a13f + 深色（持久化通过）；
+   - 服务端确认 core/data/用户设置.json 的 ui_accent 随切换更新。
+3. 验证过程插曲：用户手动打开 Flask 应用占用端口，8766 端口实际命中用户启动的旧代码实例，
+   导致一轮"函数不存在"误诊；确认用户实例关闭后，8770 全新实例（服务端输出 grep 确认含
+   新代码 4 处）完成全部验收。
+4. 验收后已恢复 浅色+默认蓝（服务端设置确认），关闭服务与标签页。
+未执行项：pywebview 外壳未实测（applyAccent 为纯前端逻辑，Flask 已验证；桌面壳共享同一
+前端文件）；纯黑主题下的深色系色板未逐一截图（与深色共用色板组，black 类仅覆盖底色变量）。
+
+删除清单：无。
+回滚：还原上述 4 个文件即可；用户设置中的 ui_accent 字段会被 load 规范化忽略，无兼容问题。
+【组件版本】不升级：新增界面显示偏好设置，未改变业务功能、配置结构与审核行为。

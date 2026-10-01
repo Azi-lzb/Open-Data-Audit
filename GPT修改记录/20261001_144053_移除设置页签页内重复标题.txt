@@ -1,0 +1,30 @@
+时间：2026-10-01 14:40:53（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与今日前九轮改动同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：延续今日九轮修改，无其他用户 WIP。
+
+修改目的：
+用户要求去掉操作指引/组合工作表配置/高级设置三个页签顶部的页内大标题/说明（与横向页签文字重复），
+并明确"包括隐藏按钮"。页签本身已标明所在页，页内标题冗余。
+
+修改文件（仅 core/frontend/web/index.html 三处标记）：
+1. renderGuide：删除页首提示行"以下为日常使用的常用流程；本页仅作操作帮助，不影响任何设置。"
+   （module-help-hint 段落），内容直接从流程卡片开始。
+2. renderDagFlowComposer（组合工作表配置）：删除 studio-head（衬线大标题"组合工作表配置"与
+   说明文字），pane 直接渲染 dagBusinessConfigHtml() 卡片内容。
+3. renderAdvanced：删除整个 advanced-zone-head（衬线标题"高级设置"、"开发者 / 兼容性验证"徽章、
+   "隐藏"按钮）。按用户明确要求隐藏按钮一并移除；hideAdvancedSettings() 函数保留未删（不再有
+   调用入口，如需恢复隐藏能力可复用）。高级设置入口本身仍由彩蛋控制显示/隐藏。
+
+实际验证：
+1. pytest core/tests/test_web_app.py：38 passed / 0 failed（无测试依赖被删字符串）。
+2. 浏览器实测（Flask 壳 127.0.0.1:8765，1440×760，彩蛋解锁）：三个页签顶部均无页内标题，
+   内容直接从淡蓝标题条卡片开始；组合工作表配置与高级设置的卡片、折叠、设置行均正常。
+3. 验收后关闭服务与标签页；主题保持浅色。
+未执行项：未删除 .advanced-zone-head 等失效 CSS 规则与未再使用的 hideAdvancedSettings 函数
+（保留便于回滚/复用，不影响运行）。
+
+删除清单：无文件删除；上述三段 UI 标记从渲染输出中移除。
+回滚：还原 index.html 三处标记即可。
+【组件版本】不升级：纯界面调整。

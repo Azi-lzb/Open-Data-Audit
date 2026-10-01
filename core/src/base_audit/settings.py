@@ -33,8 +33,14 @@ EXPRESSION_EVALUATION_BACKENDS = ("PYTHON", "OFFICE")
 DEFAULT_EXPRESSION_EVALUATION_MODE = "SBE"
 DEFAULT_EXPRESSION_EVALUATION_BACKEND = "PYTHON"
 SUMMARY_READ_ENGINES = ("纯 Python", "Excel/WPS", "LibreOffice Calc")
-# 设置中心「背景颜色切换」：浅色（默认）/ 深色 / 纯黑，纯显示偏好。
-UI_THEMES = ("浅色", "深色", "纯黑")
+# 设置中心「界面模式」：日间（默认，纸张背景）/ 日间纯白（纯白背景）/ 夜间，纯显示偏好。
+# 旧设置值迁移：浅色→日间，深色/纯黑→夜间（纯黑已并入夜间）。
+UI_THEMES = ("日间", "日间纯白", "夜间")
+LEGACY_UI_THEME_MAP = {"浅色": "日间", "深色": "夜间", "纯黑": "夜间"}
+# 设置中心「主题色」预设：8 个颜色名，每个颜色在前端含日间变体与夜间变体
+# 两套色板，模式切换时同名自动换浓淡。纯显示偏好。
+UI_ACCENTS = ("默认蓝", "青", "绿", "紫", "金", "橙", "玫", "靛")
+DEFAULT_UI_ACCENT = "默认蓝"
 FILE_PICKER_MODES = ("系统原生", "Tk 对话框", "浏览器内置")
 # 条件格式检测模式：NATIVE=Excel/WPS COM 真实渲染（Windows 默认，保持既有
 # 稳定行为）；OOXML=纯规则求值。UOS 固定 OOXML，与该设置无关。
@@ -128,8 +134,10 @@ class UserSettings:
     write_flow_logs: bool = False
     # 执行主流程前弹出待处理文件清单让用户确认。
     confirm_before_run: bool = True
-    # 设置中心「背景颜色切换」：界面配色主题，纯显示偏好，不影响审核行为。
-    ui_theme: str = "浅色"
+    # 设置中心「界面模式」：日间 / 夜间，纯显示偏好，不影响审核行为。
+    ui_theme: str = "日间"
+    # 设置中心「主题色」预设（浅色系 5 + 深色系 5）：前端按当前主题选用色板。
+    ui_accent: str = DEFAULT_UI_ACCENT
     # 文件/目录选择交互：由外壳传入各自的首次默认值，用户修改后持久保存。
     file_picker_mode: str = "系统原生"
     # 设置中心「条件格式判定方式」（高级设置）：PYTHON=OOXML/Python 规则求值
@@ -308,9 +316,20 @@ class SettingsStore:
             # 执行前确认默认开启：误点主按钮时先看到文件清单，避免直接跑批。
             confirm_before_run=bool(payload.get("confirm_before_run", True)),
             ui_theme=(
-                str(payload.get("ui_theme") or "浅色")
-                if str(payload.get("ui_theme") or "浅色") in UI_THEMES
-                else "浅色"
+                LEGACY_UI_THEME_MAP.get(
+                    str(payload.get("ui_theme") or ""), "日间"
+                )
+                if str(payload.get("ui_theme") or "") in LEGACY_UI_THEME_MAP
+                else (
+                    str(payload.get("ui_theme") or "日间")
+                    if str(payload.get("ui_theme") or "日间") in UI_THEMES
+                    else "日间"
+                )
+            ),
+            ui_accent=(
+                str(payload.get("ui_accent") or DEFAULT_UI_ACCENT)
+                if str(payload.get("ui_accent") or DEFAULT_UI_ACCENT) in UI_ACCENTS
+                else DEFAULT_UI_ACCENT
             ),
             file_picker_mode=(
                 str(payload.get("file_picker_mode") or file_picker_default)

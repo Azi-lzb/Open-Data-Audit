@@ -6,7 +6,7 @@
 产物布局（由 FLASK_DIST_DIR 指定，可为独立目录或 dist/windows-时间戳）：
   产品名_外壳标识_V产品版本.exe
   core/                              ← 统一业务核心（src + frontend + 空 data）
-  config/                            ← 正式配置副本
+  config/                            ← 正式配置副本（优先 config-real，回退公开空表头）
 模板、历史库、用户设置均为 EXE 同级外部目录，升级不覆盖。
 """
 
@@ -30,7 +30,11 @@ if not (_REPO_CORE / "src" / "base_audit").is_dir():
         "       打包脚本必须与 core\\ 处于同一仓库根目录下。")
 CORE = _REPO_CORE
 DIST = Path(os.environ.get("FLASK_DIST_DIR") or ROOT / "dist")
-CONFIG_TEMPLATE = ROOT.parent / "config"
+# 打包优先携带本机私有正式配置；无 config-real（如公开快照构建）时回退公开空表头。
+CONFIG_TEMPLATE = next(
+    (d for d in (ROOT.parent / "config-real", ROOT.parent / "config") if d.is_dir()),
+    ROOT.parent / "config",
+)
 if str(CORE / "src") not in sys.path:
     sys.path.insert(0, str(CORE / "src"))
 

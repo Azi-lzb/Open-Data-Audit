@@ -1,0 +1,29 @@
+时间：2026-10-01 13:49:53（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与今日前六轮改动同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：延续今日六轮修改，无其他用户 WIP。
+
+修改目的：
+用户要求 gen-card-title 卡片标题与配置行明确区分，参考"操作指引"页的标题条样式（标题行 + 底部横线）。
+上一轮仅给标题加了内边距，标题与行内容仍缺视觉分隔。
+
+修改文件（仅 core/frontend/web/index.html 的 CSS）：
+- .gen-card-title：改为标题条样式——padding:12px 20px、border-bottom:1px solid var(--border)，
+  与操作指引 guide-flow-card>summary（展开态底线分隔）风格一致；三主题随变量自动适配。
+- 新增三条兜底规则，处理卡片内非 gen-row 直接子元素的贴边（与标题条协调）：
+  .gen-card>.module-help 水平外边距 12px（业务步骤/DAG 诊断等 details 盒子）；
+  .gen-card>.module-help-desc 上下留白（流程图页说明文字）；
+  .gen-card>.inspector-actions 水平外边距 20px（添加节点/连线操作区）。
+
+实际验证：
+1. 浏览器实测（Flask 壳 127.0.0.1:8765，1440×900，彩蛋解锁）：组合工作表配置页两个卡片标题
+   呈标题条样式、下方横线分隔清晰、与配置行区分明确，视觉模型判定无重叠/溢出/样式问题。
+   受益页面还包括功能配置/流程编排/DAG 专家模式等所有含 gen-card-title 的卡片。
+2. 验收后关闭服务与标签页；主题保持浅色。
+未执行项：未跑 pytest（纯 CSS 修改，无逻辑变化）；DAG 专家模式页未逐一截图（与组合页共用
+同一组件样式，风险一致）。
+
+删除清单：无。
+回滚：还原 gen-card-title 及三条兜底规则即可。
+【组件版本】不升级：纯视觉样式调整。

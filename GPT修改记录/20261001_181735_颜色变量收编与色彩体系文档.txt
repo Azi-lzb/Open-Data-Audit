@@ -1,0 +1,46 @@
+时间：2026-10-01 18:17:35（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与今日前十四轮改动同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：延续今日十四轮修改，无其他用户 WIP。
+
+修改目的：
+按用户批准的方案实施"灵活调色"基础改造（阶段 1+2）：把主题块外的硬编码"影子值"收编为
+派生变量，使调整某一颜色只需改主题块的变量值；并在 rules/09 固化颜色体系文档。
+用户同时表示调色盘（UI 内自由调色）仍在考虑，本轮不实现。
+
+修改文件：
+- core/frontend/web/index.html（CSS）：
+  1) :root 新增 15 个派生变量：--accent-soft-hover/--accent-border/--accent-border-strong/
+     --accent-glow/--accent-line、--success-border、--warn-border/--warn-strong、
+     --danger-border/--danger-soft-hover/--danger-border-hover、--console-bg/text/border、--overlay；
+  2) body.dark 同步 11 个深色适配值（console/overlay 全主题共用，仅定义于 :root）；
+  3) 删除三主题块中无任何使用处的死变量 --header-top/--header-bottom；
+  4) 硬编码替换（replace_all 共 10 组 + 3 处单独规则）：.btn.soft、.btn.soft:hover、.btn.danger、
+     .btn.danger:hover、.btn.primary 投影、.path-link 下划线、.pin-btn.on:hover、.guide-note、
+     .gen-card-title:hover、.guide-flow-card>summary:hover、.status.success/error、
+     .settings-errors、.settings-status、.mixed、.combine-saved-hint、.log 控制台、
+     4 处弹窗遮罩——全部改为 var() 引用；
+  5) 删除 6 条已被变量取代的 body.dark 冗余覆盖（.btn.soft 及 hover、.btn.danger 及 hover、
+     .pin-btn.on:hover、.path-link）；
+  6) 修复 body.dark .module-icon 中旧语义色残留（#e8a33d→#d9a13f、#34c48c→#43bd8a，
+     与现深色 warn/success 一致）。
+- rules/09_技术实现参考.md：追加"UI 颜色体系"章节——变量分组表、换主色指引
+  （改 :root 与 body.dark 各 4-5 个值全站跟随）、保留硬编码的例外清单、高级设置双布局说明。
+
+视觉效果说明：
+浅色主题渲染与改前完全一致；深色/纯黑主题下边框类（success/danger/warn 边框、guide-note、
+卡片标题 hover）由"沿用浅色值"变为深色适配值——属一致性修复，验收截图确认对比度正常。
+
+实际验证：
+1. pytest core/tests/test_web_app.py：38 passed / 0 failed。
+2. grep 复核：全部影子值仅存在于主题块变量定义行，规则区零残留；--header-* 无任何引用。
+3. 浏览器实测（Flask 壳 127.0.0.1:8765，1440×900）：纯黑主题 S1 页（按钮/边框/导航正常）、
+  浅色主题 S1 页（纸面/主色/链接下划线正常）、深色主题设置中心（淡蓝标题条/横向页签/
+  新分组名正常）。顺手清理了验收环境 localStorage 残留的 uiTheme=纯黑（setUiTheme 已同步
+  localStorage 与服务端设置）。验收后恢复浅色、关闭服务与标签页。
+未执行项：调色盘（设置中心预设主题色）未实现——用户仍在考虑；待定方案见修改记录外回复。
+
+删除清单：--header-top/--header-bottom 死变量（三主题块）、6 条暗色冗余覆盖规则。
+回滚：还原 index.html CSS 区与 rules/09 追加章节即可；无数据/配置影响。
+【组件版本】不升级：CSS 变量重构与文档，未改变业务功能、配置结构与对外契约。

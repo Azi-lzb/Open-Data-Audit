@@ -1,0 +1,22 @@
+时间：2026-10-01 21:46:40（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与今日前十六轮改动同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：延续今日十六轮修改，无其他用户 WIP。
+
+修改目的：
+用户指出侧栏顶部衬线品牌标题"审核工具"与窗口标题栏文字重复，要求移除。
+
+修改文件（仅 core/frontend/web/index.html 两处）：
+- 删除 sidenav 内的 .brand 元素（含 aria-hidden 装饰标记）；
+- 删除对应的 .brand CSS 规则。
+
+实际验证：
+pytest core/tests/test_web_app.py：38 passed / 0 failed。删除的是此前为"衬线锚点"加的
+装饰元素（20261001_133210 记录），设置中心页内衬线标题（studio-title/about-title）保留，
+衬线风格仍有体现；纯文本/元素删除，未做浏览器截图。
+未执行项：无。
+
+删除清单：.brand 元素与其 CSS 规则。
+回滚：还原上述两处即可。
+【组件版本】不升级：纯界面元素移除。

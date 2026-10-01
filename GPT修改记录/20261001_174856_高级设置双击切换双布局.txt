@@ -1,0 +1,38 @@
+时间：2026-10-01 17:48:56（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与今日前十二轮改动同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：延续今日十二轮修改，无其他用户 WIP。
+
+修改目的：
+用户要求在高级设置页提供隐藏的双击切换：在"按系统分类"（上一轮新增）与"按功能分类"
+（原有分组）两种布局间切换。行内容按归属定义一次，两套分组分别组装，避免复制行定义。
+
+修改文件（仅 core/frontend/web/index.html）：
+1. renderAdvanced 重构：设置行按归属拆为命名数组（rowsRuntime/rowsPicker/rowsAuditExcel/
+   rowsAuditCalc/rowsCentralForm/rowsCentralExpr/rowsS2Placeholder），由 advCard(title,rows)
+   组装；布局由 advancedLayoutMode() 决定——
+   - 'system'（默认）：运行时环境/通用设置/逐笔统计系统/报表采集系统/大集中统计系统；
+   - 'function'：本机运行环境/文件选择/Excel 文件处理/计算与条件格式/大集中表达式求值。
+   所有设置项 ID、onchange、选项与 syncGeneralControls 逻辑不变；sysEnvTextHolder 隐藏锚点
+   保留在容器内（copySysEnv 依赖）。
+2. 新增 advancedLayoutMode()/toggleAdvancedLayout()：布局选择存 localStorage('advLayout')
+   （本机记忆，默认按系统分类）；双击后如当前在高级设置页立即重渲染并 toast 提示。
+3. "高级设置"页签按钮加 ondblclick="toggleAdvancedLayout()" 与悬停提示
+   "双击切换：按系统分类 / 按功能分类"。
+
+实际验证：
+1. pytest core/tests/test_web_app.py：38 passed / 0 failed。
+2. 浏览器实测（Flask 壳 127.0.0.1:8765，1440×900，彩蛋解锁）：
+   - 默认分组程序化确认：运行时环境|通用设置|逐笔统计系统|报表采集系统|大集中统计系统；
+   - 双击页签后：本机运行环境|文件选择|Excel 文件处理|计算与条件格式|大集中表达式求值，
+     toast"高级设置已切换为按功能分类"可见，Excel 文件处理组含生成文件方式；
+   - 再次双击切回按系统分类，setXlsxRenderMode 当前值（FAST_OOXML）跨布局切换保留；
+   - 刷新页面后布局记忆保持（localStorage）。
+3. 验收后关闭服务与标签页；主题保持浅色。
+未执行项：双击会先触发两次单击（重复进入高级设置并重渲染），随后 dblclick 生效——
+实测无感知问题；折叠状态在切换/重渲染后回到展开，与既有行为一致。
+
+删除清单：无。
+回滚：还原 renderAdvanced 重构、删除两个切换函数与页签 ondblclick/title 即可。
+【组件版本】不升级：纯界面布局切换能力，未改变设置项行为与持久化语义。

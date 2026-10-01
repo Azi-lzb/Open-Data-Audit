@@ -18,9 +18,12 @@ ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) el
 CORE = ROOT / "core"
 if not (CORE / "src" / "base_audit").is_dir():
     CORE = ROOT.parent / "core"
-# 源码运行优先使用私有 config-real/；发行包使用随包 config/。
+# 存在 config-real（core 或其上级）时优先私有配置；发行包/公开快照回退随包 config/。
 def _release_config_dir(core: Path) -> Path:
-    for candidate in (core / "config", core.parent / "config-real", core.parent / "config"):
+    for candidate in (
+        core / "config-real", core.parent / "config-real",
+        core / "config", core.parent / "config",
+    ):
         if candidate.is_dir():
             return candidate
     return core / "config"

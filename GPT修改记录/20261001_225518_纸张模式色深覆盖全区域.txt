@@ -1,0 +1,29 @@
+时间：2026-10-01 22:55:18（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与今日前二十二轮改动同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：延续今日二十二轮修改，无其他用户 WIP。用户设置 夜间+紫 保留。
+
+修改目的：
+用户涂鸦反馈：纸张模式的纸张色覆盖不全——设置中心对话框本体、卡内行、底部"关闭/保存
+设置"条、运行记录区域仍是纯白。根因：上一轮纸张化给的卡片纸白 #fffdf9 太淡，与纯白
+几乎不可分辨。
+
+修改文件（仅 core/frontend/web/index.html 的 :root 日间变量值）：
+- --bg #f7f6f2→#f2f0e9（页面纸底加深，衬托卡片）
+- --surface #fffdf9→#faf8f1（卡片/设置对话框/控制台条——用户圈的所有区域都走此变量）
+- --surface-2 #f0efea→#efece3、--border #e5e4de→#e2dfd4、--border-strong #d4d2ca→#cdc9ba、
+  --sidebar #f5f4f0→#edeae1 同族加深。
+- 日间纯白变体（body.day-white）已反向覆盖 bg/surface/surface-2/border/border-strong/
+  sidebar，不受本轮加深影响；夜间变量未触碰。
+
+实际验证：
+1. pytest core/tests/test_web_app.py：39 passed / 0 failed。
+2. 浏览器实测（8777）：日间纸张模式下设置中心对话框、卡内行、底部按钮条、运行记录
+   区域全部呈暖纸色（用户涂鸦区域全覆盖，截图确认）；夜间+紫 渲染正常并已恢复为
+   用户设置。8777 服务保持运行供用户查看。
+未执行项：日间纯白变体未重复截图（其覆盖链独立于本轮 :root 修改）。
+
+删除清单：无。
+回滚：还原 :root 六个变量值即可。
+【组件版本】不升级：纯日间纸张色深化。

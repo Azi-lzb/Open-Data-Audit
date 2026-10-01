@@ -1,0 +1,38 @@
+时间：2026-10-01 12:57:23（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成查证、修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与今日前两轮改动同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：延续今日两轮修改（UI 配置名称/S1 默认绑定、config-real 优先级），无其他用户 WIP。
+
+修改目的：
+全新打包/全新环境的程序启动时，路径默认填充应只有六册配置；"模板文件目录"此前被无条件预填
+project_root/2026-07-31/模板文件 字符串——该目录在仓库和发行包中均不存在（bundled_templates
+即 core/templates 也不存在时，代码仍返回 formal_templates 的路径文本），界面显示一条死路径。
+用户要求：刚打包完默认只有六套配置有默认填充，其他留空。
+
+修改文件：
+- core/src/base_audit/web_app.py：templateDir 默认值改为"目录真实存在才预填"——
+  bundled_templates、formal_templates 依次检查 is_dir()，均不存在时为空字符串；
+  用户设置 last_template_dir 仍最优先。
+
+新增测试：
+- core/tests/test_web_app.py::test_fresh_environment_leaves_template_dir_empty_until_dir_exists：
+  全新临时根目录下 templateDir==""（界面显示未选择）、S1 historyConfig 仍回填默认配置路径；
+  存在 templates/ 目录时恢复预填（保留开发布局便利）。
+
+逻辑变化与影响：
+- 发行包/新解压目录启动：模板文件目录显示"未选择"，空列表提示引导选择模板目录；
+  源码/数据目录/输出目录/大集中数据/比较文件等原本就来自用户设置（全新为空），不受影响。
+- 开发布局若真实存在 core/templates 或 core/2026-07-31/模板文件，行为与之前一致。
+- 模板目录为空时的既有消费路径（base_dir 回退 project_root、template_dir=None、UI 提示）
+  均已按空值设计，无需额外适配。
+- 已存在的 shell-pywebview/dist/core/data/用户设置.json 检查过：仅含六册配置绑定与开关
+  默认值，无模板路径；打包"升级不覆盖已有 data"的设计保持不变（重建发行包需重新打包才有本次修复）。
+
+实际验证：
+pytest core/tests/test_web_app.py：38 passed / 0 failed（17.46 秒）。
+未执行项：未重新打包 EXE（产物不入库）；未跑全量回归（改动仅 state 初始化一处默认值）。
+
+删除清单：无。
+回滚：还原 web_app.py 与 test_web_app.py 两个文件即可。
+【组件版本】不升级：启动默认显示调整，未改变业务功能、配置结构与对外契约。

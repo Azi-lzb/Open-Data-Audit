@@ -85,9 +85,13 @@ _FAILURES = {
 
 
 def release_config_dir(project_root: Path) -> Path:
-    """优先使用本机私有配置；发行包回退到随包的公开空表头配置。"""
+    """存在 config-real（root 或其上级）时优先绑定本机私有配置；
+    否则回退随包/仓库的公开空表头配置目录。"""
     root = Path(project_root)
-    for candidate in (root / "config", root.parent / "config-real", root.parent / "config"):
+    for candidate in (
+        root / "config-real", root.parent / "config-real",
+        root / "config", root.parent / "config",
+    ):
         if candidate.is_dir():
             return candidate
     return root / "config"

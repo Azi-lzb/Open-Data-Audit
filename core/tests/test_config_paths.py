@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from config_paths import resolve_test_config
+from base_audit.node_flow_config import release_config_dir
 
 
 def _file(root: Path, directory: str, relative_path: str) -> Path:
@@ -67,3 +68,31 @@ def test_paths_outside_configuration_directory_are_rejected(
 ) -> None:
     with pytest.raises(ValueError, match="相对路径"):
         resolve_test_config(relative_path, repo_root=tmp_path)
+
+
+def test_release_config_dir_prefers_private_config_real(tmp_path: Path) -> None:
+    core = tmp_path / "core"
+    core.mkdir()
+    (tmp_path / "config-real").mkdir()
+    (tmp_path / "config").mkdir()
+
+    # 源码布局：project_root=core，上级同时存在 config-real 与 config。
+    assert release_config_dir(core) == tmp_path / "config-real"
+    # 仓库根布局：root 下就有公开 config，也不得抢占上级/同级 config-real。
+    assert release_config_dir(tmp_path) == tmp_path / "config-real"
+
+
+def test_release_config_dir_falls_back_to_public_config(tmp_path: Path) -> None:
+    core = tmp_path / "core"
+    core.mkdir()
+    (tmp_path / "config").mkdir()
+
+    assert release_config_dir(core) == tmp_path / "config"
+    assert release_config_dir(tmp_path) == tmp_path / "config"
+
+    # 全部缺失时返回 root/config 默认路径，不创建目录（上级也不能有 config）。
+    isolated = tmp_path / "isolated"
+    empty = isolated / "pkg"
+    empty.mkdir(parents=True)
+    assert release_config_dir(empty) == empty / "config"
+    assert not (empty / "config").exists()

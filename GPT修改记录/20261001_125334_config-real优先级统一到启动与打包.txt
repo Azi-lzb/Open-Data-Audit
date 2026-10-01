@@ -1,0 +1,36 @@
+时间：2026-10-01 12:53:34（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成查证、修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与上一轮"配置名称UI对应与S1默认绑定"同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：本轮在上一轮 3 个文件修改基础上继续，无其他用户 WIP；shell-pywebview/dist/ 为历史构建产物（已忽略），其中残留旧顺序副本不修改、不入库。
+
+修改目的：
+统一"存在 config-real 即优先"的配置目录选择语义，覆盖启动与打包两个环节。此前 release_config_dir 候选顺序为 root/config → root.parent/config-real → root.parent/config：
+- 源码运行（project_root=core/）能命中 repo/config-real；
+- 但 project_root 为仓库根等"root 下即有公开 config"的布局时，公开空表头 config/ 永远抢占 config-real，与 docstring"优先使用本机私有配置"的意图不符；
+- 打包脚本固定 CONFIG_TEMPLATE = config/，本机即使有 config-real，发行包内仍是空表头配置。
+
+修改文件：
+- core/src/base_audit/node_flow_config.py：release_config_dir 候选顺序改为 root/config-real → root.parent/config-real → root/config → root.parent/config；docstring 同步。
+- shell-pywebview/run.py：本地 _release_config_dir 同步同一顺序（CLI 入口与 WebApi 行为一致）。
+- shell-pywebview/build_exe.py、shell-flask/build_exe.py：CONFIG_TEMPLATE 优先 ROOT.parent/config-real，目录不存在时回退 ROOT.parent/config；头部产物布局说明同步。
+
+新增测试：
+- core/tests/test_config_paths.py：test_release_config_dir_prefers_private_config_real（源码布局与仓库根布局下 config-real 均优先）、test_release_config_dir_falls_back_to_public_config（无 config-real 时回退公开 config；全部缺失时返回 root/config 且不建目录）。
+
+逻辑变化与影响：
+- 源码运行行为不变（原本即命中 config-real），但语义从"root/config 挡在前面"变为"任何位置存在 config-real 即优先"，仓库根布局不再误绑公开空表头。
+- 发行包：包内随包 config 正常使用；若用户在包（core 上级）旁放置 config-real 则优先——与"有 config-real 就用它"一致。
+- 打包：本机构建出的发行包 config/ 将携带 config-real 的正式配置（用户明确要求，config/ 仅作为公开快照/无 config-real 环境的回退）。
+- 对外分发提醒：真实配置进包后，公开分发前必须确认包内只有占位配置（config/README.md 既有要求继续有效）；公开仓库侧仍由 tools/check_public_snapshot.py + .gitignore 保护，config-real 不入库。
+- 未修改任何配置工作簿内容；六册配置、默认配置快照、用户设置语义不变。
+
+实际验证：
+1. pytest：test_config_paths.py + test_web_app.py + workflow/test_node_flow_config.py 共 51 passed / 0 failed（17.80 秒）。
+2. 行为验证：仓库根布局与 core/ 布局的 release_config_dir 均解析到 config-real（旧顺序下仓库根布局会错误命中公开 config）。
+3. 两个 build_exe.py 与 run.py 通过 py_compile 语法检查。
+未执行项：未实际执行打包（PyInstaller 构建耗时且产物不入库）；未跑 core 全量回归（改动范围限于目录选择函数与打包脚本，已按影响面回归）。
+
+删除清单：无。
+回滚：还原上述 5 个文件即可；无数据迁移。
+【组件版本】不升级：配置目录选择顺序与打包来源调整，未改变业务功能、配置结构或对外契约语义。

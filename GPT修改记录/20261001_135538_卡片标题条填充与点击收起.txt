@@ -1,0 +1,35 @@
+时间：2026-10-01 13:55:38（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与今日前七轮改动同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：延续今日七轮修改，无其他用户 WIP。
+
+修改目的：
+用户两点要求：1) 设置中心 gen-card 卡片标题点击无法收起内容 → 增加点击收起/展开；
+2) 标题条与操作指引标题再加淡蓝色填充，更明显。
+
+修改文件（仅 core/frontend/web/index.html）：
+- CSS：
+  1) .gen-card-title 加淡蓝填充（--accent-soft）、flex 布局与右侧 ▾ 展开指示箭头
+    （收起时箭头旋转 -90°、底线转透明）、hover 加深填充（#dfe9f3，与 btn.soft:hover 一致）；
+  2) 新增折叠态规则：.gen-card.collapsed 隐藏标题以外全部子元素；
+  3) 操作指引 .guide-flow-card>summary 同步淡蓝填充与 hover；.guide-flow-num 编号徽章
+    底色改 --surface（白底），避免与填充后的标题条融为一体。
+- JS：settingsPane 上新增事件委托监听（挂在静态容器上，页面 innerHTML 重渲染后仍有效）——
+  点击 .gen-card-title 时切换父级 .gen-card 的 collapsed 类。功能配置/流程编排/组合工作表配置/
+  DAG 专家模式等所有含 gen-card-title 的卡片统一获得收起/展开能力；重渲染后默认展开，
+  与操作指引 details 默认展开的行为一致。
+
+实际验证：
+1. pytest core/tests/test_web_app.py：38 passed / 0 failed。
+2. 浏览器实测（Flask 壳 127.0.0.1:8765，1440×900，彩蛋解锁）：
+   - 组合工作表配置页：两个标题条呈淡蓝填充、右侧箭头显示；点击第一个标题后卡片收起
+     （class 确认 gen-card collapsed，界面只剩标题条，箭头转向）；
+   - 操作指引页：流程卡片标题淡蓝填充生效，编号徽章白底清晰可辨。
+3. 验收后关闭服务与标签页；主题保持浅色。
+未执行项：DAG 专家模式页未逐一截图（共用同一组件样式与事件委托）；
+折叠状态不持久化（重渲染/切页后回到展开，符合"轻量浏览"定位，如需记忆可后续加设置项）。
+
+删除清单：无。
+回滚：还原 index.html 对应 CSS 与一段 JS 即可。
+【组件版本】不升级：纯界面交互与视觉调整。

@@ -1,0 +1,42 @@
+时间：2026-10-01 13:15:58（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成设计映射、修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与今日前三轮改动同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：延续今日三轮修改（配置名称 UI 对应、config-real 优先级、模板目录默认值），无其他用户 WIP。
+
+修改目的：
+按用户审阅通过的方案，将界面视觉体系从"科技蓝"切换为参考项目（4.舆情监测 frontend/styles.css）的
+"纸墨文书"风格：暖米白纸面 + 墨蓝主色 + 衬线标题 + 收敛的语义色 + 更小的圆角与更轻的阴影。
+用户确认：可以调整、只改 UI；三个决策点（衬线标题要、无顶栏可改故跳过、暗色语义色一并微调）按推荐执行。
+布局、类名结构、交互、字号基准、业务功能零改动。
+
+修改文件（仅 core/frontend/web/index.html 一个文件的 CSS 区）：
+- :root 浅色主题：全部 token 换为参考项目纸墨配色（--bg #fafaf8、--accent #2c3e50 墨蓝、
+  --success/--warn/--danger 换苔绿/暗金/砖红及对应 soft 底）；--radius 16→10、--radius-sm 10→7；
+  --shadow-card 减轻；新增 --sidebar（#f5f4f0 暖灰侧栏）与 --font-display（Georgia/宋体衬线）；
+  死变量 --header-top/--header-bottom 同步改为墨蓝值（无使用处，仅为一致性）。
+- 硬编码蓝色清理（8 处）：.btn.primary 投影、.btn.soft 边框与 hover、.pin-btn.on:hover、
+  .path-link 下划线、.sidenav-item.active 边框（改透明，与参考一致）、.settings-tab-btn.active 边框、
+  .guide-note 边框与圆角。
+- .module-icon 四色对齐参考项目 tag 色系（暗金/蓝灰/苔绿/紫）。
+- 字体：body 增加 font-variant-numeric:tabular-nums（数字等宽对齐）；.studio-title 与 .about-title
+  改衬线 --font-display、17px、墨蓝色。
+- .log 控制台换参考项目的墨蓝深底（#0e1726）；.tips 圆角改用 token。
+- 暗色主题：新增 --sidebar；语义色小幅降饱和（success #43bd8a、warn #d9a13f、danger #e5736c）；
+  accent 保持亮蓝（深墨蓝在暗底对比度不足，不能照搬）。纯黑主题：补 --sidebar。
+- 方案中的"顶栏纯色化"不适用：本项目布局无顶栏（左侧导航），该跳过项已在验收说明。
+
+实际验证：
+1. pytest core/tests/test_web_app.py：38 passed / 0 failed。
+2. 浏览器实测（Flask 壳 127.0.0.1:8765，1440×900）：
+   - 浅色：S1/S3/设置中心三页截图，视觉模型判定暖米白纸面、墨蓝主按钮、侧栏暖灰、
+     四册大集中配置标签完整且默认路径填充、设置中心衬线标题生效、无文字重叠/溢出/错位；
+   - 深色：对比度正常、亮蓝主色保留、无不可读元素；
+   - 纯黑：接近纯黑背景、深灰卡片、导航高亮清晰、无样式错乱。
+   验收后已将主题恢复浅色并关闭服务。
+未执行项：未跑全量回归（纯 CSS 视觉变更，无 JS/后端改动）；未在 UOS 真机验证衬线字体回退
+（Georgia→Songti SC→SimSun→serif，UOS 由 Noto Serif CJK 兜底；无衬线环境自动回退无衬线，不破坏布局）。
+
+删除清单：无。
+回滚：还原 index.html 一个文件即可完整回到旧视觉；无数据/配置影响。
+【组件版本】不升级：纯界面视觉调整，未改变业务功能、配置结构与对外契约。

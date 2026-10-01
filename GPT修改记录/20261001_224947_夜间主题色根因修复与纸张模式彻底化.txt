@@ -1,0 +1,40 @@
+时间：2026-10-01 22:49:47（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成诊断、修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与今日前二十一轮改动同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：延续今日二十一轮修改。用户设置保持 夜间+紫（用户正在探索的组合，本轮验证后保留）。
+
+修改目的（用户两项反馈）：
+1. "纸张背景似乎只调整了导航栏，运行记录和卡片自身颜色没动"——纸张模式与纯白模式
+   区分度不足：纸张模式下卡片仍是纯白，两个日间变体看起来一样。
+2. "夜间模式还是改不了主题色"——本次找到并修复真正的根因（见下）。
+
+根因（主题色夜间失效，此前多轮未发现的真因）：
+applyAccent 将 9 个 accent 变量以内联样式注入 documentElement（html）。但夜间模式的
+`body.dark{...}` 规则在 body 上定义了同名变量——CSS 继承链中 body 自身的定义优先于
+从 html 继承的值，因此夜间模式下内联注入永远被 body.dark 的默认蓝覆盖；日间模式 body
+无同名定义，注入生效。此前验证只读 documentElement 上的变量值（注入成功），未读按钮
+实际渲染色，被假象欺骗。修复后读 .btn.primary 的 computed backgroundColor 确认真实生效。
+
+修改文件（仅 core/frontend/web/index.html 的 CSS 变量值与 applyAccent）：
+1. 主题色注入改为 html 与 body 双层内联注入（applyAccent 内 roots 数组循环 setProperty），
+   夜间必然生效；代码注释说明原因。
+2. 日间纸张模式彻底纸张化：:root 日间变体 --bg #fafaf8→#f7f6f2、--surface #ffffff→#fffdf9
+  （卡片带暖调纸白）、--surface-2 #f3f4f3→#f0efea、--border #e7e9e6→#e5e4de、
+  --border-strong #d6dad5→#d4d2ca；
+3. 日间纯白变体（body.day-white）同步补齐覆盖：--surface #ffffff、--surface-2 #f7f7f7、
+  --border #e8e8e8、--border-strong #d6d6d6（原只覆盖 bg/sidebar，:root 纸张化后必须
+  反向覆盖才能保持纯白）。
+
+实际验证：
+1. pytest core/tests/test_web_app.py：39 passed / 0 failed。
+2. 浏览器实测（8777 实例，读取实际渲染色而非变量值）：
+   - 日间纸张：bg #f7f6f2 + 卡片 #fffdf9 暖调，整页纸张感与纯白变体区分明显（截图）；
+   - 夜间+紫：.btn.primary 实际渲染色 rgb(180,140,224)=#b48ce0 与期望一致（截图），
+     侧栏选中、链接、检查配置按钮全部跟随紫色。
+3. 验收后保留用户设置 夜间+紫；服务（8777）按用户要求保持运行供其查看，标签页未关闭。
+未执行项：无。
+
+删除清单：无。
+回滚：还原 index.html 对应变量与 applyAccent 即可。
+【组件版本】不升级：纯视觉与注入方式修复。

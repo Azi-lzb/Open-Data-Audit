@@ -1,0 +1,21 @@
+时间：2026-10-01 17:36:43（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成修改与验证。
+修改前/后 commit：f6e7636 → f6e7636（未提交，与今日前十轮改动同属一次待确认提交）。
+工作分支：laptop；未 commit/push/merge/rebase。
+WIP：延续今日十轮修改，无其他用户 WIP。
+
+修改目的：
+用户要求常规设置页三个分组标题改名：执行与文件→交互、外观→背景、系统维护→配置。
+
+修改文件（仅 core/frontend/web/index.html 三处字符串）：
+- renderGeneral 中 group('执行与文件')→group('交互')、group('外观')→group('背景')、
+  group('系统维护')→group('配置')；标题经 gen-card-title 标题条渲染。
+
+实际验证：
+pytest core/tests/test_web_app.py：38 passed / 0 failed（无测试依赖旧分组名）。
+渲染路径与已验收的卡片标题条完全相同，纯文本替换，未另做浏览器截图。
+未执行项：无。
+
+删除清单：无。
+回滚：还原三处字符串即可。
+【组件版本】不升级：纯界面文字调整。

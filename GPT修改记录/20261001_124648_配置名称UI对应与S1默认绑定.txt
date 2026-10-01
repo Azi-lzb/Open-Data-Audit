@@ -1,0 +1,40 @@
+时间：2026-10-01 12:46:48（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成查证、修改与验证，未委派子 Agent。
+修改前/后 commit：f6e7636 → f6e7636（未提交，等待用户确认提交范围）。
+工作分支：laptop（本机笔记本分支）；origin 为 Open-Data-Audit，未 commit/push/merge/rebase。
+WIP：本轮开始时工作区干净（同步 origin/main 后立即开始）；仅本次 3 个文件的修改，无其他用户 WIP。
+
+修改目的：
+将 UI 配置项文字与 rules/11 登记的六册配置标准名称一一对应，并让 S1 与 S2/S3 一样在启动时默认绑定发行目录（config/）中的对应配置文件，用户不再需要手动搜索选择：
+- S1：界面标签"历史审核配置"→"逐笔统计系统配置"（S1-CFG-01），路径框由"未选择"改为默认填充 config/1.逐笔统计系统_配置.xlsx；
+- S2：界面标签"审核配置"→"报表采集系统配置"（S2-CFG-01）；
+- S3：执行比较配置/本期数值核对配置/指标比较拆分配置三处标签补"大集中"前缀，与 S3-CFG-01/02/03 登记名一致（大集中通用配置原本已一致）。
+打包链路核实无需改动：shell-pywebview/build_exe.py 的 assemble_config_template() 已将整个 config/ 复制进发行包，release_config_dir() 在包内同样解析，S1 默认回填对源码运行和发行包一致生效。
+
+修改文件：
+- core/frontend/web/index.html：
+  1) S1 标签"历史审核配置"→"逐笔统计系统配置"；浏览器路径选择对话框标题同步；
+  2) S2 标签"审核配置"→"报表采集系统配置"；选择按钮、执行按钮 tooltip、执行前确认文案、阻断错误提示、路径显示名映射同步；
+  3) S3 三处标签加"大集中"前缀，对应检查配置 tooltip 同步；
+  4) 设置中心"系统维护"卡片 S3 三行配置名同步加前缀。
+- core/src/base_audit/web_app.py：
+  1) state["historyConfig"] 由"仅存用户自定义绑定（空=未绑定）"改为"未绑定时回填 self.history_path 默认路径"，与 S2 pcConfig、S3 central*Config 的既有模式一致；运行语义不变（所有消费点原本就是 state 取值 or self.history_path 回退，回填前后解析路径相同）；
+  2) 用户可见状态/日志/错误文案中"历史审核配置"→"逐笔统计系统配置"（不存在/无法打开/缺少工作表/缺少列/已选择/已打开）；
+  3) pcConfig 原生选择对话框标题改为 f"选择{CONFIG_WORKBOOK_NAME}"（选择2.报表采集系统_配置.xlsx）；选择日志与阻断错误状态文案改用"报表采集系统配置"。
+- core/tests/test_web_app.py：S2 标签 DOM 结构断言同步改为"<label>报表采集系统配置</label>"。
+
+逻辑变化与影响：
+- 仅 UI 文案与启动默认展示变化，未修改任何业务规则、配置工作簿结构、DAG、VBA 迁移语义；六册配置文件与 config/默认配置/ 快照均未触碰。
+- 用户手动"清空此路径设置"后 S1 回到"未选择"，运行时仍回退默认文件（与 S2/S3 清空行为一致）；下次启动重新回填默认路径。
+- clear_path() 对 historyConfig 的持久化语义（清空=下次使用默认）保持不变。
+
+实际验证：
+1. 定向 pytest：test_web_app.py + test_config_paths.py + test_config_guide.py 共 54 passed / 0 failed（17.76 秒）。
+2. S2/S3 配置检查 UI：test_s3_config_check_ui.py + test_s2_config_check.py 共 15 passed / 0 failed（2.32 秒）。
+3. grep 确认 index.html 与 web_app.py 无"审核配置"旧文案残留；core/tests 无测试断言旧字符串。
+4. 行为验证（临时目录模拟发行包布局，config/ 含两册合法空工作簿）：WebApi 启动即 state["historyConfig"]=config/1.逐笔统计系统_配置.xlsx 且与 history_path 一致；clear_path 后回空、运行回退不变。
+未执行项：未跑 core 全量回归与 s1/s2/s3 系统组（本次改动仅覆盖公共 UI/Web API 测试范围，已按影响面回归）；未做真机 UI 截图验收。
+
+删除清单：无文件删除。
+回滚：还原上述 3 个文件即可，无数据/配置迁移，无状态文件兼容问题（用户设置中已保存的 history_config 语义不变）。
+【组件版本】不升级：跨系统 UI 文案与默认路径展示治理，未改变 S1-F01~F05、S2-F01、S3-F01~F05 业务功能与六册配置结构，17 个组件版本保持原值（先例见 20260930_144725 记录）。

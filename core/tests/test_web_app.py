@@ -59,6 +59,22 @@ class WebAppCompatibilityTests(unittest.TestCase):
             self.assertFalse(reloaded.state["exportRunLogs"])
             self.assertTrue(reloaded.state["showPerformanceDiagnostics"])
 
+    def test_fresh_environment_leaves_template_dir_empty_until_dir_exists(self) -> None:
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            api = WebApi(root)
+            # 全新环境（发行包/新解压目录）：模板目录不留死路径，界面显示“未选择”。
+            self.assertEqual(api.state["templateDir"], "")
+            # 六册配置默认绑定不受影响：S1 配置回填默认路径。
+            self.assertEqual(api.state["historyConfig"], str(api.history_path))
+
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "templates").mkdir()
+            api = WebApi(root)
+            # 本机存在模板目录时仍预填，保持开发布局的便利。
+            self.assertEqual(api.state["templateDir"], str(root / "templates"))
+
     def test_settings_ui_exposes_independent_log_options_and_existing_perf_filter(self) -> None:
         source = (ROOT / "frontend" / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("row('运行明细日志'", source)
@@ -75,7 +91,7 @@ class WebAppCompatibilityTests(unittest.TestCase):
         check_button = source.index('onclick="checkPeriodConfig()"')
         header_start = source.rfind('<div class="field-head tight">', 0, check_button)
         normal_header_start = source.rfind('<div class="field-head">', 0, check_button)
-        label = source.rfind("<label>审核配置</label>", 0, check_button)
+        label = source.rfind("<label>报表采集系统配置</label>", 0, check_button)
         header_end = source.index("</div>", check_button)
         input_group = source.index('<div class="input-group">', check_button)
         picker_button = source.index('onclick="pickPc(\'pcConfig\')"', input_group)
@@ -615,20 +631,33 @@ class WebAppCompatibilityTests(unittest.TestCase):
             self.assertFalse(reloaded.state["confirmBeforeRun"])
 
     def test_ui_theme_defaults_and_persists(self) -> None:
-        """背景颜色默认浅色；深色/纯黑写入用户设置重启保持；非法值被拒；恢复默认回浅色。"""
+        """界面模式默认日间；夜间写入用户设置重启保持；非法值被拒；旧值迁移；恢复默认回日间。"""
         with TemporaryDirectory() as folder:
             api = WebApi(Path(folder))
-            self.assertEqual(api.state["uiTheme"], "浅色")
-            api.update({"uiTheme": "纯黑"})
-            self.assertEqual(api.state["uiTheme"], "纯黑")
-            api.update({"uiTheme": "深色"})
-            self.assertEqual(api.state["uiTheme"], "深色")
+            self.assertEqual(api.state["uiTheme"], "日间")
+            api.update({"uiTheme": "夜间"})
+            self.assertEqual(api.state["uiTheme"], "夜间")
             api.update({"uiTheme": "不存在的颜色"})
-            self.assertEqual(api.state["uiTheme"], "深色")
+            self.assertEqual(api.state["uiTheme"], "夜间")
             reloaded = WebApi(Path(folder))
-            self.assertEqual(reloaded.state["uiTheme"], "深色")
+            self.assertEqual(reloaded.state["uiTheme"], "夜间")
             api.reset_general_settings()
-            self.assertEqual(api.state["uiTheme"], "浅色")
+            self.assertEqual(api.state["uiTheme"], "日间")
+
+    def test_ui_theme_legacy_values_are_migrated(self) -> None:
+        """旧三主题值在加载时迁移：浅色→日间，深色/纯黑→夜间。"""
+        import json
+
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            data_dir = root / "data"
+            data_dir.mkdir()
+            for legacy, expected in (("浅色", "日间"), ("深色", "夜间"), ("纯黑", "夜间")):
+                (data_dir / "用户设置.json").write_text(
+                    json.dumps({"ui_theme": legacy}, ensure_ascii=False), encoding="utf-8"
+                )
+                api = WebApi(root)
+                self.assertEqual(api.state["uiTheme"], expected, legacy)
 
     def test_file_picker_mode_persists_and_rejects_invalid_value(self) -> None:
         with TemporaryDirectory() as folder:
