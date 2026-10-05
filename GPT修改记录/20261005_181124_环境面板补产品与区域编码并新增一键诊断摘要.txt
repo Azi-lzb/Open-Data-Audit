@@ -1,0 +1,27 @@
+时间：2026-10-05 18:11:24（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：7099226（desktop 与 origin/main 同源）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。本记录与同日 20261005_173425（环境面板七项扩展）为同两文件上的连续任务，待提交清单合并。
+承接：20261005_173425 已把环境摘要扩为 11 项；用户确认再补两项面板行 + 一键诊断摘要（讨论结论：报障定位第一梯队为 产品版本/构建/外壳、区域与编码、配置版本/Issues、非默认设置，形态上"诊断摘要"优于面板加满行）。
+
+修改目的：
+1. 面板新增两行：产品（V26.1.0.0 · 源码运行/打包 exe · pywebview/Flask 外壳；外壳按进程内已加载模块 webview/flask 判断，直接进程如实标"未识别外壳"）、区域编码（Windows ANSI 代码页，65001=系统级 UTF-8 已开；Python 偏好编码与 UTF-8 模式；LANG）——中文文件名/内容乱码类 bug 的头号定位依据，且事后无法追问。
+2. 一键诊断摘要：WebApi 新增 build_diagnostic_summary()，汇总 产品/环境（13 项文本）/六册配置版本（read_config_version）与路径/配置检查（configIssues）/非默认设置（UserSettings 对默认 dataclass 逐字段 diff，超 60 字符截断）/本会话运行日志尾部（state["log"] 最近 30 条）。前端环境卡片"复制"按钮升级为"复制诊断信息"，剪贴板走 navigator.clipboard + execCommand 降级；追加浏览器 UA 与本会话前端错误（window error/unhandledrejection 采集，上限 20 条）；移除旧 copySysEnv 与 sysEnvTextHolder。诊断只读已有状态，不启动探测、不修改文件。
+
+修改文件：
+- core/src/base_audit/system_info.py：新增 _app_summary/_locale_summary；summary 增 "app"/"locale" 键（跨平台）；system_environment_text 增"产品：""区域编码："两段（产品置首）。
+- core/src/base_audit/web_app.py：新增 build_diagnostic_summary 桥接方法（置于 refresh_system_environment 之后）。
+- core/frontend/web/index.html：rowsRuntime 增"产品""区域编码"两行（产品置首）；卡片末行按钮改为"复制诊断信息"（copyDiagInfo，async 桥接调用）；新增前端错误采集（__diagErrors，error/unhandledrejection 各限 20 条）；删除 copySysEnv 函数与 sysEnvTextHolder 占位 span。
+- core/tests/test_system_info.py：ALL_FIELDS 增 app/locale；文本覆盖断言增"产品：""区域编码："；新增 app 字段（版本/构建形态）与 locale 字段（Python偏好编码，Windows 另断言 ANSI）两个用例。
+- core/tests/test_web_app.py：新增 test_build_diagnostic_summary_covers_all_sections（五段齐全、配置版本行、配置检查行、默认"无"与改动项 show_run_detail_logs 列出、日志条目入摘要）。
+- 本修改记录。
+
+验证：
+- 定向：test_system_info.py 8 过 3 跳（Linux 分支）+ test_web_app.py 40 过（新增 1）。
+- 冒烟（本机实测）：诊断摘要输出五段齐全；六册配置全部报 2.0；COM 接管为实启结果"实启解析到 WPS 表格（Build 8053.0…）"；本机区域编码行为"ANSI CP936；Python偏好编码：utf-8；Python UTF-8模式：开；LANG=C.UTF-8"（pytest 环境启了 UTF-8 模式，恰好证明该行对编码类问题的区分价值）。
+- 全量回归：python -m pytest -q -rs core/tests → 837 通过（较上任务 +3）/ 7 跳过 / 3 失败；3 个失败仍为既有缺 LibreOffice 环境项（test_golden_native_flow 两例 + test_native_uos 一例），与基线一致。
+
+版本管理：诊断与面板展示增强，不改业务契约；沿用 1e18099 先例不 bump 版本，产品版本仍 V26.1.0.0。
+
+影响范围：外壳展示与诊断（环境面板、诊断摘要、前端错误采集）；不触及 S1/S2/S3 业务规则、执行链与六册配置结构。

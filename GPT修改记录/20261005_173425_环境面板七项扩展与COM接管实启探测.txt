@@ -1,0 +1,38 @@
+时间：2026-10-05 17:34:25（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：7099226（desktop 与 origin/main 同源）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入；shell-flask/build-win7-venv/ 已被 7099226 的 .gitignore 覆盖。
+
+修改目的：
+环境面板原有四项（系统/glibc/Python/LibreOffice），Windows 上 LibreOffice 一行只写"由 Excel/WPS 提供"，真正干活的两套引擎及其依赖全部不可见。本次经用户确认新增七项：
+1. Excel：安装版本（卸载表，秒回）。
+2. WPS：安装版本（Windows 取卸载表；UOS/Linux 报 PATH 上的 wps 或"未找到"）。
+3. COM 接管：Excel.Application 实际激活目标。必须实启 Dispatch——本机实测 WPS 进程运行中会通过运行时 COM 类对象注册临时接管 Excel.Application，而注册表三层（ProgID→CLSID→LocalServer32）与 TreatAs 全部正常指向真 Excel，纯注册表检测必然漏报。首显注册表解析结果，web_app 后台线程约 1 秒实启覆盖为"实启解析到 …"；解析到 WPS 时不 Quit（可能复用用户已开实例），解析到真 Excel 时仅对不可见（本次新建）实例 Quit。
+4. pywin32：COM 引擎硬依赖，缺失时明示"COM 引擎不可用"；版本显示为"build 312"——pywin32 的版本号是构建号（306/308/…/312），恰好形似 Python 版本号，用户实测将其误读为"Python 3.12 掉了点"，故加 build 前缀并在行说明中点明"不是 Python 版本"。
+5. WebView2：pywebview 桌面外壳渲染内核（EdgeUpdate 注册表 pv）。仅桌面版需要——用户确认 shell-flask 用 webbrowser.open 走系统浏览器、不依赖 WebView2（shell-pywebview/run.py 亦注明"仅面向 Windows（WebView2）"），行说明已写明两种外壳的区别。
+6. openpyxl：通用读写库版本（跨平台，双端真实值）。
+7. 硬件：CPU/内存/显卡一行（注册表/ctypes，Linux 读 /proc），跳过虚拟显卡。
+UOS/Linux 上 Windows 专属项（Excel/COM/pywin32/WebView2）显示"不适用（Windows 专属）"；COM 接管行描述注明"与'优先 Excel'的引擎选择不符时在此定位"。
+
+COM 接管机制实测记录（本机，2026-10-05）：
+- HKCR\Excel.Application\CLSID = {00024500-…}（真 Excel），CurVer=Excel.Application.16，无 TreatAs，LocalServer32=EXCEL.EXE；
+- win32com Dispatch("Excel.Application") 却返回 WPS 11.8.2.8053（Version=12.0、Build=8053）；
+- tasklist 证实 wpsoffice.exe/et.exe 运行中。结论：excel_com.py 的引擎优先级（自动=先试 Excel.Application）没有问题，是运行中的 WPS 进程临时接管了 COM 激活；关闭 WPS 后真 Excel 应恢复接管（面板可复核）。
+- 同一句柄先读 DisplayName 再读 DisplayVersion 偶发 WinError 6（句柄无效），卸载表扫描改为每个值独立开句柄读取，稳定复现 3/3 通过。
+
+修改文件：
+- core/src/base_audit/system_info.py：新增 _read_registry/_app_paths_exe/_uninstall_display/_excel_summary/_wps_summary/_resolve_progid_server/_com_registry_summary/_probe_com_activation/_pywin32_summary/_webview2_summary/_openpyxl_summary/_hardware_summary；summary 字典由 4 项扩为 11 项；probe_com 参数并入慢探机制；system_environment_text 拼入全部字段。
+- core/src/base_audit/web_app.py：_start_environment_probe 支持 Windows（新增 _probe_windows_com_takeover 后台线程，进程内已实启确认过则跳过）；探测启动移到 self.state 创建之后（原位置线程早于 state 初始化，实测触发 AttributeError）；两处注释同步。
+- core/frontend/web/index.html：本机运行环境卡片新增 Excel/WPS/COM 接管/pywin32/WebView2/openpyxl/硬件七行（含行内说明），复制按钮移至卡片末行；双布局共用，UOS 上新行显示"不适用"。另：高级设置页签打开时先用现有快照渲染、再拉一次最新状态重渲染（用户实测截图显示 COM 接管行停留于"注册表解析到…"占位值——后台实启探测约 1 秒后写入服务端状态，但面板不刷新，故补拉一次）。
+- core/tests/test_system_info.py：新增 6 个用例（全字段存在、文本覆盖引擎与外壳字段、openpyxl 真实版本、Windows 引擎字段真实值、ProgID 解析、Linux 不适用分支），pywin32 版本号无点号（312）按 `[0-9]+(\.[0-9]+)*` 匹配。
+- 本修改记录。
+
+版本管理：环境面板展示增强，不改业务契约；沿用 1e18099（环境面板四行拆分）先例，不 bump 组件版本，产品版本仍为 V26.1.0.0。
+
+验证：
+- 定向：test_system_info.py 6 过 3 跳（Linux 分支在 Windows 跳过）+ test_web_app.py 39 过；线程异常已消除（-W error::PytestUnhandledThreadExceptionWarning 复核通过）；build 前缀与页签补拉修改后复跑 45 过 3 跳。
+- 本机实测：快探 0.66s（缓存后 0）；实启 COM 探测 0.16s（WPS 运行中秒回），结果"实启解析到 WPS 表格（Build 8053.0；WPS 运行中临时接管 Excel COM 类）"；pywin32 显示"build 312"。
+- 全量回归：python -m pytest -q -rs core/tests → 834 通过 / 7 跳过 / 3 失败；3 个失败为既有的本机缺 LibreOffice 环境项（test_golden_native_flow 两例 + test_native_uos 一例），与基线一致，非本次引入。
+
+影响范围：外壳展示与诊断（环境面板、S1F1 预检日志的 [运行环境] 行变长）；不触及 S1/S2/S3 业务规则、执行链与六册配置结构。

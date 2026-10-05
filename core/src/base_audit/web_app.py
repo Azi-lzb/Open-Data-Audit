@@ -115,11 +115,10 @@ class WebApi:
     def __init__(self, project_root: Path, *, file_picker_default: str = "系统原生") -> None:
         self.project_root = project_root
         self._file_picker_default = file_picker_default if file_picker_default in FILE_PICKER_MODES else "系统原生"
-        # 本机环境摘要（glibc/Python/LibreOffice）：高级设置展示与报障定位用。
+        # 本机环境摘要（系统/引擎/COM 接管/外壳依赖）：高级设置展示与报障定位用。
         from .system_info import system_environment_summary, system_environment_text
         self._system_environment_text = system_environment_text()
         self._system_environment_info = system_environment_summary()
-        self._start_environment_probe()
         hide_application_data_directory(project_root / "data")
         self.settings_store = SettingsStore(project_root / "data" / "用户设置.json")
         self.settings = self.settings_store.load(file_picker_default=self._file_picker_default)
@@ -207,7 +206,7 @@ class WebApi:
             # 旧前端/旧外壳兼容别名：只表示是否导出运行日志 Excel。
             "writeFlowLogs": self.settings.export_run_logs,
             "filePickerMode": self.settings.file_picker_mode,
-            # 本机环境摘要（glibc/Python/LibreOffice）：高级设置展示、报障定位。
+            # 本机环境摘要（系统/引擎/COM 接管/外壳依赖）：高级设置展示、报障定位。
             "systemEnvironment": self._system_environment_text,
             "systemEnvironmentInfo": self._system_environment_info,
             # 桌面外壳提供系统原生对话框；Flask 可覆盖为 false。
@@ -309,6 +308,8 @@ class WebApi:
         "configIssues": {},
         }
         self._cancel_event = threading.Event()
+        # state 建好后才能启动后台环境探测：线程回调会写入 self.state。
+        self._start_environment_probe()
         initialize_history_workbook(self.history_path)
         ensure_summary_config_guide(self.history_path)
         # 报表采集配置缺失时按默认模板生成，保证首次使用即可打开维护。
@@ -364,14 +365,70 @@ class WebApi:
         return self.state
 
     def refresh_system_environment(self) -> dict[str, Any]:
-        """刷新本机环境摘要（glibc/Python/LibreOffice）；高级设置展示用。"""
+        """刷新本机环境摘要；高级设置展示用。"""
         self.state["systemEnvironment"] = self._system_environment_text
         self.state["systemEnvironmentInfo"] = self._system_environment_info
         return self.state
 
+    def build_diagnostic_summary(self) -> dict[str, Any]:
+        """一键诊断摘要：报障时用户直接复制发给支持方，免去逐项追问。
+
+        汇总环境、产品版本/外壳、六册配置版本与检查结果、非默认设置和
+        本会话运行日志尾部；只读已有状态，不启动任何探测、不修改文件。
+        """
+        from dataclasses import asdict, fields as dataclass_fields
+
+        from .config_guide import read_config_version
+        from .settings import UserSettings
+        from .system_info import system_environment_text
+
+        lines = ["=== 审核工具诊断信息 ===", f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"]
+        lines.append(f"【产品】{self._system_environment_info.get('app', '未知')}")
+        lines.append(f"【环境】{system_environment_text()}")
+
+        lines.append("【配置】")
+        config_items = (
+            ("1.逐笔统计系统", self.state.get("historyConfig")),
+            ("2.报表采集系统", self.state.get("pcConfig")),
+            ("3.0大集中通用", self.state.get("centralCommonConfig")),
+            ("3.1大集中执行比较", self.state.get("centralComparisonConfig")),
+            ("3.2大集中本期数值核对", self.state.get("centralCrossConfig")),
+            ("3.3大集中指标比较拆分", self.state.get("centralFormsConfig")),
+        )
+        for label, raw in config_items:
+            path = str(raw) if raw else ""
+            if path and Path(path).is_file():
+                version = read_config_version(path) or "未登记"
+                lines.append(f"  {label}：{version}（{path}）")
+            else:
+                lines.append(f"  {label}：文件缺失（{path or '未设置路径'}）")
+        issues = self.state.get("configIssues") or {}
+        blocking = [f"{key}：{value}" for key, value in issues.items() if value]
+        lines.append("  配置检查：" + ("；".join(blocking) if blocking else "无阻断问题"))
+
+        lines.append("【非默认设置】")
+        defaults = asdict(UserSettings())
+        current = asdict(self.settings)
+        changed = []
+        for field in dataclass_fields(UserSettings):
+            if current[field.name] != defaults[field.name]:
+                def trim(value: str) -> str:
+                    return value if len(value) <= 60 else value[:57] + "…"
+                changed.append(
+                    f"  {field.name} = {trim(str(current[field.name]))}（默认 {trim(str(defaults[field.name]))}）"
+                )
+        lines.extend(changed if changed else ["  无"])
+
+        log_entries = self.state.get("log") or []
+        tail = log_entries[-30:]
+        lines.append(f"【运行日志】（最近 {len(tail)} 条，进程内最多保留 100 条）")
+        lines.extend(f"  {entry['text']}" for entry in tail)
+        return {"text": "\n".join(lines)}
+
     def _start_environment_probe(self) -> None:
-        """后台补全 LibreOffice 版本；仅 Linux 且已找到引擎时启动。"""
+        """后台补全慢探测：Windows 实启确认 COM 接管；Linux 补 LibreOffice 版本。"""
         if sys.platform == "win32":
+            self._probe_windows_com_takeover()
             return
         if self._system_environment_info.get("libreoffice") == "未找到":
             return
@@ -385,6 +442,28 @@ class WebApi:
             self.state["systemEnvironmentInfo"] = self._system_environment_info
 
         threading.Thread(target=probe, name="base-audit-env-probe", daemon=True).start()
+
+    def _probe_windows_com_takeover(self) -> None:
+        """后台实启 Excel.Application 确认 COM 接管目标。
+
+        WPS 进程运行时会临时接管 Excel.Application 的 COM 激活，注册表三层
+        全部看不出差异；实启约 1 秒起，放后台线程避免阻塞启动。进程内已
+        实启确认过（缓存值为"实启…"开头）就不再重复探测，测试多次实例化
+        WebApi 时不会反复拉起 Office 进程。
+        """
+        from .system_info import system_environment_summary
+        if system_environment_summary().get("com", "").startswith("实启"):
+            return
+
+        def probe() -> None:
+            from .system_info import system_environment_summary, system_environment_text
+            system_environment_summary(probe_com=True)
+            self._system_environment_info = system_environment_summary()
+            self._system_environment_text = system_environment_text()
+            self.state["systemEnvironmentInfo"] = self._system_environment_info
+            self.state["systemEnvironment"] = self._system_environment_text
+
+        threading.Thread(target=probe, name="base-audit-env-probe-com", daemon=True).start()
 
     def initialize_config(self) -> dict[str, Any]:
         """兼容旧界面调用；通用 DAG 配置已取消。"""

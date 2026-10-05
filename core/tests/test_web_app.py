@@ -772,6 +772,26 @@ class WebAppCompatibilityTests(unittest.TestCase):
             self.assertFalse(last["detail"])
             thread.return_value.start.assert_called_once()
 
+    def test_build_diagnostic_summary_covers_all_sections(self) -> None:
+        with TemporaryDirectory() as folder:
+            api = WebApi(Path(folder))
+            api._log("诊断摘要冒烟")
+            text = api.build_diagnostic_summary()["text"]
+        # 报障定位五段齐全：产品/环境/配置/非默认设置/运行日志。
+        for section in ("【产品】", "【环境】", "【配置】", "【非默认设置】", "【运行日志】"):
+            self.assertIn(section, text)
+        # 六册配置逐条报版本或缺失；新建目录中配置由启动逻辑生成，应报出版本。
+        self.assertIn("1.逐笔统计系统：", text)
+        self.assertIn("配置检查：", text)
+        # 运行日志段带本次打入的条目；默认设置下非默认段为"无"。
+        self.assertIn("诊断摘要冒烟", text)
+        self.assertIn("  无", text)
+        with TemporaryDirectory() as folder2:
+            api2 = WebApi(Path(folder2))
+            api2.update({"showRunDetailLogs": True})
+            text2 = api2.build_diagnostic_summary()["text"]
+        self.assertIn("show_run_detail_logs = True（默认 False）", text2)
+
 
 if __name__ == "__main__":
     unittest.main()

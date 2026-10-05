@@ -1,0 +1,29 @@
+时间：2026-10-05 20:20:21（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：7099226（desktop 与 origin/main 同源）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。本记录与同日 173425、181124 两条为同一批待提交文件上的连续任务。
+承接：用户确认"运行时环境"细分方案——按诊断用途分四组（程序 / 系统与硬件 / 计算引擎 / 运行依赖），不做 Windows/Linux 或硬件/软件分组（每台机器只跑一个平台，另一平台整组"不适用"是噪音；硬件仅 1 行分组无收益）。
+
+修改目的：
+13 行运行时环境拆为四组卡片，对应报障四类问题（跑的什么版本 / 机器环境 / 谁在算公式 / 缺不缺依赖）：
+- 程序：产品（"复制诊断信息"按钮从原卡片末行挪到本行，报障从版本起手）。
+- 系统与硬件：系统、区域编码、glibc、硬件。
+- 计算引擎：Excel、WPS、COM 接管、LibreOffice（Windows 上 LibreOffice 行保留指引文案，不隐藏）。
+- 运行依赖：Python、pywin32、WebView2、openpyxl。
+平台差异处理：值为"不适用（…）"的行在当前平台整行隐藏（Windows 隐藏 glibc；UOS 隐藏 Excel/COM 接管/pywin32/WebView2），完整 13 项仍由诊断摘要全量提供。
+折叠：复用已有的 gen-card 通用标题折叠机制（▾ 箭头 + 事件委托，零新增 CSS/JS 基建）；新增仅四分组卡的折叠状态本机记忆（localStorage 键 envGroupCollapse，按组 id 记忆，其余卡片维持即点即折不记忆）。两种布局（按系统/按功能）共用同一套四分组卡。
+
+修改文件：
+- core/frontend/web/index.html：rowsRuntime 拆为 rowsEnvApp/rowsEnvSystem/rowsEnvEngine/rowsEnvDeps（envRow 辅助函数按值前缀"不适用"过滤行）；新增 envCard（data-envgroup id + 初始 collapsed 态）与 envGroupCollapsed/saveEnvGroupStates；双布局 cards 数组以 envGroupCards 展开；设置中心卡片点击委托里对 data-envgroup 卡追加 saveEnvGroupStates()。纯前端改动，后端与测试不动。
+- 本修改记录。
+
+验证：
+- node --check 校验整段内联 JS：语法通过。
+- 行为核对（静态）：Windows 上 glibc 隐藏、LibreOffice 保留指引文案；UOS 上 Excel/COM 接管/pywin32/WebView2 四行隐藏、glibc/WPS(Linux 版) 显示；envRow 对缺失字段回退"未知"。
+- 后端无改动；test_system_info/test_web_app 既有结果不受影响（181124 记录：48 过 3 跳；全量 837/7/3，3 失败为既有缺 LibreOffice 环境项）。
+- UI 实机验收：待用户打开高级设置页查看四分组与折叠效果。
+
+版本管理：纯外壳展示调整，不 bump 版本，产品版本仍 V26.1.0.0。
+
+影响范围：高级设置"运行时环境"区的展示结构；不触及业务规则、执行链、配置结构与后端接口字段（systemEnvironmentInfo 键集合不变）。

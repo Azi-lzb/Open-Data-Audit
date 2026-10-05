@@ -1648,11 +1648,21 @@ function applySettingsEggState(){
 /* ---- 高级设置页签：与“组合工作表配置”共用同一套彩蛋 ----
    （连点左侧“设置中心”导航 5 次，本机记忆）。隐藏只影响界面可见性，
    已保存的高级配置（生成/写入/求值器等）继续生效。 */
-function copySysEnv(btn){
-  var holder=document.getElementById('sysEnvTextHolder');
-  var text=holder?holder.getAttribute('data-text'):'';
-  if(!text){return;}
-  function done(ok){btn.textContent=ok?'已复制':'复制失败';setTimeout(function(){btn.textContent='复制';},1800);}
+/* 前端错误采集：仅存本会话最多 20 条，随"复制诊断信息"一并带走，报障定位用。 */
+window.__diagErrors=[];
+window.addEventListener('error',function(e){
+  if(window.__diagErrors.length<20){window.__diagErrors.push(String(e.message||'脚本错误')+(e.filename?' @'+String(e.filename).split(/[\\\/]/).pop()+':'+e.lineno:''));}
+});
+window.addEventListener('unhandledrejection',function(e){
+  if(window.__diagErrors.length<20){var r=e.reason;window.__diagErrors.push('Promise：'+(r&&r.message?r.message:String(r||'')));}
+});
+async function copyDiagInfo(btn){
+  var text='';
+  try{var r=await bridge.api.build_diagnostic_summary();text=(r&&r.text)||'';}catch(e){text='（诊断接口不可用：'+e+'）';}
+  try{text+='\n【浏览器】'+navigator.userAgent;}catch(e){}
+  var errs=window.__diagErrors||[];
+  if(errs.length){text+='\n【前端错误（本会话）】\n  '+errs.join('\n  ');}
+  function done(ok){btn.textContent=ok?'已复制':'复制失败';setTimeout(function(){btn.textContent='复制诊断信息';},1800);}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){done(true);},function(){done(false);});}
   else{var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();var ok=false;try{ok=document.execCommand('copy');}catch(e){}document.body.removeChild(ta);done(ok);}
 }
@@ -1720,7 +1730,12 @@ function setSettingsTab(tab){
   if(tab==='general')renderGeneral();
   else if(tab==='guide')renderGuide();
   else if(tab==='combine')renderDagFlowComposer();
-  else if(tab==='advanced')renderAdvanced();
+  else if(tab==='advanced'){
+    renderAdvanced();
+    // 先用现有快照秒开，再拉一次最新状态重渲染：后台的 COM 实启探测约
+    // 1 秒后才写入服务端状态，不补拉会一直显示"注册表解析到…"占位值。
+    refresh().then(()=>{if(CFG.tab==='advanced')renderAdvanced();});
+  }
 }
 
 /* ---- DAG 设置视图：普通用户看中文模块/节点，专家才接触 JSON。 ---- */
@@ -1833,6 +1848,7 @@ document.getElementById('settingsPane').addEventListener('click',function(e){
   const card=title.parentElement;
   if(!card||!card.classList.contains('gen-card'))return;
   card.classList.toggle('collapsed');
+  if(card.hasAttribute('data-envgroup'))saveEnvGroupStates();
 });
 /* ---- 操作指引 ---- */
 function renderGuide(){
@@ -1931,16 +1947,35 @@ function renderAdvanced(){
     return '<option value="'+esc(item.value)+'"'+(engine===String(item.value)?' selected':'')+disabled+note+'>'+esc(item.label||item.value)+(item.disabled&&item.note?'（'+esc(item.note)+'）':'')+'</option>';
   }).join('');
   const advCard=(title,rowsHtml)=>'<div class="gen-card"><p class="gen-card-title">'+esc(title)+'</p>'+rowsHtml+'</div>';
-  const rowsRuntime=[
-    row('系统','操作系统版本；LibreOffice 离线包按系统与 glibc 选型。',
-      '<span class="sys-env-value">'+esc(s.systemEnvironmentInfo&&s.systemEnvironmentInfo.os||'未知')+'</span>'),
-    row('glibc','系统 C 库版本；过旧时新 LibreOffice 离线包会无法启动（UOS20 为 2.28）。',
-      '<span class="sys-env-value">'+esc(s.systemEnvironmentInfo&&s.systemEnvironmentInfo.glibc||'未知')+'</span>'),
-    row('Python','系统内置 python3 版本；源码模式与源码验收包依赖它（发行包自带运行时，版本固定）。',
-      '<span class="sys-env-value">'+esc(s.systemEnvironmentInfo&&s.systemEnvironmentInfo.python||'未知')+'</span>'),
-    row('LibreOffice','计算引擎（S1F1 公式计算依赖）；运行 S1F1 时会实测能否启动。',
-      '<span class="sys-env-value">'+esc(s.systemEnvironmentInfo&&s.systemEnvironmentInfo.libreoffice||'未知')+'</span>'
-      +'<button type="button" class="btn tiny" onclick="copySysEnv(this)">复制</button>'),
+  /* 运行时环境按诊断用途分四组：程序 / 系统与硬件 / 计算引擎 / 运行依赖。
+     值为"不适用（…）"的行在当前平台隐藏（完整 13 项见"复制诊断信息"）；
+     分组卡沿用 gen-card 通用折叠，折叠状态按组本机记忆。 */
+  const envInfo=s.systemEnvironmentInfo||{};
+  const envRow=(key,name,desc,extra)=>{
+    const value=envInfo[key];
+    if(typeof value==='string'&&value.indexOf('不适用')===0){return '';}
+    return row(name,desc,'<span class="sys-env-value">'+esc(value||'未知')+'</span>'+(extra||''));
+  };
+  const envCard=(id,title,rowsHtml)=>'<div class="gen-card'+(envGroupCollapsed(id)?' collapsed':'')+'" data-envgroup="'+id+'"><p class="gen-card-title">'+esc(title)+'</p>'+rowsHtml+'</div>';
+  const rowsEnvApp=[envRow('app','产品','当前运行的程序版本、构建形态与外壳；报障时请连同诊断信息一起提供。',
+    '<button type="button" class="btn tiny" onclick="copyDiagInfo(this)">复制诊断信息</button>')].join('');
+  const rowsEnvSystem=[
+    envRow('os','系统','操作系统版本；LibreOffice 离线包按系统与 glibc 选型。'),
+    envRow('locale','区域编码','ANSI 代码页与 Python 编码偏好；中文文件名/内容乱码类问题的定位依据。系统级 UTF-8（65001）会改变默认读写编码。'),
+    envRow('glibc','glibc','系统 C 库版本；过旧时新 LibreOffice 离线包会无法启动（UOS20 为 2.28）。'),
+    envRow('hardware','硬件','CPU / 内存 / 显卡；性能类问题定位用。'),
+  ].join('');
+  const rowsEnvEngine=[
+    envRow('excel','Excel','Windows 计算引擎之一（S1F1 公式计算）；安装版本取自系统卸载表。'),
+    envRow('wps','WPS','Windows 备用计算引擎；WPS 进程运行中时会临时接管 Excel 的 COM 激活。'),
+    envRow('com','COM 接管','Excel.Application 实际激活到的引擎，后台实启探测补全；与“优先 Excel”的引擎选择不符时在此定位。'),
+    envRow('libreoffice','LibreOffice','计算引擎（S1F1 公式计算依赖）；运行 S1F1 时会实测能否启动。'),
+  ].join('');
+  const rowsEnvDeps=[
+    envRow('python','Python','系统内置 python3 版本；源码模式与源码验收包依赖它（发行包自带运行时，版本固定）。'),
+    envRow('pywin32','pywin32','Excel/WPS COM 自动化的 Python 依赖（版本是 build 号，不是 Python 版本）；缺失时 COM 引擎不可用。'),
+    envRow('webview2','WebView2','pywebview 桌面外壳的渲染内核（仅桌面版需要）；Flask 浏览器外壳用系统浏览器渲染，不依赖它。桌面版缺失或过旧会窗口空白。'),
+    envRow('openpyxl','openpyxl','通用 xlsx 静态读写库版本；不计算公式。'),
   ].join('');
   const rowsPicker=[
     row('文件/目录选择方式','系统原生适合桌面外壳；Tk 依赖 python3-tk；浏览器内置支持粘贴路径。Flask 默认 Tk，桌面外壳默认系统原生。适用于全部功能的路径与文件选择弹窗。',
@@ -2005,21 +2040,26 @@ function renderAdvanced(){
       +'<option value="LEGACY_8"'+(s.centralExpressionSchema==='LEGACY_8'?' selected':'')+'>表达式校验（八段式，兼容）</option>'
       +'</select>'),
   ].join('');
+  const envGroupCards=[
+    envCard('app','程序',rowsEnvApp),
+    envCard('system','系统与硬件',rowsEnvSystem),
+    envCard('engine','计算引擎',rowsEnvEngine),
+    envCard('deps','运行依赖',rowsEnvDeps),
+  ];
   const cards=advancedLayoutMode()==='function'?[
-    advCard('本机运行环境',rowsRuntime),
+    ...envGroupCards,
     advCard('文件选择',rowsPicker),
     advCard('Excel 文件处理',rowsCentralForm+rowsAuditExcel),
     advCard('计算与条件格式',rowsAuditCalc),
     advCard('大集中表达式求值',rowsCentralExpr),
   ]:[
-    advCard('运行时环境',rowsRuntime),
+    ...envGroupCards,
     advCard('通用设置',rowsPicker),
     advCard('逐笔统计系统',rowsAuditExcel+rowsAuditCalc),
     advCard('大集中统计系统',rowsCentralForm+rowsCentralExpr),
   ];
   pane.innerHTML= ''
     +'<div class="advanced-zone" id="advancedZone">'
-    +'<span id="sysEnvTextHolder" style="display:none" data-text="'+esc(s.systemEnvironment||'')+'"></span>'
     +cards.join('')
     +'</div>';
   syncGeneralControls();
@@ -2027,6 +2067,17 @@ function renderAdvanced(){
 /* 高级设置双布局：双击“高级设置”页签在按系统分类与按功能分类之间切换，本机记忆。 */
 function advancedLayoutMode(){
   try{return localStorage.getItem('advLayout')==='function'?'function':'system';}catch(e){return 'system';}
+}
+/* 运行时环境四分组卡的折叠状态本机记忆；其余卡片沿用即点即折、不记忆。 */
+function envGroupCollapsed(id){
+  try{return !!JSON.parse(localStorage.getItem('envGroupCollapse')||'{}')[id];}catch(e){return false;}
+}
+function saveEnvGroupStates(){
+  const states={};
+  document.querySelectorAll('.gen-card[data-envgroup]').forEach(function(card){
+    states[card.getAttribute('data-envgroup')]=card.classList.contains('collapsed');
+  });
+  try{localStorage.setItem('envGroupCollapse',JSON.stringify(states));}catch(e){}
 }
 function toggleAdvancedLayout(){
   const next=advancedLayoutMode()==='system'?'function':'system';
