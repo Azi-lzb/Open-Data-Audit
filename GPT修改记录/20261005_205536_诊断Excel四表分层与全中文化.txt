@@ -1,0 +1,31 @@
+时间：2026-10-05 20:55:36（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：45a1740（desktop 已推送，其后另有未提交的 202936/203714/204301 三任务）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。
+
+修改目的：
+用户反馈 Excel 导出仍是"文本堆叠"，要求像 UI 一样有层次、易读，且不用英文字段名。本次：
+1. Excel 导出从单表逐行改为四表结构（与 UI 分组一致）：
+   - 概览：标题+生成时间；◆程序/系统与硬件/计算引擎/运行依赖 四段（段行合并加粗底色），名称|值两列；◆浏览器与前端（UA、前端错误，无错误如实"无"）。
+   - 配置：配置册|版本|路径 表头+六行；配置检查行（无阻断问题或逐系统问题）。
+   - 设置：分组|设置项|当前值|默认值（与默认不同才填）四列表头，布尔值显示为 开/关，46 行按 通用/逐笔统计系统/报表采集系统/大集中统计系统 分组。
+   - 运行日志：时间|内容 两列（"[HH:MM:SS]" 拆列），空日志明示"（本会话暂无日志）"。
+   各表冻结表头、列宽按内容设置、值单元格自动换行。
+2. 全中文化：新增模块级 DIAGNOSTIC_ENV_GROUPS / DIAGNOSTIC_SETTINGS_GROUPS（字段→中文设置名→UI 分组）与 DIAGNOSTIC_SETTINGS_SKIP；文本版【设置】段同步改为"◆ 分组 + 中文名 = 值（默认 X）"，布尔转 开/关，不再出现英文字段名。未登记中文名且未被排除的新字段进"其他"组按字段名兜底，防止新增设置静默漏出诊断。
+3. 导出签名改为 export_diagnostic_workbook(browser_ua, frontend_errors)（结构化参数替代文本拼接），前端 exportDiagInfo 相应传 UA 与错误数组；diagExtraText 仅剩复制按钮使用。
+
+修改文件：
+- core/src/base_audit/web_app.py：模块级三个诊断常量与 _diagnostic_display；新增 _diagnostic_config_rows/_diagnostic_settings_rows 共用助手（文本与导出同源）；build_diagnostic_summary 设置段中文化+分组；export_diagnostic_workbook 重写为四表结构化导出。
+- core/frontend/web/index.html：exportDiagInfo 改传 (ua, errs)。
+- core/tests/test_web_app.py：摘要用例改中文/分组断言；导出用例重写为结构化断言（四表名、设置表中文名与分组、无英文字段名、日志拆列、UA/前端错误落概览）。
+- 本修改记录。
+
+验证：
+- test_web_app.py 全文件 41 过；node --check 内联 JS 语法通过。
+- 冒烟：导出文件四表齐备，设置表 46 行（表头+45 项）分组中文展示，布尔为 开/关；文本版设置段"◆ 通用 / 文件/目录选择方式 = 系统原生 …"。
+- 全量回归未重跑（诊断展示层改动，无执行链改动；基线 837/7/3）。
+
+版本管理：诊断导出结构化增强，零新依赖，不 bump 版本，产品版本仍 V26.1.0.0。
+
+影响范围：诊断摘要文本与 Excel 导出的展示形态；不触及面板结构、业务规则、执行链与配置结构。

@@ -772,25 +772,42 @@ class WebAppCompatibilityTests(unittest.TestCase):
             self.assertFalse(last["detail"])
             thread.return_value.start.assert_called_once()
 
-    def test_build_diagnostic_summary_covers_all_sections(self) -> None:
+    def test_export_diagnostic_workbook_writes_structured_sheets(self) -> None:
         with TemporaryDirectory() as folder:
             api = WebApi(Path(folder))
-            api._log("诊断摘要冒烟")
-            text = api.build_diagnostic_summary()["text"]
-        # 报障定位五段齐全：产品/环境/配置/非默认设置/运行日志。
-        for section in ("【产品】", "【环境】", "【配置】", "【非默认设置】", "【运行日志】"):
-            self.assertIn(section, text)
-        # 六册配置逐条报版本或缺失；新建目录中配置由启动逻辑生成，应报出版本。
-        self.assertIn("1.逐笔统计系统：", text)
-        self.assertIn("配置检查：", text)
-        # 运行日志段带本次打入的条目；默认设置下非默认段为"无"。
-        self.assertIn("诊断摘要冒烟", text)
-        self.assertIn("  无", text)
-        with TemporaryDirectory() as folder2:
-            api2 = WebApi(Path(folder2))
-            api2.update({"showRunDetailLogs": True})
-            text2 = api2.build_diagnostic_summary()["text"]
-        self.assertIn("show_run_detail_logs = True（默认 False）", text2)
+            api._log("结构化导出冒烟")
+            result = api.export_diagnostic_workbook("UA测试", ["TypeError: 冒烟"])
+            path = Path(result["path"])
+            self.assertTrue(path.is_file())
+            self.assertTrue(str(path).startswith(str(Path(folder))))
+            book = load_workbook(path, read_only=True)
+            try:
+                self.assertEqual(
+                    set(book.sheetnames) - {"概览", "配置", "设置", "运行日志"},
+                    {s for s in book.sheetnames if book[s].sheet_state == "hidden"},
+                )
+                # 六册配置全部存在（启动时自动生成），每册至少一张隐藏 sheet。
+                hidden = [s for s in book.sheetnames if book[s].sheet_state == "hidden"]
+                self.assertGreaterEqual(len(hidden), 6)
+                self.assertTrue(any(s.startswith("1.逐笔统计系统·") for s in hidden))
+                overview_rows = [row for row in book["概览"].iter_rows(values_only=True)]
+                settings_rows = [row for row in book["设置"].iter_rows(values_only=True)]
+                log_rows = [row for row in book["运行日志"].iter_rows(values_only=True)]
+            finally:
+                book.close()
+        overview_values = [cell for row in overview_rows for cell in row if cell]
+        self.assertTrue(any("浏览器" == row[0] and "UA测试" in row[1] for row in overview_rows if row[1]))
+        self.assertTrue(any("前端错误" in str(row[0]) and "TypeError: 冒烟" in str(row[1]) for row in overview_rows if row[1]))
+        # 设置表用中文名并按 UI 分组，不再出现英文字段名。
+        settings_flat = {str(row[1]): row for row in settings_rows if row[1]}
+        self.assertIn("文件/目录选择方式", settings_flat)
+        self.assertIn("计算引擎", settings_flat)
+        self.assertNotIn("file_picker_mode", settings_flat)
+        groups = {row[0] for row in settings_rows if row[0]}
+        self.assertIn("通用", groups)
+        self.assertIn("逐笔统计系统", groups)
+        # 日志表拆时间列，内容保留。
+        self.assertTrue(any("结构化导出冒烟" in str(row[1]) for row in log_rows if len(row) > 1))
 
 
 if __name__ == "__main__":

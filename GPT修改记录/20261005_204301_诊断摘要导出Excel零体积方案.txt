@@ -1,0 +1,27 @@
+时间：2026-10-05 20:43:01（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：45a1740（desktop 已推送，其后另有未提交的 202936/203714 两任务）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入；index.html/web_app.py/test_web_app.py 与前两条未提交记录同批。
+
+修改目的：
+用户要求诊断信息可直接输出为文件（docx 或 Excel）且不增加包体积。方案结论：用随包的 openpyxl 导出 Excel——零新增依赖、零体积成本，且符合总纲技术顺序（通用静态读写用 openpyxl）；docx 需引入 python-docx 或手写 OOXML 文档包，收益不抵成本，不做。
+
+实现：
+- WebApi 新增 export_diagnostic_workbook(extra_text)：复用 build_diagnostic_summary 的文本，追加前端传入的 UA/前端错误段；openpyxl 单表"诊断信息"逐行写入（===/【 段落行加粗，A 列宽 110、首行冻结），行内容经 ILLEGAL_CHARACTERS_RE 清洗防控制字符；保存到 data/诊断导出/诊断信息_YYYYMMDD_HHMMSS.xlsx（data/ 已被 .gitignore 覆盖）。
+- 前端"产品"行新增第二个小按钮"导出Excel"（exportDiagInfo）：调用桥接导出 → toast 显示完整路径 → 打开所在文件夹（open_path）；浏览器 UA 与前端错误拼接抽为 diagExtraText() 与复制按钮共用。
+- docx 路线记录性排除：python-docx 新依赖必增体积；手写最小 OOXML 文档包可行但维护成本高、且目标读者（支持方）用 Excel/WPS 查看无障碍。
+
+修改文件：
+- core/src/base_audit/web_app.py：新增 export_diagnostic_workbook。
+- core/frontend/web/index.html：产品行双按钮（复制诊断信息/导出Excel）；exportDiagInfo/diagExtraText；copyDiagInfo 改用共用拼接。
+- core/tests/test_web_app.py：新增 test_export_diagnostic_workbook_writes_xlsx_with_all_sections（文件落位 project_root 下、产品/设置段与前端追加段均写入工作簿）。
+- 本修改记录。
+
+验证：
+- test_web_app.py 全文件 41 过（新增 1）；test_system_info.py 8 过 3 跳；node --check 内联 JS 语法通过。
+- 全量回归未重跑（新增独立导出方法，无执行链改动；基线 837/7/3）。
+
+版本管理：诊断能力增强，零新依赖，不 bump 版本，产品版本仍 V26.1.0.0。
+
+影响范围：诊断摘要的输出通道（新增文件导出）；不触及面板展示结构、业务规则、执行链与配置结构。

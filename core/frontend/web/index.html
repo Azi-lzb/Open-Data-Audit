@@ -415,6 +415,19 @@ body.collect-legacy-locked .egg-btn{display:none}
 .gen-card.collapsed>.gen-card-title{border-bottom-color:transparent}
 .gen-card.collapsed>.gen-card-title::after{transform:rotate(-90deg)}
 .gen-card.collapsed>:not(.gen-card-title){display:none}
+/* 本机环境信息：外层卡 + 分组小节 + 紧凑单行，与可调整设置行区分。 */
+.env-groups .env-subgroup{border-bottom:1px solid var(--border)}
+.env-groups .env-subgroup:last-child{border-bottom:none}
+.env-subgroup-title{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text-3);margin:0;padding:8px 20px;cursor:pointer;user-select:none}
+.env-subgroup-title::before{content:'▾';font-size:10px;transition:transform .15s}
+.env-subgroup.collapsed .env-subgroup-title::before{transform:rotate(-90deg)}
+.env-subgroup.collapsed .env-info-row{display:none}
+.env-info-row{display:flex;align-items:center;gap:10px;padding:7px 20px 7px 30px}
+.env-info-row+.env-info-row{border-top:1px dashed var(--border)}
+.env-info-name{flex:0 0 88px;color:var(--text-3);font-size:12px}
+.env-info-value{color:var(--text);font-size:12px;word-break:break-all}
+/* 产品行的复制诊断按钮：比 tiny 再小一档，靠右。 */
+.env-copy-btn{margin-left:auto;flex:0 0 auto;padding:2px 8px;font-size:11px;border-radius:6px}
 /* gen-card 内非 gen-row 的直接子元素：跟随标题条获得水平留白，避免贴卡片边。 */
 .gen-card>.module-help{margin-left:12px;margin-right:12px}
 .gen-card>.module-help-desc{padding:10px 20px 0;margin:0}
@@ -1648,7 +1661,7 @@ function applySettingsEggState(){
 /* ---- 高级设置页签：与“组合工作表配置”共用同一套彩蛋 ----
    （连点左侧“设置中心”导航 5 次，本机记忆）。隐藏只影响界面可见性，
    已保存的高级配置（生成/写入/求值器等）继续生效。 */
-/* 前端错误采集：仅存本会话最多 20 条，随"复制诊断信息"一并带走，报障定位用。 */
+/* 前端错误采集：仅存本会话最多 20 条，随"导出本机设置信息"诊断工作簿一并带走，报障定位用。 */
 window.__diagErrors=[];
 window.addEventListener('error',function(e){
   if(window.__diagErrors.length<20){window.__diagErrors.push(String(e.message||'脚本错误')+(e.filename?' @'+String(e.filename).split(/[\\\/]/).pop()+':'+e.lineno:''));}
@@ -1656,15 +1669,19 @@ window.addEventListener('error',function(e){
 window.addEventListener('unhandledrejection',function(e){
   if(window.__diagErrors.length<20){var r=e.reason;window.__diagErrors.push('Promise：'+(r&&r.message?r.message:String(r||'')));}
 });
-async function copyDiagInfo(btn){
-  var text='';
-  try{var r=await bridge.api.build_diagnostic_summary();text=(r&&r.text)||'';}catch(e){text='（诊断接口不可用：'+e+'）';}
-  try{text+='\n【浏览器】'+navigator.userAgent;}catch(e){}
-  var errs=window.__diagErrors||[];
-  if(errs.length){text+='\n【前端错误（本会话）】\n  '+errs.join('\n  ');}
-  function done(ok){btn.textContent=ok?'已复制':'复制失败';setTimeout(function(){btn.textContent='复制诊断信息';},1800);}
-  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){done(true);},function(){done(false);});}
-  else{var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();var ok=false;try{ok=document.execCommand('copy');}catch(e){}document.body.removeChild(ta);done(ok);}
+async function exportDiagInfo(btn){
+  btn.textContent='导出中…';
+  try{
+    var ua='';try{ua=navigator.userAgent;}catch(e){}
+    var errs=(window.__diagErrors||[]).slice();
+    var r=await bridge.api.export_diagnostic_workbook(ua,errs);
+    if(r&&r.path){
+      showToast('诊断已导出：'+r.path);
+      var folder=String(r.path).replace(/[\\/][^\\/]+$/,'');
+      try{await bridge.api.open_path(folder);}catch(e){}
+    }else{showToast('导出失败');}
+  }catch(e){showToast('导出失败：'+e);}
+  btn.textContent='导出本机设置信息';
 }
 function hideAdvancedSettings(){
   localStorage.setItem('uiSettingsAdvancedUnlocked','0');
@@ -1848,7 +1865,9 @@ document.getElementById('settingsPane').addEventListener('click',function(e){
   const card=title.parentElement;
   if(!card||!card.classList.contains('gen-card'))return;
   card.classList.toggle('collapsed');
-  if(card.hasAttribute('data-envgroup'))saveEnvGroupStates();
+  if(card.classList.contains('env-zone')){
+    try{localStorage.setItem('envZoneCollapsed',card.classList.contains('collapsed')?'1':'0');}catch(e){}
+  }
 });
 /* ---- 操作指引 ---- */
 function renderGuide(){
@@ -1947,18 +1966,18 @@ function renderAdvanced(){
     return '<option value="'+esc(item.value)+'"'+(engine===String(item.value)?' selected':'')+disabled+note+'>'+esc(item.label||item.value)+(item.disabled&&item.note?'（'+esc(item.note)+'）':'')+'</option>';
   }).join('');
   const advCard=(title,rowsHtml)=>'<div class="gen-card"><p class="gen-card-title">'+esc(title)+'</p>'+rowsHtml+'</div>';
-  /* 运行时环境按诊断用途分四组：程序 / 系统与硬件 / 计算引擎 / 运行依赖。
-     值为"不适用（…）"的行在当前平台隐藏（完整 13 项见"复制诊断信息"）；
-     分组卡沿用 gen-card 通用折叠，折叠状态按组本机记忆。 */
+  /* 本机环境信息：与下方可调整设置区分——外层一张卡二级折叠（默认收起、
+     标题上常驻"复制诊断信息"），内含四个可单独折叠的分组小节；行紧凑单行、
+     说明转悬停提示，值为"不适用（…）"的行在当前平台隐藏（完整 13 项见诊断摘要）。 */
   const envInfo=s.systemEnvironmentInfo||{};
   const envRow=(key,name,desc,extra)=>{
     const value=envInfo[key];
     if(typeof value==='string'&&value.indexOf('不适用')===0){return '';}
-    return row(name,desc,'<span class="sys-env-value">'+esc(value||'未知')+'</span>'+(extra||''));
+    return '<div class="env-info-row" title="'+esc(desc)+'"><span class="env-info-name">'+esc(name)+'</span><span class="env-info-value">'+esc(value||'未知')+'</span>'+(extra||'')+'</div>';
   };
-  const envCard=(id,title,rowsHtml)=>'<div class="gen-card'+(envGroupCollapsed(id)?' collapsed':'')+'" data-envgroup="'+id+'"><p class="gen-card-title">'+esc(title)+'</p>'+rowsHtml+'</div>';
-  const rowsEnvApp=[envRow('app','产品','当前运行的程序版本、构建形态与外壳；报障时请连同诊断信息一起提供。',
-    '<button type="button" class="btn tiny" onclick="copyDiagInfo(this)">复制诊断信息</button>')].join('');
+  const envSubgroup=(id,title,rowsHtml)=>'<div class="env-subgroup'+(envGroupCollapsed(id)?' collapsed':'')+'" data-envgroup="'+id+'"><p class="env-subgroup-title" onclick="toggleEnvSubgroup(this)">'+esc(title)+'</p>'+rowsHtml+'</div>';
+  const rowsEnvApp=envRow('app','产品','当前运行的程序版本、构建形态与外壳；报障时点"导出本机设置信息"生成分层诊断工作簿发给支持方。',
+    '<button type="button" class="btn tiny env-copy-btn" onclick="exportDiagInfo(this)">导出本机设置信息</button>');
   const rowsEnvSystem=[
     envRow('os','系统','操作系统版本；LibreOffice 离线包按系统与 glibc 选型。'),
     envRow('locale','区域编码','ANSI 代码页与 Python 编码偏好；中文文件名/内容乱码类问题的定位依据。系统级 UTF-8（65001）会改变默认读写编码。'),
@@ -1977,6 +1996,14 @@ function renderAdvanced(){
     envRow('webview2','WebView2','pywebview 桌面外壳的渲染内核（仅桌面版需要）；Flask 浏览器外壳用系统浏览器渲染，不依赖它。桌面版缺失或过旧会窗口空白。'),
     envRow('openpyxl','openpyxl','通用 xlsx 静态读写库版本；不计算公式。'),
   ].join('');
+  const envZoneCard='<div class="gen-card env-zone'+(envZoneCollapsed()?' collapsed':'')+'">'
+    +'<p class="gen-card-title"><span>本机环境信息</span></p>'
+    +'<div class="env-groups">'
+    +envSubgroup('app','程序',rowsEnvApp)
+    +envSubgroup('system','系统与硬件',rowsEnvSystem)
+    +envSubgroup('engine','计算引擎',rowsEnvEngine)
+    +envSubgroup('deps','运行依赖',rowsEnvDeps)
+    +'</div></div>';
   const rowsPicker=[
     row('文件/目录选择方式','系统原生适合桌面外壳；Tk 依赖 python3-tk；浏览器内置支持粘贴路径。Flask 默认 Tk，桌面外壳默认系统原生。适用于全部功能的路径与文件选择弹窗。',
       '<select class="gen-select" id="setFilePickerMode" onchange="setFilePickerMode(this.value)">'
@@ -2040,20 +2067,14 @@ function renderAdvanced(){
       +'<option value="LEGACY_8"'+(s.centralExpressionSchema==='LEGACY_8'?' selected':'')+'>表达式校验（八段式，兼容）</option>'
       +'</select>'),
   ].join('');
-  const envGroupCards=[
-    envCard('app','程序',rowsEnvApp),
-    envCard('system','系统与硬件',rowsEnvSystem),
-    envCard('engine','计算引擎',rowsEnvEngine),
-    envCard('deps','运行依赖',rowsEnvDeps),
-  ];
   const cards=advancedLayoutMode()==='function'?[
-    ...envGroupCards,
+    envZoneCard,
     advCard('文件选择',rowsPicker),
     advCard('Excel 文件处理',rowsCentralForm+rowsAuditExcel),
     advCard('计算与条件格式',rowsAuditCalc),
     advCard('大集中表达式求值',rowsCentralExpr),
   ]:[
-    ...envGroupCards,
+    envZoneCard,
     advCard('通用设置',rowsPicker),
     advCard('逐笔统计系统',rowsAuditExcel+rowsAuditCalc),
     advCard('大集中统计系统',rowsCentralForm+rowsCentralExpr),
@@ -2068,14 +2089,23 @@ function renderAdvanced(){
 function advancedLayoutMode(){
   try{return localStorage.getItem('advLayout')==='function'?'function':'system';}catch(e){return 'system';}
 }
-/* 运行时环境四分组卡的折叠状态本机记忆；其余卡片沿用即点即折、不记忆。 */
+/* 本机环境信息：外层卡默认收起、状态本机记忆；四个分组小节各自折叠记忆。 */
+function envZoneCollapsed(){
+  try{return (localStorage.getItem('envZoneCollapsed')||'1')==='1';}catch(e){return true;}
+}
 function envGroupCollapsed(id){
   try{return !!JSON.parse(localStorage.getItem('envGroupCollapse')||'{}')[id];}catch(e){return false;}
 }
+function toggleEnvSubgroup(title){
+  const group=title.parentElement;
+  if(!group)return;
+  group.classList.toggle('collapsed');
+  saveEnvGroupStates();
+}
 function saveEnvGroupStates(){
   const states={};
-  document.querySelectorAll('.gen-card[data-envgroup]').forEach(function(card){
-    states[card.getAttribute('data-envgroup')]=card.classList.contains('collapsed');
+  document.querySelectorAll('[data-envgroup]').forEach(function(el){
+    states[el.getAttribute('data-envgroup')]=el.classList.contains('collapsed');
   });
   try{localStorage.setItem('envGroupCollapse',JSON.stringify(states));}catch(e){}
 }

@@ -111,6 +111,75 @@ def pywebview_file_types(file_types: tuple[tuple[str, str], ...]) -> tuple[str, 
     return tuple(f"{label} ({';'.join(patterns.split())})" for label, patterns in file_types)
 
 
+# 诊断摘要展示用的中文名与分组（与高级设置 UI 的分组一致）。设置字段新增时
+# 若未登记中文名，文本与导出按字段名兜底展示，不会报错。
+DIAGNOSTIC_ENV_GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    ("程序", (("app", "产品"),)),
+    ("系统与硬件", (("os", "系统"), ("locale", "区域编码"), ("glibc", "glibc"), ("hardware", "硬件"))),
+    ("计算引擎", (("excel", "Excel"), ("wps", "WPS"), ("com", "COM 接管"), ("libreoffice", "LibreOffice"))),
+    ("运行依赖", (("python", "Python"), ("pywin32", "pywin32"), ("webview2", "WebView2"), ("openpyxl", "openpyxl"))),
+)
+DIAGNOSTIC_SETTINGS_GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    ("通用", (
+        ("file_picker_mode", "文件/目录选择方式"),
+        ("ui_theme", "界面模式"), ("ui_accent", "主题色"),
+        ("confirm_before_run", "执行前确认清单"),
+        ("show_run_detail_logs", "显示运行明细"),
+        ("export_run_logs", "导出运行日志"),
+        ("show_performance_diagnostics", "显示性能信息"),
+    )),
+    ("逐笔统计系统", (
+        ("calculation_engine", "计算引擎"), ("summary_read_engine", "汇总读取方式"),
+        ("conditional_format_evaluator", "条件格式判定方式"),
+        ("conditional_format_rule_reader", "条件格式规则读取"),
+        ("formula_region_writer", "公式校验复制方式"),
+        ("external_sheet_writer", "外部文件添加方式"),
+        ("recursive_folders", "递归子目录"), ("recursive_depth", "递归深度"),
+        ("active_combine_sheets_plan_id", "当前组合方案"),
+        ("extra_files", "手动追加文件"),
+        ("last_input_dir", "上次源数据目录"), ("last_template_dir", "上次模板文件"),
+        ("last_external_file", "上次外部文件"), ("last_output_dir", "上次输出目录"),
+        ("output_pinned", "固定输出目录"),
+    )),
+    ("报表采集系统", (
+        ("period_current_dir", "本期目录"), ("period_previous_dir", "上期目录"),
+        ("period_central_file", "大集中参照文件"),
+        ("period_output_dir", "输出目录"), ("period_output_auto", "输出位置自动"),
+    )),
+    ("大集中统计系统", (
+        ("central_diff_tolerance_yuan", "核对容差（元）"),
+        ("expression_evaluation_mode", "表达式求值模式"),
+        ("expression_evaluation_backend", "表达式求值后端"),
+        ("central_expression_schema", "表达式规则语法"),
+        ("xlsx_render_mode", "XLSX 渲染模式"), ("central_rule_engine", "规则引擎"),
+        ("central_current_csv", "本期数据"), ("central_previous_csv", "上期数据"),
+        ("central_output_dir", "执行比较输出目录"), ("central_output_auto", "执行比较输出自动"),
+        ("central_cross_current_csv", "数值核对本期数据"),
+        ("central_cross_output_dir", "数值核对输出目录"), ("central_cross_output_auto", "数值核对输出自动"),
+        ("central_compare_file", "比较文件"), ("central_explanation_file", "说明文件"),
+        ("central_template_file", "模板文件"),
+        ("central_form_output_dir", "金融表单输出目录"), ("central_form_output_auto", "金融表单输出自动"),
+    )),
+)
+# 不进诊断展示的设置：六册配置绑定路径在【配置】段带版本展示；收藏/最近列表是
+# 界面快捷方式；组合方案明细过大（只留当前方案）；write_flow_logs 为旧别名。
+DIAGNOSTIC_SETTINGS_SKIP = frozenset({
+    "history_config", "period_config_file", "central_common_config",
+    "central_comparison_config", "central_cross_config", "central_forms_config",
+    "favorite_input_dirs", "favorite_template_dirs", "favorite_external_files",
+    "favorite_output_dirs", "recent_input_dirs", "recent_template_dirs",
+    "recent_external_files", "recent_output_dirs", "combine_sheets_plans",
+    "write_flow_logs",
+})
+
+
+def _diagnostic_display(value: object) -> str:
+    """诊断展示值：布尔转开/关，其余转字符串（由调用方截断）。"""
+    if isinstance(value, bool):
+        return "开" if value else "关"
+    return str(value)
+
+
 class WebApi:
     def __init__(self, project_root: Path, *, file_picker_default: str = "系统原生") -> None:
         self.project_root = project_root
@@ -370,24 +439,10 @@ class WebApi:
         self.state["systemEnvironmentInfo"] = self._system_environment_info
         return self.state
 
-    def build_diagnostic_summary(self) -> dict[str, Any]:
-        """一键诊断摘要：报障时用户直接复制发给支持方，免去逐项追问。
-
-        汇总环境、产品版本/外壳、六册配置版本与检查结果、非默认设置和
-        本会话运行日志尾部；只读已有状态，不启动任何探测、不修改文件。
-        """
-        from dataclasses import asdict, fields as dataclass_fields
-
+    def _diagnostic_config_rows(self) -> list[tuple[str, str, str]]:
+        """六册配置行 (名称, 版本或缺失说明, 路径)；文本与 Excel 导出共用。"""
         from .config_guide import read_config_version
-        from .settings import UserSettings
-        from .system_info import system_environment_text
-
-        lines = ["=== 审核工具诊断信息 ===", f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"]
-        lines.append(f"【产品】{self._system_environment_info.get('app', '未知')}")
-        lines.append(f"【环境】{system_environment_text()}")
-
-        lines.append("【配置】")
-        config_items = (
+        items = (
             ("1.逐笔统计系统", self.state.get("historyConfig")),
             ("2.报表采集系统", self.state.get("pcConfig")),
             ("3.0大集中通用", self.state.get("centralCommonConfig")),
@@ -395,35 +450,203 @@ class WebApi:
             ("3.2大集中本期数值核对", self.state.get("centralCrossConfig")),
             ("3.3大集中指标比较拆分", self.state.get("centralFormsConfig")),
         )
-        for label, raw in config_items:
+        rows: list[tuple[str, str, str]] = []
+        for label, raw in items:
             path = str(raw) if raw else ""
             if path and Path(path).is_file():
-                version = read_config_version(path) or "未登记"
-                lines.append(f"  {label}：{version}（{path}）")
+                rows.append((label, read_config_version(path) or "未登记", path))
             else:
-                lines.append(f"  {label}：文件缺失（{path or '未设置路径'}）")
-        issues = self.state.get("configIssues") or {}
-        blocking = [f"{key}：{value}" for key, value in issues.items() if value]
-        lines.append("  配置检查：" + ("；".join(blocking) if blocking else "无阻断问题"))
+                rows.append((label, "文件缺失", path or "未设置路径"))
+        return rows
 
-        lines.append("【非默认设置】")
+    def _diagnostic_settings_rows(self) -> list[tuple[str, str, str, str, str, bool]]:
+        """设置行 (分组, 中文设置名, 字段名, 当前值, 默认值, 是否与默认不同)。
+
+        按模块级 DIAGNOSTIC_SETTINGS_GROUPS 的中文分组输出；未登记中文名且
+        未被排除的字段进"其他"组按字段名展示，避免新增设置静默漏出诊断。
+        """
+        from dataclasses import asdict, fields as dataclass_fields
+
+        from .settings import UserSettings
         defaults = asdict(UserSettings())
         current = asdict(self.settings)
-        changed = []
+        rows: list[tuple[str, str, str, str, str, bool]] = []
+        for group, entries in DIAGNOSTIC_SETTINGS_GROUPS:
+            for field_name, label in entries:
+                value = current.get(field_name)
+                default = defaults.get(field_name)
+                rows.append((
+                    group, label, field_name,
+                    _diagnostic_display(value), _diagnostic_display(default),
+                    value != default,
+                ))
         for field in dataclass_fields(UserSettings):
-            if current[field.name] != defaults[field.name]:
-                def trim(value: str) -> str:
-                    return value if len(value) <= 60 else value[:57] + "…"
-                changed.append(
-                    f"  {field.name} = {trim(str(current[field.name]))}（默认 {trim(str(defaults[field.name]))}）"
-                )
-        lines.extend(changed if changed else ["  无"])
+            name = field.name
+            if name in DIAGNOSTIC_SETTINGS_SKIP or any(name == row[2] for row in rows):
+                continue
+            value = current.get(name)
+            default = defaults.get(name)
+            rows.append((
+                "其他", name, name,
+                _diagnostic_display(value), _diagnostic_display(default),
+                value != default,
+            ))
+        return rows
 
-        log_entries = self.state.get("log") or []
-        tail = log_entries[-30:]
-        lines.append(f"【运行日志】（最近 {len(tail)} 条，进程内最多保留 100 条）")
-        lines.extend(f"  {entry['text']}" for entry in tail)
-        return {"text": "\n".join(lines)}
+    def export_diagnostic_workbook(
+        self, browser_ua: str = "", frontend_errors: list[str] | None = None
+    ) -> dict[str, Any]:
+        """把诊断摘要导出为分表 Excel（openpyxl 已随包，不增加体积）。
+
+        结构与 UI 分组一致：概览（产品/环境/浏览器与前端错误）、配置（六册
+        版本与检查）、设置（中文设置名、按分组、标注默认值差异）、运行日志；
+        另把六册配置工作簿整册复制为隐藏 sheet，让诊断文件自含配置快照。
+        文件落在 data/诊断导出/（被 .gitignore 覆盖），返回路径由前端打开所在文件夹。
+        """
+        import re as _re
+
+        from openpyxl import Workbook
+        from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+        from openpyxl.styles import Alignment, Font, PatternFill
+
+        def clean(text: object) -> str:
+            return ILLEGAL_CHARACTERS_RE.sub("", str(text))
+
+        bold = Font(bold=True)
+        section_fill = PatternFill("solid", fgColor="E8EDF5")
+        wrap = Alignment(wrap_text=True, vertical="top")
+        book = Workbook()
+
+        overview = book.active
+        overview.title = "概览"
+        overview.merge_cells("A1:B1")
+        overview["A1"] = "审核工具诊断信息"
+        overview["A1"].font = Font(bold=True, size=14)
+        overview["A2"] = "生成时间"
+        overview["B2"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        row = 4
+        for group, entries in DIAGNOSTIC_ENV_GROUPS:
+            overview.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
+            section = overview.cell(row=row, column=1, value=f"◆ {group}")
+            section.font = bold
+            section.fill = section_fill
+            row += 1
+            for key, label in entries:
+                overview.cell(row=row, column=1, value=label)
+                cell = overview.cell(row=row, column=2, value=clean(self._system_environment_info.get(key, "未知")))
+                cell.alignment = wrap
+                row += 1
+        overview.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
+        section = overview.cell(row=row, column=1, value="◆ 浏览器与前端")
+        section.font = bold
+        section.fill = section_fill
+        row += 1
+        overview.cell(row=row, column=1, value="浏览器")
+        overview.cell(row=row, column=2, value=clean(browser_ua or "未上报")).alignment = wrap
+        row += 1
+        overview.cell(row=row, column=1, value="前端错误（本会话）")
+        errors = frontend_errors or []
+        overview.cell(row=row, column=2, value=clean("\n".join(errors) if errors else "无")).alignment = wrap
+        overview.column_dimensions["A"].width = 22
+        overview.column_dimensions["B"].width = 100
+
+        config_sheet = book.create_sheet("配置")
+        for column, name in enumerate(("配置册", "版本", "路径"), start=1):
+            cell = config_sheet.cell(row=1, column=column, value=name)
+            cell.font = bold
+            cell.fill = section_fill
+        for offset, (label, version, path) in enumerate(self._diagnostic_config_rows(), start=2):
+            config_sheet.cell(row=offset, column=1, value=label)
+            config_sheet.cell(row=offset, column=2, value=version)
+            config_sheet.cell(row=offset, column=3, value=clean(path)).alignment = wrap
+        issues = self.state.get("configIssues") or {}
+        issue_names = {"summary": "逐笔", "period": "报表", "central": "大集中"}
+        blocking = [(issue_names.get(key, key), value) for key, value in issues.items() if value]
+        config_sheet.cell(row=9, column=1, value="配置检查").font = bold
+        if blocking:
+            config_sheet.cell(row=9, column=2, value="；".join(f"{name}：{text}" for name, text in blocking)).alignment = wrap
+        else:
+            config_sheet.cell(row=9, column=2, value="无阻断问题")
+        config_sheet.column_dimensions["A"].width = 24
+        config_sheet.column_dimensions["B"].width = 14
+        config_sheet.column_dimensions["C"].width = 96
+        config_sheet.freeze_panes = "A2"
+
+        settings_sheet = book.create_sheet("设置")
+        for column, name in enumerate(("分组", "设置项", "当前值", "默认值（与默认不同才填）"), start=1):
+            cell = settings_sheet.cell(row=1, column=column, value=name)
+            cell.font = bold
+            cell.fill = section_fill
+        for offset, (group, label, _field, value, default, differs) in enumerate(
+            self._diagnostic_settings_rows(), start=2
+        ):
+            settings_sheet.cell(row=offset, column=1, value=group)
+            settings_sheet.cell(row=offset, column=2, value=label)
+            settings_sheet.cell(row=offset, column=3, value=clean(value)).alignment = wrap
+            if differs:
+                settings_sheet.cell(row=offset, column=4, value=clean(default)).alignment = wrap
+        settings_sheet.column_dimensions["A"].width = 16
+        settings_sheet.column_dimensions["B"].width = 26
+        settings_sheet.column_dimensions["C"].width = 52
+        settings_sheet.column_dimensions["D"].width = 40
+        settings_sheet.freeze_panes = "A2"
+
+        log_sheet = book.create_sheet("运行日志")
+        log_sheet.cell(row=1, column=1, value="时间").font = bold
+        log_sheet.cell(row=1, column=2, value="内容").font = bold
+        log_sheet.cell(row=1, column=1).fill = section_fill
+        log_sheet.cell(row=1, column=2).fill = section_fill
+        tail = (self.state.get("log") or [])[-30:]
+        pattern = _re.compile(r"^\[(\d{2}:\d{2}:\d{2})\]\s?(.*)$")
+        if tail:
+            for offset, entry in enumerate(tail, start=2):
+                match = pattern.match(entry["text"])
+                stamp, content = match.groups() if match else ("", entry["text"])
+                log_sheet.cell(row=offset, column=1, value=stamp)
+                log_sheet.cell(row=offset, column=2, value=clean(content)).alignment = wrap
+        else:
+            log_sheet.cell(row=2, column=2, value="（本会话暂无日志）")
+        log_sheet.column_dimensions["A"].width = 12
+        log_sheet.column_dimensions["B"].width = 110
+        log_sheet.freeze_panes = "A2"
+
+        # 六册配置工作簿整册复制为隐藏 sheet：诊断文件自含当时的配置快照，
+        # 支持方无需再向用户索取配置；书内表名去重，全部置 hidden。
+        from openpyxl import load_workbook as _load_workbook
+
+        used_titles = set(book.sheetnames)
+        for label, _version, raw_path in self._diagnostic_config_rows():
+            path = Path(raw_path) if raw_path else None
+            if path is None or not path.is_file():
+                continue
+            try:
+                source = _load_workbook(path, read_only=True, data_only=False)
+            except Exception:
+                continue
+            try:
+                for source_sheet in source.worksheets:
+                    base = f"{label}·{source_sheet.title}"[:31]
+                    title = base
+                    serial = 2
+                    while title in used_titles:
+                        suffix = f"~{serial}"
+                        title = base[: 31 - len(suffix)] + suffix
+                        serial += 1
+                    used_titles.add(title)
+                    copied = book.create_sheet(title=title)
+                    for values in source_sheet.iter_rows(values_only=True):
+                        copied.append(list(values))
+                    copied.sheet_state = "hidden"
+            finally:
+                source.close()
+        book.active = 0
+
+        export_dir = self.project_root / "data" / "诊断导出"
+        export_dir.mkdir(parents=True, exist_ok=True)
+        target = export_dir / f"诊断信息_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        book.save(target)
+        self._log(f"诊断摘要已导出：{target}")
+        return {"path": str(target), "status": "已导出"}
 
     def _start_environment_probe(self) -> None:
         """后台补全慢探测：Windows 实启确认 COM 接管；Linux 补 LibreOffice 版本。"""

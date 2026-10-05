@@ -1,0 +1,23 @@
+时间：2026-10-05 20:54:59（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：45a1740（desktop 已推送，其后另有未提交的 202936/203714/204301/205536 四任务）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。
+
+修改目的：
+用户实际对比复制文本与导出 Excel 后决策：文本形式无法比四表分层工作簿展示得更好，"复制诊断信息"按钮删除，诊断输出口径统一为"导出Excel"。
+
+修改内容：
+- core/frontend/web/index.html：产品行仅保留"导出Excel"按钮（说明文案同步）；删除 copyDiagInfo 与 diagExtraText 函数；前端错误采集（__diagErrors）保留，仅改由导出通道携带。
+- core/src/base_audit/web_app.py：删除 build_diagnostic_summary 文本方法（前端唯一调用方已删，避免留死代码）；导出所用的 _diagnostic_config_rows/_diagnostic_settings_rows/DIAGNOSTIC_* 常量与 export_diagnostic_workbook 不变。
+- core/tests/test_web_app.py：删除文本摘要用例，保留结构化导出用例。
+- 本修改记录。
+
+验证：
+- grep 确认 build_diagnostic_summary/copyDiagInfo/diagExtraText 三处引用清零。
+- test_web_app.py + test_system_info.py：48 过 3 跳；node --check 内联 JS 语法通过。
+- 全量回归未重跑（纯删减展示通道，无执行链改动；基线 837/7/3）。
+
+版本管理：诊断通道收敛，不 bump 版本，产品版本仍 V26.1.0.0。
+
+影响范围：诊断输出仅剩 Excel 导出一条通道；不触及面板结构、业务规则、执行链与配置结构。

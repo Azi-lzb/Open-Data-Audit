@@ -1,0 +1,24 @@
+时间：2026-10-05 20:37:14（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：45a1740（desktop 已推送，其后另有未提交的 202936 环境区重构）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入；index.html 与记录 20261005_202936 为同批待提交。
+
+修改目的：
+用户确认诊断摘要应包含全部可调整设置（通用设置与逐笔/报表/大集中两系统设置）。原【非默认设置】只列差异项，默认值随版本可能变化，快照不自含；改为【设置】全量列出可调项当前值，与默认不同的项仍标注默认值，共 43 项，覆盖：文件选择/显示开关/主题（通用）、计算引擎/汇总读取/条件格式判定与读取/公式复制/外部表写入/递归（逐笔）、period_*（报表）、central_*/表达式模式与容差与渲染模式（大集中）及各系统路径记忆。
+
+不进摘要的字段及理由：六册配置绑定路径（【配置】段已带版本展示，不重复）；收藏夹与最近目录列表（界面快捷方式）；combine_sheets_plans 明细（内容过大，仅保留 active_combine_sheets_plan_id）；write_flow_logs（旧别名，已规范化为 export_run_logs）。
+
+修改文件：
+- core/src/base_audit/web_app.py：build_diagnostic_summary 的设置段由差异列表改为全量枚举（settings_skip 集合排除上述字段；trim 截断函数移出循环）。
+- core/tests/test_web_app.py：诊断摘要用例改断言【设置】段（默认项原样列出、history_config 不重复进入、改动项仍标注默认值）。
+- 本修改记录。
+
+验证：
+- 定向：test_build_diagnostic_summary_covers_all_sections 通过；test_web_app.py 全文件 40 过。
+- 冒烟预览：设置段 43 行，通用/逐笔/S2/S3 各系统可调项与路径记忆齐全，空路径如实为空值。
+- 全量回归未重跑（仅诊断文本组装变化，无执行链改动；上轮基线 837/7/3）。
+
+版本管理：诊断摘要内容增强，不改业务契约，不 bump 版本，产品版本仍 V26.1.0.0。
+
+影响范围：诊断摘要文本（build_diagnostic_summary）；不触及面板展示、业务规则、执行链与配置结构。

@@ -1,0 +1,26 @@
+时间：2026-10-05 20:29:36（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：45a1740（desktop 已推送）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。
+
+修改目的：
+用户指出四张环境分组卡与下方"文件选择"等卡平级同样式，但前者是只读信息、后者是可调整设置，视觉上无区分。按用户方向改为二级折叠并配套优化：
+1. 二级折叠：四张平级分组卡收进一张外层卡"本机环境信息（只读）"，外层沿用 gen-card 通用标题折叠；内含"程序/系统与硬件/计算引擎/运行依赖"四个分组小节（env-subgroup），各自可单独折叠。外层默认收起（envZoneCollapsed，localStorage 键 envZoneCollapsed，缺省视为收起）；外层与分组的折叠状态分别本机记忆。
+2. "复制诊断信息"按钮放在"程序"分组的"产品"行行尾（用户反馈：放外层标题行突兀，改到产品栏并再小一档——env-copy-btn：11px 字号/2px 8px 内边距，靠右）；外层标题行保持纯文字。
+3. 只读行紧凑化：环境行不再复用设置行的"名称+两行说明+右侧控件"结构，改为紧凑单行（名称 88px + 值），原说明文字转为悬停提示（title）；与下方可调整设置行的形态差异即"这是信息不是设置"。
+4. 平台不适用行隐藏、LibreOffice 在 Windows 保留指引文案的规则不变（承接 20261005_202021）。
+
+修改文件：
+- core/frontend/web/index.html：envRow 改产紧凑单行（title 提示）；新增 envSubgroup 小节构建器与外层 envZoneCard（gen-card env-zone + env-groups）；双布局 cards 以 envZoneCard 置首；helpers 重写（envZoneCollapsed/envGroupCollapsed/toggleEnvSubgroup/saveEnvGroupStates，分组选择器改 [data-envgroup]）；设置中心点击委托对外层 env-zone 卡补存 envZoneCollapsed；新增 .env-zone/.env-subgroup/.env-info-row 系列 CSS；移除旧 envCard 平级卡与产品行按钮。
+- 本修改记录。
+
+验证：
+- node --check 校验整段内联 JS：语法通过；关键结构静态核对（外层卡/只读标注/标题按钮/四小节/状态记忆/紧凑行样式）全部在位。
+- 行为核对（静态）：外层收起时 .gen-card.collapsed>:not(.gen-card-title) 隐藏全部小节而按钮常驻；小节标题点击不冒泡到外层折叠（非 .gen-card-title）；按钮 stopPropagation 防误折叠。
+- 后端无改动；test_system_info/test_web_app 结果不受影响（45a1740 验证：定向 48 过 3 跳；全量 837/7/3）。
+- UI 实机验收：待用户打开高级设置查看二级折叠效果。
+
+版本管理：纯外壳展示调整，不 bump 版本，产品版本仍 V26.1.0.0。
+
+影响范围：高级设置"本机环境信息"区展示结构；不触及业务规则、执行链、配置结构与后端接口字段。
