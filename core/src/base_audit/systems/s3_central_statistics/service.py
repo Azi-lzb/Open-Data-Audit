@@ -375,6 +375,14 @@ def _write_check_workbook(rows: list[dict], output_path, *, target_unit: str) ->
         cell.font = header_font
         cell.fill = header_fill
     sheet.freeze_panes = "A2"
+    # 左值/右值/差异/差异绝对值/差异幅度 显示两位小数，0 值不显示（第三段留空）；
+    # 只设显示格式不改数值，E-14 判等归零的差异行相应显示为空白。
+    numeric_bases = {"左值", "右值", "差异", "差异绝对值", "差异幅度"}
+    for column_index, name in enumerate(headers, start=1):
+        if name.replace("(%)", "") in numeric_bases:
+            for cell in sheet[get_column_letter(column_index)][1:]:
+                if isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool):
+                    cell.number_format = "0.00;-0.00;"
     for index, width in enumerate((12, 10, 22, 10, 10, 10, 22, 10, 14, 12, 12, 12, 12, 12, 24, 24, 44), start=1):
         sheet.column_dimensions[get_column_letter(index)].width = width
     book.save(output_path)

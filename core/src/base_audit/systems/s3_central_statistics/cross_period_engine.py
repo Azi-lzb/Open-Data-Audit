@@ -19,6 +19,13 @@ from .models import CentralDataset
 
 _TOKEN_RE = re.compile(r"\[[^\[\]]*\]|\{[^{}]*\}")
 
+# 差异判等阈值（用户财务口径，2026-10-07 两轮校准）：数据单位为亿元，
+# 精确到分=1E-10 亿元（小数第 10 位），再留 2 位保护=1E-12（小数第 12 位，
+# 即万分之一分）——低于它的差异在财务上无意义，视为相等、差异归零。
+# 实测残差（5.68E-14=2^-44、2.01E-14）均在阈值内；该值与 Excel 15 位有效
+# 数字的精度边界匹配（数值不超过千亿元级时，第 12 位小数可完整表示）。
+_EQUALITY_EPSILON = 1e-12
+
 DEFAULT_TITLE = (
     "数据日期", "机构类代码", "机构类名称", "地区代码", "地区名称",
     "校验编码", "校验名称", "校验类型", "备注",
@@ -185,6 +192,10 @@ def run_cross_period(
                     log_rows.append((org_code, region_code, "校验公式 计算有误", rule_id, formula))
 
             difference = left_value - right_value
+            # 财务口径判等（阈值说明见常量定义处）：视为相等时差异归零，
+            # 左值/右值本身不动。
+            if abs(difference) <= _EQUALITY_EPSILON:
+                difference = 0.0
             abs_difference = abs(difference)
             if left_value == 0 and right_value == 0:
                 ratio = None

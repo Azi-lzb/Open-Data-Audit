@@ -1,0 +1,33 @@
+时间：2026-10-07 19:27:10（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：56f1ed6（desktop 与 origin/main 同源）；修改后随本记录同提交（待用户确认；同批另有未提交的 20261007_190346 导入对齐任务）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。
+任务定位：S3-F02 说明文件与 S3-F04 数值核对结果的显示口径（用户三项要求）。
+
+修改目的（用户要求）：
+1. 说明文件 E/F/G 列（数据值/上期值/增减额）显示两位小数，但单元格数值不四舍五入；
+2. 本期数值核对结果的左值/右值/差异/差异绝对值/差异幅度(%) 同样显示两位小数、不改数值；
+3. 差异绝对值小于 1E-14（用户口径）视为相等，不再出现 5.6843418860808E-14 之类的浮点残留。
+
+修改内容：
+- explanation_exporter.export_selected_explanations：写入后对第 5/6/7 列数值单元格设 number_format="0.00"（isinstance 数值判断，文本/空不受影响；只设显示格式，openpyxl 不参与计算，数值原样保留，导入匹配仍按 4 位舍入规则）。
+- cross_period_engine：新增模块常量 _EQUALITY_EPSILON = 1e-14；difference 计算后绝对值低于阈值即归零（abs_difference/ratio 随之为 0），左值/右值本身不动，"一边有一边无"等判断不受影响；阈值之上的真实差异保持原值。
+- service._write_check_workbook：对 左值/右值/差异/差异绝对值/差异幅度(%)（按列名 base 去掉"(%)"匹配）数值单元格设 number_format="0.00"。
+
+修改文件：
+- core/src/base_audit/systems/s3_central_statistics/explanation_exporter.py（显示格式）
+- core/src/base_audit/systems/s3_central_statistics/cross_period_engine.py（判等阈值）
+- core/src/base_audit/systems/s3_central_statistics/service.py（核对工作簿显示格式）
+- core/tests/test_central_cross_period.py：新增 2 用例（差异 5.5E-17 归零且 1E-13 真实差异保留；核对工作簿五列 number_format 与数值不被四舍五入）。
+- core/tests/test_central_explanation_exporter.py：导出用例补 E/G 列 number_format 断言。
+- 本修改记录。
+
+技术说明：openpyxl 写盘数字按 %.16g 序列化，17 位有效数字的残差（如 0.30000000000000004）写盘即回落 0.3；用户遇到的 5.68E-14 类残留为 16 位内可正常写盘，本次以显示格式+判等阈值解决其展示与口径问题。
+
+验证：
+- 定向 24 过（cross_period 12 + explanation_exporter 7 + 既有）；全量 841 过/7 跳/3 失败（3 项为既有缺 LibreOffice 环境项，基线一致，新增 2+1 用例后 837→841）。
+
+影响范围：S3-F02/F04 的展示格式与差异判等口径；不触及比较引擎计算、规则执行链与配置结构。
+
+版本管理：展示口径与判等阈值调整，随同批 190346 记录一并在提交时评估 S3 组件 SemVer。

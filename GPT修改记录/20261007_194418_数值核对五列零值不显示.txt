@@ -1,0 +1,24 @@
+时间：2026-10-07 19:44:18（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：56f1ed6（desktop 与 origin/main 同源）；修改后随本记录同提交（待用户确认；同批另有未提交的 20261007_190346/192710/193703 三任务）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。
+任务定位：S3-F04 数值核对结果展示口径微调（承接 20261007_192710 的两位小数显示，用户追加要求）。
+
+修改目的（用户要求）：
+数值核对结果 J-N 列（左值/右值/差异/差异绝对值/差异幅度(%)）数值为 0 时不显示"0.00"，显示为空白；与 E-14 判等归零（192710）配合，无差异行整行数值区干净留白。
+
+修改内容：
+- service._write_check_workbook：五列 number_format 由 "0.00" 改为三段式 "0.00;-0.00;"（正;负;零——零段留空即不显示）。仅显示格式，单元格数值仍为 0，不影响任何计算与后续读取。
+
+修改文件：
+- core/src/base_audit/systems/s3_central_statistics/service.py（一处格式常量）
+- core/tests/test_central_cross_period.py：核对工作簿用例补零值行（差异/绝对值/幅度为 0 的第二行），断言 0 值单元格数值保留为 0、五列格式为三段式。
+- 本修改记录。
+
+验证：
+- test_central_cross_period.py 17 过；S3 组回归 437 过。
+
+影响范围：S3-F04 结果工作簿的零值显示；不触及计算、判等阈值与配置结构。
+
+版本管理：随同批 190346/192710/193703 一并提交时评估 S3 组件 SemVer。

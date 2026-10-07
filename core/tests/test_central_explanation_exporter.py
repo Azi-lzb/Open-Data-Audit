@@ -39,6 +39,9 @@ class ExplanationExporterTests(unittest.TestCase):
             self.assertEqual(explanation.max_column, 8)
             self.assertEqual(explanation.cell(3, 3).value, "A001")
             self.assertEqual(explanation.cell(3, 8).value, "本期增加")
+            # E/F/G 显示两位小数（显示格式，单元格数值不四舍五入）。
+            self.assertEqual(explanation.cell(3, 5).number_format, "0.00")
+            self.assertEqual(explanation.cell(3, 7).number_format, "0.00")
             self.assertEqual(result["生成信息"].cell(4, 2).value, 1)
             result.close()
 
@@ -153,3 +156,83 @@ class ExplanationExporterTests(unittest.TestCase):
             self.assertIn("机构反馈A.xlsx", "\n".join(str(value or "") for value in row))
             self.assertIn("业务原因甲", "\n".join(str(value or "") for value in row))
             report.close()
+
+    def test_exports_village_bank_code_with_region_appended(self):
+        """村镇银行机构类代码全国重号，对齐 VBA 用机构代码+地区代码长码。"""
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "比较结果.xlsx"
+            output = Path(folder) / "指标说明.xlsx"
+            book = Workbook()
+            sheet = book.active
+            sheet.title = "比较结果"
+            sheet.append(("机构类代码", "机构类名称", "地区代码", "地区名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "输出说明", "说明内容"))
+            sheet.append(("7020", "村镇银行", "4413231", "惠东县乡1", "12A38", "指标甲", 2, 1, 1, "是", ""))
+            sheet.append(("6k0i", "广东惠州农商行", "4400000", "广东省", "A002", "指标乙", 3, 2, 1, "是", ""))
+            book.save(source)
+            book.close()
+
+            self.assertEqual(export_selected_explanations(source, output), 2)
+            result = load_workbook(output, data_only=True)
+            explanation = result["说明文件"]
+            self.assertEqual(explanation.cell(3, 1).value, "70204413231")
+            self.assertEqual(explanation.cell(4, 1).value, "6k0i")
+            result.close()
+
+    def test_exports_region_code_for_multi_region_org_and_keeps_single_region_plain(self):
+        """同机构覆盖多个地区时拼地区代码区分（数值相同也能被四项标识区分）；
+        单地区机构保持原码，机构按原习惯填短码即可匹配。"""
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "比较结果.xlsx"
+            output = Path(folder) / "指标说明.xlsx"
+            book = Workbook()
+            sheet = book.active
+            sheet.title = "比较结果"
+            sheet.append(("机构类代码", "机构类名称", "地区代码", "地区名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "输出说明", "说明内容"))
+            sheet.append(("6k0i", "广东惠州农商行", "4400000", "广东省", "A001", "指标甲", 5, 2, 3, "是", ""))
+            sheet.append(("6k0i", "广东惠州农商行", "4413000", "惠州市", "A001", "指标甲", 5, 2, 3, "是", ""))
+            sheet.append(("6k0u", "龙门农商行", "4400000", "广东省", "A001", "指标甲", 7, 2, 5, "是", ""))
+            book.save(source)
+            book.close()
+
+            self.assertEqual(export_selected_explanations(source, output), 3)
+            result = load_workbook(output, data_only=True)
+            explanation = result["说明文件"]
+            # 6k0i 两个地区 → 机构代码各自拼地区代码，即使数值完全相同也可区分。
+            self.assertEqual(explanation.cell(3, 1).value, "6k0i4400000")
+            self.assertEqual(explanation.cell(4, 1).value, "6k0i4413000")
+            # 单地区机构保持原码。
+            self.assertEqual(explanation.cell(5, 1).value, "6k0u")
+            self.assertEqual(explanation.cell(3, 2).value, "广东惠州农商行（广东省）")
+            self.assertEqual(explanation.cell(4, 2).value, "广东惠州农商行（惠州市）")
+            result.close()
+
+    def test_import_tolerates_case_name_and_rounding_differences(self):
+        """2026.09 二批真实反馈回归：大小写、机构/指标名称差异、金额 4 位誊抄均应匹配。"""
+        with tempfile.TemporaryDirectory() as folder:
+            target_path = Path(folder) / "指标说明.xlsx"
+            feedback_path = Path(folder) / "机构反馈.xlsx"
+            book = Workbook()
+            sheet = book.active
+            sheet.title = "说明文件"
+            sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
+            sheet.append(("6k0u", "龙门农村商业银行（广东省）", "12A18", "指标甲", 0.418462, 1.0, -0.0002, "待机构填写"))
+            sheet.append((7020, "村镇银行（惠州市）", "12A22", "指标乙", 1.0, 0.5, 0.5, "待机构填写"))
+            book.save(target_path)
+            book.close()
+            book = Workbook()
+            sheet = book.active
+            sheet.title = "说明文件"
+            sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
+            # 大写机构代码、改写过的名称、4 位舍入金额、文本数字，都应命中目标行。
+            sheet.append(("6K0u", "写错也不影响", "12a18", "前缀_指标甲", "0.4185", "1.0", "-0.00020", "誊抄舍入原因"))
+            sheet.append(("7020", "村镇银行（惠州市）", "12A22", "指标乙", 1.0, 0.5, "0.50004", "数字代码原因"))
+            book.save(feedback_path)
+            book.close()
+
+            result = import_explanation_feedback(target_path, [feedback_path])
+            self.assertEqual((result.imported, result.unmatched, result.conflicts), (2, 0, 0))
+            target = load_workbook(target_path, data_only=True)
+            # 本表头在第 1 行，数据从第 2 行起。
+            self.assertEqual(target["说明文件"].cell(2, 8).value, "誊抄舍入原因")
+            self.assertEqual(target["说明文件"].cell(3, 8).value, "数字代码原因")
+            target.close()

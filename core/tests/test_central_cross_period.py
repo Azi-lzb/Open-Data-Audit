@@ -122,6 +122,56 @@ class RunCrossPeriodTests(unittest.TestCase):
         rows2, _logs = run_cross_period(current=current2, previous=previous2, config=_config([_rule()]))
         self.assertEqual(rows2, [])
 
+    def test_difference_below_e14_treated_as_equal(self):
+        # 浮点舍入残留按绝对+相对双阈值判等：5.68E-14（2^-44，300 量级典型残差，
+        # 实测曾漏过 1E-14 固定阈值）必须归零，真实差异（0.001）必须保留。
+        previous = _dataset([_record("33370", "余额", 300.0)])
+        current = _dataset([_record("33370", "余额", 300.00000000000006)])
+        rule = _rule(校验公式="", 无误是否提示="")
+        rows, _logs = run_cross_period(current=current, previous=previous, config=_config([rule]))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["差异"], 0.0)
+        self.assertEqual(rows[0]["差异绝对值"], 0.0)
+        self.assertEqual(rows[0]["差异幅度(%)"], 0.0)
+        # 阈值之上的真实差异不受相对阈值影响。
+        current2 = _dataset([_record("33370", "余额", 300.001)])
+        rows2, _logs2 = run_cross_period(current=current2, previous=previous, config=_config([rule]))
+        self.assertAlmostEqual(rows2[0]["差异"], 0.001, places=10)
+
+    def test_check_workbook_shows_two_decimals_without_changing_values(self):
+        from base_audit.systems.s3_central_statistics.service import _write_check_workbook
+
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / "核对.xlsx"
+            rows = [{
+                "数据日期": "2026-08-31", "机构类代码": "6k0i", "机构类名称": "示例甲银行",
+                "地区代码": "4400000", "地区名称": "广东省", "校验编码": "K001",
+                "校验名称": "核对", "校验类型": "数值核对", "备注": "",
+                "左值": 1234.5678, "右值": 1234.5656, "差异": 0.0022,
+                "差异绝对值": 0.0022, "差异幅度(%)": 0.000178, "是否说明": "", "说明内容": "", "计算公式": "",
+            }]
+            rows.append({
+                "数据日期": "2026-08-31", "机构类代码": "6k0u", "机构类名称": "示例乙银行",
+                "地区代码": "4400000", "地区名称": "广东省", "校验编码": "K002",
+                "校验名称": "核对", "校验类型": "数值核对", "备注": "",
+                "左值": 0.0, "右值": 100.0, "差异": 0.0,
+                "差异绝对值": 0.0, "差异幅度(%)": 0.0, "是否说明": "", "说明内容": "", "计算公式": "",
+            })
+            _write_check_workbook(rows, path, target_unit="亿元")
+            book = load_workbook(path)
+            sheet = book["对比结果"]
+            # 左值(10)/右值(11)/差异(12)/差异绝对值(13)/差异幅度(14) 显示两位小数，
+            # 0 值不显示（三段式格式零段留空），单元格数值不四舍五入、0 仍是 0。
+            for column in (10, 11, 12, 13, 14):
+                self.assertEqual(sheet.cell(2, column).number_format, "0.00;-0.00;")
+            self.assertEqual(sheet.cell(2, 10).value, 1234.5678)
+            self.assertEqual(sheet.cell(2, 14).value, 0.000178)
+            # 0 值单元格：数值保留为 0，由三段式格式负责显示为空。
+            self.assertEqual(sheet.cell(3, 12).value, 0.0)
+            self.assertEqual(sheet.cell(3, 13).value, 0.0)
+            self.assertEqual(sheet.cell(3, 14).value, 0.0)
+            book.close()
+
     def test_inverted_rule(self):
         current = _dataset([_record("33370", "余额", 9000.0)])
         previous = _dataset([_record("33370", "余额", 1000.0)])
