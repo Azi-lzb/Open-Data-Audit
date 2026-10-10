@@ -231,6 +231,15 @@ def run_comparison(
     process_hits = sum(1 for row in rows if row.process)
     log_rows.append(("规则命中", f"警戒区间 {remark_hits} 行；复杂校验/特殊指标写入是否说明 {explain_hits} 行；计算过程 {process_hits} 行"))
 
+    ready_rules = expression_stats.get("expression_rules_ready") or []
+    not_ready_rules = expression_stats.get("expression_rules_skipped_not_ready") or []
+    if ready_rules or not_ready_rules:
+        preview = "、".join(not_ready_rules[:5]) + ("…" if len(not_ready_rules) > 5 else "")
+        log_rows.append(("规则命中",
+            f"表达式规则就绪 {len(ready_rules)} 条；因频度/批次数据未就绪跳过 {len(not_ready_rules)} 条"
+            + (f"（{preview}）" if preview else "")
+            + "。未就绪规则待相关批次数据导入后再执行比较即可"))
+
     if expression_stats:
         provider = expression_stats.get("provider", "PYTHON")
         observation = (

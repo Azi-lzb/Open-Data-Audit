@@ -129,3 +129,20 @@ def test_formal_enrichment_blocks_when_enabled_rule_cannot_compile() -> None:
             [], cfg, current_index={}, previous_index={},
             target_unit="亿元", exempt=set(),
         )
+
+
+def test_enrich_reports_not_ready_rules_by_frequency_key() -> None:
+    """数据批次未就绪的规则整条跳过（VBA notfreNum），编号进统计供运行日志展示。"""
+    cfg = _config(
+        _rule("CX跨A", "[人民币,,,12P1F,余额,人民币,月,2] > [人民币,,,12P1E,余额,人民币,月,1]"),
+        _rule("CX跨B", "[人民币,,,12P1F,余额,人民币,月,1] > 0"),
+    )
+    stats: dict = {}
+    # fres 只含 月1（模拟仅导入月报1批）：需要 月2 的 CX跨A 跳过，CX跨B 就绪。
+    enrich_complex_rules(
+        [], cfg, current_index={}, previous_index={},
+        target_unit="亿元", exempt=set(), fres={"", "月", "月1"},
+        stats_out=stats,
+    )
+    assert stats["expression_rules_ready"] == ["CX跨B"]
+    assert stats["expression_rules_skipped_not_ready"] == ["CX跨A"]

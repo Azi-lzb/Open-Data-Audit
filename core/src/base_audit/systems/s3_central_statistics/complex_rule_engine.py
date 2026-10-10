@@ -736,7 +736,16 @@ def enrich_complex_rules(
             "表达式求值方式=OFFICE：未提供 OfficeEvaluationAdapter；不静默回退 Python。")
     if fres:
         kept = {}
+        ready_ids: set[str] = set()
+        skipped_ids: set[str] = set()
         for code, rules in rules_by_code.items():
+            for rule in rules:
+                if all(key in fres for key in rule.required_frequency_keys):
+                    ready_ids.add(rule.rule_id)
+                else:
+                    # 对齐 VBA notfreNum：所需频度+批次数据未就绪的规则整条不进
+                    # 本次执行，编号写入统计供运行日志展示（可见性）。
+                    skipped_ids.add(rule.rule_id)
             filtered = [
                 rule for rule in rules
                 if all(key in fres for key in rule.required_frequency_keys)
@@ -744,6 +753,9 @@ def enrich_complex_rules(
             if filtered:
                 kept[code] = filtered
         rules_by_code = kept
+        if stats_out is not None:
+            stats_out["expression_rules_ready"] = sorted(ready_ids)
+            stats_out["expression_rules_skipped_not_ready"] = sorted(skipped_ids)
     unit = get_unit_factor(target_unit)
     exempt = exempt or set()
     lae_context: dict[str, object] | None = None
