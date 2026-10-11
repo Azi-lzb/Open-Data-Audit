@@ -1,0 +1,52 @@
+时间：2026-10-01 23:43:25（Asia/Shanghai）
+执行者：ZCode（GLM）主模型，独立完成诊断、修复与文档化。
+修改前/后 commit：5beea6a → 7099226（laptop 分支本地提交；GitHub 推送因网络阻断暂挂，
+见"待办"）。
+工作分支：laptop；origin 为 Open-Data-Audit。
+
+背景（用户报告"flask 打包有问题"）：
+合并 Windows 构建中 Win10/11 EXE 成功，Win7 兼容包失败。三层叠加根因：
+1. shell-flask/wheels/（离线依赖缓存，被 .gitignore 忽略故不随仓库流转）缺失；
+2. Win7 解释器实际为 Python 3.7.13 x86（conda 环境 HZPBCwin7x86，无 SSL 模块，
+   依赖只能离线安装），且 3.7 需要一批 python_version<"3.8" 标记依赖
+   （importlib-metadata/packaging/zipp/typing-extensions/pyinstaller-hooks-contrib）；
+3. shell-flask/redist/（vc_redist 运行库缓存）缺失，"运行库修复"附件被跳过。
+与当日 UI/配置代码改动无关。
+
+修改文件：
+- .gitignore：新增 build-win7-venv/ 与 build-win7-venv-rebuilt/ 忽略——该虚拟环境由
+  build-win7.bat 自动重建、pyvenv.cfg 绑定本机解释器路径，入库反而是坏环境；
+  wheels 与 *.exe 的既有忽略保持不变（tools/check_public_snapshot.py 的
+  FORBIDDEN_PARTS 与禁止类型清单明确不允许 wheels/.exe 进入公开仓库，属既定治理）。
+- shell-flask/README.md：新增"Windows 打包环境三件套"章节——wheels 的重建命令
+  （3.7/3.8 双变体 + <3.8 标记包单独补齐，均用带 SSL 的 Python 执行）、vc_redist
+  官方下载来源、PYTHON_WIN7 解释器要求（此类环境通常无 SSL）、FLASK_DIST_DIR
+  指向既有目录的中断续跑方法。
+
+修复过程（环境操作，不涉及仓库文件）：
+1. wheels/ 重建 26 个 wheels（先按 3.8 下载后发现解释器实为 3.7，补 3.7 变体与
+   标记包；cp37/cp38 并存，pip 按解释器自动选择）；
+2. 从旧项目 3.数据校验程序/shell-flask/redist/ 复制 vc_redist_2019.x86.exe 与
+   vc_redist.x86.exe（14.29.30157.0）；
+3. 重跑 windows-build/build-win7.bat（FLASK_DIST_DIR 指向既有输出目录
+   dist/windows-20261001_230427，PYTHON_WIN7 指向 conda 环境）构建成功，
+   运行库修复附件已附；手动清理 BUILD_INCOMPLETE.txt。
+
+实际验证：
+1. 离线安装重放：HZPBCwin7x86 环境 --no-index --find-links wheels 全部依赖解析成功；
+2. 发布目录六项必需产物齐全（两个 EXE、运行库修复、Win7 说明、core、config），
+   BUILD_INCOMPLETE.txt 已清理；
+3. 发行包 core/frontend/web/index.html 与仓库源码 diff 一致（含今日全部 UI 改动）；
+4. pytest core/tests/test_web_app.py：39 passed / 0 failed。
+⚠ 发布警告：按用户 2026-10-01 的 config-real 优先打包要求，本包 config/ 携带
+本机真实业务配置（含"备份文件"），仅供内部使用，禁止对外分发；对外发版需换用
+公开空表头 config/。
+
+待办（网络恢复后）：
+git push origin laptop
+git fetch origin main:main && git switch main && git merge --ff-only laptop && git push origin main && git switch laptop
+（7099226 已在本地 laptop 分支，main 同步为纯快进。）
+
+删除清单：无。
+回滚：还原 .gitignore 与 shell-flask/README.md 即可；wheels/redist 为本地目录不受影响。
+【组件版本】不升级：打包环境修复与文档，未改变业务功能与审核行为。
