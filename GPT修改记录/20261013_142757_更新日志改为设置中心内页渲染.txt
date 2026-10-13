@@ -1,0 +1,27 @@
+时间：2026-10-13 14:27:57（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：2206ade（desktop 与 origin/main 同源）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。
+任务定位：用户要求更新日志入口改到设置中心导航栏（操作指引旁），且不打开 txt 文件、程序内直接渲染（"写进 json"——bridge 返回结构化数据、前端渲染）。
+
+修改内容：
+- web_app.py：open_update_log（打开外部 txt，130859 引入）删除——前端调用方随本批移除，避免死代码；新增 get_update_log()：按行解析 更新日志.txt（`── 日期 ──` 开条目、`【分组】` 开分组、`·` 前缀为条目；其余非空行并入当前分组容错手写变体；文件大标题行"审核工具 · 更新日志"排除），返回 {entries:[{date, groups:[{label, items}]}], source}；未随包返回空列表。
+- 前端 index.html：设置中心导航栏"操作指引"旁新增「更新日志」页签（data-tab=changelog，进 setSettingsTab 白名单）；renderChangelog() 异步取结构化数据渲染——每日期一张 guide-flow-card 卡（复用操作指引卡样式，默认展开），组徽章（新增=绿/优化=蓝/修复=红/其他=灰）+ 条目列表；未随包显示引导文案。关于页「更新日志」按钮与 openUpdateLog 函数移除（入口收敛到导航栏）。
+- 新增少量 CSS（changelog-group/badge/items）。
+- 更新日志.txt：追加 2026-10-13（界面）条目。
+- test_web_app.py：原 open_update_log 未随包用例改为 get_update_log 解析用例（真实仓库日志：条目非空/日期齐全/含"新增"分组；未随包返回空）。
+
+修改文件：
+- core/src/base_audit/web_app.py（-open_update_log +get_update_log）
+- core/frontend/web/index.html（导航页签 + renderChangelog + CSS -关于页按钮）
+- core/tests/test_web_app.py（用例替换）
+- 更新日志.txt（追加条目）
+- 本修改记录。
+
+验证：
+- 解析实测（真实仓库日志）：5 个日期条目，分组/条数与文件一致，无标题行混入。
+- test_web_app.py 41 过；内联 JS node --check 通过；前端静态核对（导航按钮/白名单/渲染函数/关于页按钮移除）全过。
+- 全量回归 846 过 / 7 跳 / 3 失败（3 项为既有缺 LibreOffice 环境项）。
+
+影响范围：设置中心新增页签与解析桥接；关于页按钮移除（入口收敛）；不触及业务执行链。

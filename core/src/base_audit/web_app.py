@@ -1107,27 +1107,48 @@ class WebApi:
         self._log(f"已打开使用说明：{path}")
         return self.state
 
-    def open_update_log(self) -> dict[str, Any]:
-        """打开随包的用户版更新日志（关于页入口）；未随包时给出明确提示。"""
-        import subprocess
+    def get_update_log(self) -> dict[str, Any]:
+        """解析用户版更新日志为结构化条目（设置中心「更新日志」页渲染用）。
 
+        文本格式（人写友好）：`── 日期 ──` 行开新条目，`【分组】` 行开分组，
+        `· ` 前缀为条目；其余非空行并入当前分组作条目（容错手写变体）。
+        未随包时返回空列表，前端展示引导文案。
+        """
         from .app_identity import update_log_path
         path = update_log_path()
         if path is None:
-            self.state["status"] = "当前环境未随包分发更新日志"
-            self._log("更新日志未随包（源码包/旧版包可能未收录），请到仓库根查看 更新日志.txt")
-            return self.state
-        try:
-            if sys.platform == "win32":
-                os.startfile(path)
-            else:
-                subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception as exc:
-            self.state["status"] = "无法打开更新日志"
-            self._log(f"打开更新日志失败：{exc}")
-            return self.state
-        self._log(f"已打开更新日志：{path}")
-        return self.state
+            return {"entries": [], "source": ""}
+        entries: list[dict[str, Any]] = []
+        current_entry: dict[str, Any] | None = None
+        current_group: dict[str, Any] | None = None
+        for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
+            line = raw_line.strip()
+            if not line or set(line) <= {"═", "─", " ", "\u3000"}:
+                continue
+            if "更新日志" in line and "审核工具" in line:
+                continue  # 文件大标题行
+            stripped = line.strip("─ ").strip()
+            if stripped and (line.startswith("─") or line.startswith("═")):
+                current_entry = {"date": stripped, "groups": []}
+                entries.append(current_entry)
+                current_group = None
+                continue
+            if line.startswith("【") and line.endswith("】"):
+                if current_entry is None:
+                    current_entry = {"date": "", "groups": []}
+                    entries.append(current_entry)
+                current_group = {"label": line[1:-1].strip(), "items": []}
+                current_entry["groups"].append(current_group)
+                continue
+            item = line[1:].strip() if line.startswith("·") else line
+            if current_entry is None:
+                current_entry = {"date": "", "groups": []}
+                entries.append(current_entry)
+            if current_group is None:
+                current_group = {"label": "其他", "items": []}
+                current_entry["groups"].append(current_group)
+            current_group["items"].append(item)
+        return {"entries": entries, "source": str(path)}
 
     def open_path(self, path: str) -> dict[str, Any]:
         """Open a local directory or file with the system default application."""
