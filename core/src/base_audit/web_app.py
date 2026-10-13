@@ -1148,16 +1148,34 @@ class WebApi:
                 continue  # 文件头部的维护说明行
             stripped = line.strip("─ ").strip()
             if stripped and (line.startswith("─") or line.startswith("═")):
-                current_entry = {"date": stripped, "groups": []}
-                entries.append(current_entry)
+                # 同一天可能出现多个块（补记/分次提交），按日期归并到同一条目：
+                # 取日期前缀（括号内说明如"（补充）"不参与归并判断），分组按标签
+                # 合并（同名分组续接同一列表），保证前端每个日期只有一张伸缩栏。
+                date_key = stripped.split("（", 1)[0].strip()
+                merged = next(
+                    (entry for entry in entries
+                     if entry["date"].split("（", 1)[0].strip() == date_key),
+                    None,
+                )
+                if merged is not None:
+                    current_entry = merged
+                else:
+                    current_entry = {"date": stripped, "groups": []}
+                    entries.append(current_entry)
                 current_group = None
                 continue
             if line.startswith("【") and line.endswith("】"):
                 if current_entry is None:
                     current_entry = {"date": "", "groups": []}
                     entries.append(current_entry)
-                current_group = {"label": line[1:-1].strip(), "items": []}
-                current_entry["groups"].append(current_group)
+                label = line[1:-1].strip()
+                current_group = next(
+                    (group for group in current_entry["groups"] if group["label"] == label),
+                    None,
+                )
+                if current_group is None:
+                    current_group = {"label": label, "items": []}
+                    current_entry["groups"].append(current_group)
                 continue
             item = line[1:].strip() if line.startswith("·") else line
             if current_entry is None:

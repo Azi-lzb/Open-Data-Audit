@@ -789,6 +789,30 @@ class WebAppCompatibilityTests(unittest.TestCase):
                 empty = WebApi(Path(folder)).get_update_log()
         self.assertEqual(empty, {"entries": [], "source": ""})
 
+    def test_get_update_log_merges_same_date_blocks(self) -> None:
+        """同一天多个块（补记/分次提交）归并为一条：同名分组续接，说明后缀不参与判断。"""
+        from base_audit import app_identity
+
+        with TemporaryDirectory() as folder:
+            log = Path(folder) / "更新日志.txt"
+            log.write_text(
+                "════\n  审核工具 · 更新日志\n════\n"
+                "── 2026-10-13（第一批） ──\n【新增】\n· 甲\n"
+                "── 2026-10-13（补记） ──\n【新增】\n· 乙\n【优化】\n· 丙\n"
+                "── 2026-10-12 ──\n【新增】\n· 丁\n",
+                encoding="utf-8",
+            )
+            api = WebApi(Path(folder))
+            with patch.object(app_identity, "update_log_path", return_value=log):
+                result = api.get_update_log()
+        self.assertEqual(len(result["entries"]), 2)
+        merged = result["entries"][0]
+        self.assertTrue(merged["date"].startswith("2026-10-13"))
+        self.assertEqual(
+            {group["label"]: len(group["items"]) for group in merged["groups"]},
+            {"新增": 2, "优化": 1},
+        )
+
     def test_get_faq_returns_items_and_degrades_when_missing(self) -> None:
         """常见问题 JSON 原样返回；未随包/JSON 损坏时降级为空列表。"""
         from base_audit import app_identity
