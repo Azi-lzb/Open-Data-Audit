@@ -31,6 +31,7 @@ CHECK_DEFINITIONS = (
     ("settings", "转表设置完整且取值有效"),
     ("embedded_template", "内嵌金融表单模板可识别"),
     ("form_references", "报表清单引用的表单工作表存在"),
+    ("form_write_flag", "报表清单是否启用写入取值有效"),
 )
 
 
@@ -311,6 +312,40 @@ def check_forms_config(path: Path | str) -> dict[str, Any]:
             )
         else:
             _set_check(report, "form_references", "not_run", "报表清单工作表或运行时表头缺失。")
+
+        # E 列「是否启用写入」取值检查：允许 空/是/否（宽容大小写与 0/1），
+        # 其他值按笔误警告（运行时按禁用处理会产生"报表没出来"的困惑）。
+        flag_start = len(report["errors"])
+        if FORM_SHEET in names and form_headers is not None:
+            bad_rows: list[str] = []
+            for row_number, row in enumerate(
+                book[FORM_SHEET].iter_rows(min_row=2, values_only=True), start=2
+            ):
+                flag = (
+                    str(row[form_headers["是否启用写入"]]).strip()
+                    if "是否启用写入" in form_headers and form_headers["是否启用写入"] < len(row)
+                    else ""
+                )
+                if flag and flag not in {"是", "否", "1", "0", "true", "false", "True", "False", "Y", "y"}:
+                    bad_rows.append(f"第{row_number}行（{flag}）")
+            if bad_rows:
+                _add_issue(
+                    report,
+                    "warnings",
+                    "「是否启用写入」存在无法识别的取值（运行时按不写入处理）："
+                    + "、".join(bad_rows[:8]),
+                    sheet=FORM_SHEET,
+                    field="是否启用写入",
+                )
+            _finish_check(
+                report,
+                "form_write_flag",
+                flag_start,
+                "已校验报表清单「是否启用写入」列取值（空/是/否）。" if bad_rows
+                else "报表清单「是否启用写入」列取值全部有效（或未启用该列）。",
+            )
+        else:
+            _set_check(report, "form_write_flag", "not_run", "报表清单工作表缺失。")
     finally:
         book.close()
 

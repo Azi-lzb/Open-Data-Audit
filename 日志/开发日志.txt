@@ -5,6 +5,18 @@
 （面向开发者，记录打包、内部机制、测试基建等开发向变更；逐文件细节见 GPT修改记录/。
  用户可感知的功能变化见 更新日志.txt——两份日志在每轮提交时同步维护。）
 
+────────────────── 2026-10-13（S3F5 启用写入） ──────────────────
+【功能】
+· 报表清单 E 列「是否启用写入」：空/是=写入，否/0/false=禁用；form_template 新增 form_write_enabled 共用判定，
+  TemplateMeta（max_col=5）与 fast_ooxml._read_form_list（cells[5]）双侧读取；禁用代码集 TemplateMeta.disabled_form_codes /
+  CompiledTemplate.disabled_form_codes，渲染时无条件删除对应工作表（不受 delete_empty_sheets 影响）
+【检查】
+· forms_config_check 新增 form_write_flag：非法取值（非 空/是/否/0/1/true/false/y）按警告提示，运行时按不写入处理
+【配置】
+· config-real 3.3 报表清单 E1 表头已加（数据行留空=全启用，行为不变；备份在 备份文件夹/）；config_guide 报表清单/是否启用写入两条说明同步
+【测试】
+· test_central_forms 新增双渲染器（OPENPYXL/FAST_OOXML）write-flag 过滤用例；test_s3_forms_config_check 检查清单补 form_write_flag
+
 ────────────────── 2026-10-13（Q/A 框架） ──────────────────
 【界面】
 · 「更新日志」页签升级为「更新与答疑」：子页切换（log/faq，localStorage 记忆）；renderChangelog 改名 renderUpdates；

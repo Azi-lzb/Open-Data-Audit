@@ -210,6 +210,7 @@ class CompiledTemplate:
     template_bytes: bytes
     renderer_version: int
     forms: list[dict[str, str]] = field(default_factory=list)
+    disabled_form_codes: set[str] = field(default_factory=set)
     sheets: dict[str, _CompiledSheet] = field(default_factory=dict)
     part_order: list[str] = field(default_factory=list)
     parts: dict[str, bytes] = field(default_factory=dict)
@@ -310,6 +311,7 @@ class TemplateCompiler:
                 stage="template_compile", sheet="报表清单", part=listing_part or "(未解析)",
             )
         compiled.forms = self._read_form_list(parts[listing_part], shared)
+        compiled.disabled_form_codes = set(getattr(self, "_disabled_form_codes", ()))
         form_codes = {item["报表代码"] for item in compiled.forms}
 
         for entry in compiled.sheet_registry:
@@ -337,12 +339,20 @@ class TemplateCompiler:
         return values
 
     def _read_form_list(self, part_xml: bytes, shared: list[str]) -> list[dict[str, str]]:
+        from .form_template import form_write_enabled
+
         forms = []
+        disabled: set[str] = set()
         for row_index, _attrs, cells, _styles, _hidden in _parse_rows(part_xml.decode("utf-8")):
             if row_index < 2:
                 continue
             code = _cell_text(cells.get(1), shared).strip()
             if not code or "A" not in code:
+                continue
+            # E 列「是否启用写入」=否 的报表记入禁用集（与 openpyxl TemplateMeta
+            # 同口径）：渲染时其工作表从输出删除，即使比较文件有数据也不写入。
+            if not form_write_enabled(_cell_text(cells.get(5), shared)):
+                disabled.add(code)
                 continue
             forms.append({
                 "报表代码": code,
@@ -350,6 +360,7 @@ class TemplateCompiler:
                 "频度": _cell_text(cells.get(3), shared).strip(),
                 "批次": _cell_text(cells.get(4), shared).strip(),
             })
+        self._disabled_form_codes = disabled
         return forms
 
     def _compile_sheet(self, name: str, part: str, parts: dict[str, bytes],
@@ -669,6 +680,10 @@ class FastOoxmlRenderer:
         # （顺序字段经 old→new 映射重算，支持一次删多表）。
         plan = SheetPlan(self.compiled.sheet_registry)
         for sheet_name in self.compiled.internal_config_sheets:
+            plan.mark_deleted(sheet_name)
+        # 报表清单「是否启用写入」=否 的报表：工作表无条件从输出删除，
+        # 不受 delete_empty_sheets 影响（用户语义：不写入 = 输出中不存在）。
+        for sheet_name in self.compiled.disabled_form_codes:
             plan.mark_deleted(sheet_name)
 
         candidates: set[str] = set()

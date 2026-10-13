@@ -95,6 +95,65 @@ class RenderFormsTests(unittest.TestCase):
             finally:
                 book.close()
 
+    def test_write_flag_no_column_skips_disabled_form_both_renderers(self):
+        """报表清单 E 列「是否启用写入」=否 的报表不写入（双渲染器同口径）；
+        空/是正常写入；不在清单的表仍不受影响。"""
+        from base_audit.systems.s3_central_statistics.renderers import (
+            RENDERER_FAST_OOXML, RENDERER_OPENPYXL,
+        )
+
+        def build_template_with_flag(path: Path) -> None:
+            book = Workbook()
+            listing = book.active
+            listing.title = "报表清单"
+            listing.append(("报表代码", "报表名称", "频度", "批次", "是否启用写入"))
+            listing.append(("A1411", "资产负债项目月报表", "月", "1", None))      # 空 = 启用
+            listing.append(("A1412", "存款期限结构情况表", "月", "1", "否"))       # 禁用
+            listing.append(("A1413", "涉农贷款简报", "月", "2", "是"))             # 显式启用
+            for code in ("A1411", "A1412", "A1413"):
+                sheet = book.create_sheet(code)
+                sheet.append(("指标代码", "指标名称", "行序号", "余额"))
+                sheet.append(("12A09", "一、房地产开发贷款", 1, None))
+            book.save(path)
+            book.close()
+
+        def build_comparison_all_forms(path: Path) -> None:
+            book = Workbook()
+            sheet = book.active
+            sheet.title = "2026年8月对比结果"
+            sheet.append(COMPARE_HEADERS)
+            for indicator in ("12A09",):
+                for batch in ("1", "2"):
+                    sheet.append(("人民币", "2026-08-31", "6k0i", "示例甲银行", "4400000", "广东省",
+                                  indicator, indicator, "一、房地产开发贷款", "余额", "人民币", "月", batch,
+                                  120.5, 100.0, 20.5, 0.205, "", "", "", ""))
+            book.save(path)
+            book.close()
+
+        for mode in (RENDERER_OPENPYXL, RENDERER_FAST_OOXML):
+            with self.subTest(mode=mode):
+                with TemporaryDirectory() as folder:
+                    root = Path(folder)
+                    template = root / "金融表单.xlsx"
+                    comparison = root / "比较结果.xlsx"
+                    build_template_with_flag(template)
+                    build_comparison_all_forms(comparison)
+                    outputs = ensure_split_central_configs(root / "config")
+
+                    result = render_financial_forms(
+                        comparison_file=comparison, template_file=template,
+                        output_dir=root / "输出", config_path=(outputs["common"], outputs["forms"]),
+                        render_mode=mode,
+                    )
+                    self.assertTrue(result.files)
+                    book = load_workbook(result.files[0], read_only=True)
+                    try:
+                        self.assertIn("A1411", book.sheetnames)    # 空 = 启用
+                        self.assertIn("A1413", book.sheetnames)    # 是 = 启用
+                        self.assertNotIn("A1412", book.sheetnames)  # 否 = 不写入
+                    finally:
+                        book.close()
+
     def test_embedded_config_is_used_as_template_and_not_emitted(self):
         with TemporaryDirectory() as folder:
             root = Path(folder)

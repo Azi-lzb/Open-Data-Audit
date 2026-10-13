@@ -1,0 +1,23 @@
+时间：2026-10-13 15:36:44（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：106c434（desktop 与 origin/main 同源）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。
+任务定位：S3-F05（比较文件到金融表单，指标比较拆分）配置驱动增强——用户需求：通过配置主动选择要拆分的报表，「报表清单」E 列加"是否启用写入"，比较文件有数据但未启用的报表不写入。
+
+修改内容：
+- 语义：E 列 空/是=启用写入；否/0/false（宽容大小写）=禁用——禁用报表即使比较结果有数据也不生成，输出文件中不存在该工作表（无条件删除，不受"删除空表"设置影响）。取值非法（错别字等）运行时按不写入处理，配置检查给警告。
+- form_template.py：新增 form_write_enabled() 共用判定（注释注明 FAST_OOXML 同口径同步）；TemplateMeta 读清单 max_col=4→5，禁用代码收集进 disabled_form_codes；render_org_workbook 删除内嵌配置页后无条件删除禁用报表工作表。
+- fast_ooxml.py：_read_form_list 读 cells[5] 同口径剔除并收集 _disabled_form_codes；CompiledTemplate 新增 disabled_form_codes 字段；渲染删表计划（SheetPlan）对禁用代码 mark_deleted。
+- forms_config_check.py：CHECK_DEFINITIONS 新增 form_write_flag（报表清单是否启用写入取值有效）；取值非法进 warnings（不阻断）。
+- config_guide.py：central_forms 册「报表清单」描述更新 + 新增「是否启用写入」说明。
+- 本机 config-real 3.3：报表清单 E1 表头加"是否启用写入"（数据行留空=全启用，行为不变；备份 备份文件夹/3.3…_报表清单E列同步前备份_*.xlsx）。
+- 测试：test_central_forms 新增双渲染器（OPENPYXL/FAST_OOXML subTest）write-flag 用例（空/是=写入、否=不写入、比较数据齐全）；test_s3_forms_config_check 检查清单补 form_write_flag。
+
+验证：
+- test_central_forms 3 过 2 子测试过（双模式）；test_s3_forms_config_check 9 过；S3 组 442 过。
+- 全量 848 过 / 7 跳 / 3 失败（3 项为既有缺 LibreOffice 环境项），基线一致。
+
+影响范围：S3-F05 报表清单解析与渲染删除决策、3.3 配置检查项；不触及比较引擎、S1/S2 与其他 S3 功能。默认（E 列留空）行为与旧版完全一致。
+
+版本管理：S3-F05 功能增强，提交时评估 S3 组件 SemVer（建议 MINOR：新增配置能力，向后兼容）。

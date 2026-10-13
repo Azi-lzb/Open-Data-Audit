@@ -78,7 +78,8 @@ def test_formal_config_passes_and_is_not_modified() -> None:
     assert report["passed"] is True
     assert report["errors"] == []
     assert {check["id"] for check in report["checks"]} == {
-        "file_read", "required_sheets", "settings", "embedded_template", "form_references"
+        "file_read", "required_sheets", "settings", "embedded_template", "form_references",
+        "form_write_flag",
     }
     assert any(stat["name"] == "转表设置" for stat in report["sheet_stats"])
     json.dumps(report, ensure_ascii=False)

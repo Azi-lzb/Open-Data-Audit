@@ -1,10 +1,12 @@
 """大集中统计系统：金融表单模板读取与渲染。
 
-模板结构（金融表单 xlsx）：「报表清单」表（报表代码|报表名称|频度|批次）+
+模板结构（金融表单 xlsx）：「报表清单」表（报表代码|报表名称|频度|批次|是否启用写入）+
 各报表工作表（首行表头：指标代码|指标名称|行序号|<当期数据列...>，数据行
 第 1 列为指标代码）。渲染按 VBA C系统导数转表 语义：表头扩为 本期/上期/
 增减额/环比 四块，按 业务类+指标代码+数据属性+币种 匹配比较结果回填；
 警戒色应用到每指标组的四个单元格；空行隐藏、空表按配置删除。
+「报表清单」E 列「是否启用写入」：空/是=写入；否=该报表不写入（即使比较
+文件有数据），清单加载层直接剔除，OPENPYXL 与 FAST_OOXML 两渲染器同口径。
 
 性能设计：模板元数据（表清单、清理列、每行回填键计划）只在
 ``load_template_meta`` 计算一次、跨机构复用；每个机构只写有数据命中的
@@ -18,6 +20,15 @@ from io import BytesIO
 from pathlib import Path
 
 from openpyxl import load_workbook
+
+
+def form_write_enabled(raw: object) -> bool:
+    """报表清单 E 列「是否启用写入」：空/是=启用；否/0/false=禁用（宽容大小写）。
+
+    FAST_OOXML 渲染器 (_read_form_list) 使用同一判定口径，两处修改需同步。
+    """
+    text = str(raw or "").strip().lower()
+    return text not in {"否", "0", "false"}
 from openpyxl.styles import PatternFill
 
 from .comparison_exporter import VBA_COLOR_PALETTE
@@ -93,9 +104,15 @@ class TemplateMeta:
             if "报表清单" not in book.sheetnames:
                 raise FormTemplateError("金融表单模板缺少「报表清单」工作表")
             self.forms: list[dict[str, str]] = []
-            for row in book["报表清单"].iter_rows(min_row=2, max_col=4, values_only=True):
+            self.disabled_form_codes: set[str] = set()
+            for row in book["报表清单"].iter_rows(min_row=2, max_col=5, values_only=True):
                 code = str(row[0] or "").strip()
                 if not code or "A" not in code:
+                    continue
+                # E 列「是否启用写入」=否 的报表记入禁用集：渲染时工作表从输出
+                # 删除（无条件，不受 delete_empty_sheets 影响），不进 forms。
+                if not form_write_enabled(row[4] if len(row) > 4 else None):
+                    self.disabled_form_codes.add(code)
                     continue
                 self.forms.append({
                     "报表代码": code,
@@ -292,6 +309,10 @@ def render_org_workbook(
     filled = 0
 
     for sheet_name in meta.internal_config_sheets:
+        if sheet_name in book.sheetnames:
+            book.remove(book[sheet_name])
+    # 报表清单「是否启用写入」=否 的报表：工作表无条件从输出删除。
+    for sheet_name in meta.disabled_form_codes:
         if sheet_name in book.sheetnames:
             book.remove(book[sheet_name])
 
