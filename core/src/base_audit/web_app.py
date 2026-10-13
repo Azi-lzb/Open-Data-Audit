@@ -1107,6 +1107,28 @@ class WebApi:
         self._log(f"已打开使用说明：{path}")
         return self.state
 
+    def open_update_log(self) -> dict[str, Any]:
+        """打开随包的用户版更新日志（关于页入口）；未随包时给出明确提示。"""
+        import subprocess
+
+        from .app_identity import update_log_path
+        path = update_log_path()
+        if path is None:
+            self.state["status"] = "当前环境未随包分发更新日志"
+            self._log("更新日志未随包（源码包/旧版包可能未收录），请到仓库根查看 更新日志.txt")
+            return self.state
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)
+            else:
+                subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as exc:
+            self.state["status"] = "无法打开更新日志"
+            self._log(f"打开更新日志失败：{exc}")
+            return self.state
+        self._log(f"已打开更新日志：{path}")
+        return self.state
+
     def open_path(self, path: str) -> dict[str, Any]:
         """Open a local directory or file with the system default application."""
         import os

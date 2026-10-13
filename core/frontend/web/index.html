@@ -1041,6 +1041,7 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     </div>
     <p class="about-version" id="appVersion">__AUDIT_APP_TITLE__</p>
     <div class="about-actions">
+      <button class="btn tiny" onclick="openUpdateLog()" title="查看每次更新了什么功能">更新日志</button>
       <button class="btn" onclick="closeAbout()">知道了</button>
     </div>
   </div>
@@ -2754,6 +2755,10 @@ async function openPath(p){await bridge.api.open_path(p);await refresh()}
 async function openGuide(){await bridge.api.open_user_guide()}
 function openAbout(){document.getElementById('aboutMask').style.display='flex'}
 function closeAbout(){document.getElementById('aboutMask').style.display='none'}
+/* 更新日志：用系统默认程序打开随包的 更新日志.txt（关于页按钮）。 */
+async function openUpdateLog(){
+  try{await bridge.api.open_update_log();}catch(e){showToast('无法打开更新日志：'+e);}
+}
 let pendingConfirm=null;
 
 function openAuditEgg(){registerAuditEggClick();}

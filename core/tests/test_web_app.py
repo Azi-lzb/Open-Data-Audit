@@ -772,6 +772,16 @@ class WebAppCompatibilityTests(unittest.TestCase):
             self.assertFalse(last["detail"])
             thread.return_value.start.assert_called_once()
 
+    def test_open_update_log_reports_missing_package_file(self) -> None:
+        """更新日志未随包（源码包/旧版包）：明示状态与日志，不抛异常。"""
+        from base_audit import app_identity
+
+        with TemporaryDirectory() as folder:
+            api = WebApi(Path(folder))
+            with patch.object(app_identity, "update_log_path", return_value=None):
+                api.open_update_log()
+        self.assertEqual(api.state["status"], "当前环境未随包分发更新日志")
+
     def test_export_diagnostic_workbook_writes_structured_sheets(self) -> None:
         with TemporaryDirectory() as folder:
             api = WebApi(Path(folder))

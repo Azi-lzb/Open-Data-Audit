@@ -1,0 +1,18 @@
+时间：2026-10-13 13:08:59（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：97367e8（desktop 与 origin/main 同源）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。
+任务定位：承接 20261013_130104（更新日志随四个打包入口分发），用户批准的可选后续——关于页加"更新日志"入口。
+
+修改内容：
+- web_app.py 新增 open_update_log()：update_log_path() 定位随包更新日志；存在则用系统默认程序打开（Windows os.startfile / 其他平台 xdg-open），未随包时状态与日志明示"当前环境未随包分发更新日志"，不抛异常。
+- 前端 index.html：关于页操作区新增「更新日志」小按钮（openUpdateLog → bridge.api.open_update_log），位于"知道了"旁。
+- 更新日志.txt：追加 2026-10-13（补充）条目记录本入口与随包分发。
+- test_web_app.py：新增未随包场景用例（patch app_identity.update_log_path 返回 None，断言状态文案）。
+
+验证：
+- test_web_app.py 41 过 + test_app_identity.py 19 过；内联 JS node --check 通过。
+- 全量回归未重跑（展示入口小改，无执行链变化；上轮基线 845/7/3）。
+
+影响范围：关于页交互与诊断打开通道；不触及业务执行链。
