@@ -27,6 +27,7 @@ WITH_LOCAL_CONFIG=0
 [ -d "$CORE/src/base_audit" ] || { echo "[错误] 未找到共享核心：$CORE"; exit 1; }
 [ -f "$CORE/frontend/web/index.html" ] || { echo "[错误] 未找到共享前端 index.html"; exit 1; }
 [ -f "$ROOT/版本管理/VERSION_MANIFEST.json" ] || { echo "[错误] 未找到版本清单：版本管理/VERSION_MANIFEST.json"; exit 1; }
+[ -f "$ROOT/更新日志.txt" ] || { echo "[错误] 未找到用户版更新日志：更新日志.txt"; exit 1; }
 [ -s "$CORE/frontend/assets/app-icon.png" ] || { echo "[错误] 未找到应用图标：core/frontend/assets/app-icon.png"; exit 1; }
 [ -s "$CORE/frontend/assets/app-icon.ico" ] || { echo "[错误] 未找到 favicon 图标：core/frontend/assets/app-icon.ico"; exit 1; }
 
@@ -55,6 +56,7 @@ cp "$SCRIPT_DIR/app.py" "$PKG/"
 cp "$SCRIPT_DIR/run.py" "$PKG/"
 cp "$SCRIPT_DIR/requirements.txt" "$PKG/"
 cp "$SCRIPT_DIR/README.md" "$PKG/"
+cp "$ROOT/更新日志.txt" "$PKG/"
 cp "$SCRIPT_DIR/Linux-1-启动审核工具.sh" "$PKG/"
 cp "$SCRIPT_DIR/Linux-4-打包UOS源码验收包.sh" "$SCRIPT_DIR/Linux-2-打包DEB与TARGZ.sh" "$PKG/"
 cp "$SCRIPT_DIR/Linux-3-测试发行包启动.sh" "$PKG/"

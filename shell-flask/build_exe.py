@@ -38,7 +38,7 @@ CONFIG_TEMPLATE = next(
 if str(CORE / "src") not in sys.path:
     sys.path.insert(0, str(CORE / "src"))
 
-from base_audit.app_identity import app_title, executable_stem, icon_path, load_product_info, manifest_path
+from base_audit.app_identity import app_title, executable_stem, icon_path, load_product_info, manifest_path, update_log_path
 
 COMMON_HIDDEN = [
     "base_audit.excel_com",
@@ -121,6 +121,9 @@ def build(win7: bool) -> int:
     for label, path in (("应用图标", icon), ("版本清单", manifest), ("应用资产目录", assets)):
         if not path.exists():
             raise SystemExit(f"[错误] 未找到{label}：{path}")
+    update_log = update_log_path()
+    if update_log is None:
+        raise SystemExit("[错误] 未找到用户版更新日志：更新日志.txt（仓库根）。")
     DIST.mkdir(parents=True, exist_ok=True)
 
     args = [
@@ -139,6 +142,8 @@ def build(win7: bool) -> int:
         "--icon", str(icon),
         "--add-data", f"{manifest}{os.pathsep}版本管理",
         "--add-data", f"{assets}{os.pathsep}assets",
+        # 用户版更新日志随包分发（运行期 update_log_path 从 _MEIPASS 根定位）。
+        "--add-data", f"{update_log}{os.pathsep}.",
     ]
     if sys.platform == "win32":
         version_file = write_version_file(name, product)

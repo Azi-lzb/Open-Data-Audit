@@ -1,0 +1,26 @@
+时间：2026-10-13 13:01:04（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：5508237（desktop 与 origin/main 同源）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。
+任务定位：用户要求打包时把用户版更新日志（更新日志.txt，仓库根）写进包里。承接 laptop 建立的 更新日志.txt（游戏公告式追加维护）与本会话 20261013_122608 的 S1F1 增强批次。
+
+修改内容（四个打包入口 + 统一定位函数）：
+- app_identity.py 新增 update_log_path()：冻结态返回 _MEIPASS/更新日志.txt，源码态返回仓库根/更新日志.txt（manifest_path().parent.parent），文件不存在返回 None 由调用方降级。
+- shell-flask/build_exe.py 与 shell-pywebview/build_exe.py：预检更新日志存在（缺失明确报错退出）；PyInstaller --add-data 送进 _MEIPASS 根。
+- shell-flask/Linux-2-打包DEB与TARGZ.sh：预检存在；PyInstaller --add-data "...:."（onedir 产物）+ cp 到 PAYLOAD 根（deb/tar.gz 文件模式）。
+- shell-flask/Linux-4-打包UOS源码验收包.sh：预检存在；cp 到源码验收包根（源码模式 app_identity 按 manifest 根定位，包根即仓库根布局）。
+
+修改文件：
+- core/src/base_audit/app_identity.py（update_log_path）
+- shell-flask/build_exe.py、shell-pywebview/build_exe.py、shell-flask/Linux-2-打包DEB与TARGZ.sh、shell-flask/Linux-4-打包UOS源码验收包.sh
+- core/tests/test_app_identity.py：新增 update_log_path 源码模式用例。
+- 本修改记录。
+
+验证：
+- 两个 build_exe.py ast 语法通过；两个 .sh bash -n 通过；四个脚本"更新日志"接线数核对（2/2/3/2）。
+- update_log_path 源码模式实测定位于仓库根且文件存在；test_app_identity 19 过。
+- 全量回归 845 过 / 7 跳 / 3 失败（3 项为既有缺 LibreOffice 环境项）。
+- 真实打包冒烟待下次执行打包时验证（产物内 更新日志.txt 存在性）。
+
+影响范围：打包资源清单与身份定位函数；不触及业务执行链。每次发版前在 更新日志.txt 顶部追加条目即可随包分发（追加格式见文件内既有条目）。

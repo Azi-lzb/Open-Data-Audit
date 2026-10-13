@@ -68,6 +68,19 @@ def icon_path(suffix: str = ".png") -> Path:
     return root / ("app-icon" + suffix)
 
 
+def update_log_path() -> Path | None:
+    """用户版更新日志（更新日志.txt）的随包路径；未随包时返回 None。
+
+    打包脚本把仓库根的 更新日志.txt 送进冻结包根目录（_MEIPASS）或
+    源码发行包根目录；源码开发时读仓库根。调用方按 None 自行降级。
+    """
+    if getattr(sys, "frozen", False):
+        candidate = Path(sys._MEIPASS) / "更新日志.txt"
+    else:
+        candidate = manifest_path().parent.parent / "更新日志.txt"
+    return candidate if candidate.is_file() else None
+
+
 def render_app_page(source: str, icon_url: str | None = None) -> str:
     """为同一前端页面注入名称/版本，临时 pywebview 页面使用绝对图标 URI。"""
     info = load_product_info()

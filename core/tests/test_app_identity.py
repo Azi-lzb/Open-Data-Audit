@@ -35,6 +35,13 @@ def _write_manifest(path: Path, *, version: object = "26.1.0.0", name: str = "�
     return path
 
 
+def test_update_log_path_resolves_repo_root() -> None:
+    """源码模式定位仓库根的更新日志；随包机制由打包脚本保证。"""
+    path = app_identity.update_log_path()
+    assert path is not None and path.name == "更新日志.txt"
+    assert path.is_file()
+
+
 def test_manifest_path_resolves_source_and_frozen_locations(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
