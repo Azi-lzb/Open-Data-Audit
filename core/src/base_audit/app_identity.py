@@ -69,15 +69,15 @@ def icon_path(suffix: str = ".png") -> Path:
 
 
 def update_log_path() -> Path | None:
-    """用户版更新日志（更新日志.txt）的随包路径；未随包时返回 None。
+    """用户版更新日志（日志/更新日志.txt）的随包路径；未随包时返回 None。
 
-    打包脚本把仓库根的 更新日志.txt 送进冻结包根目录（_MEIPASS）或
-    源码发行包根目录；源码开发时读仓库根。调用方按 None 自行降级。
+    打包脚本把仓库根的 日志/更新日志.txt 送进冻结包与源码发行包的
+    日志/ 目录；源码开发时读仓库根同名目录。调用方按 None 自行降级。
     """
     if getattr(sys, "frozen", False):
-        candidate = Path(sys._MEIPASS) / "更新日志.txt"
+        candidate = Path(sys._MEIPASS) / "日志" / "更新日志.txt"
     else:
-        candidate = manifest_path().parent.parent / "更新日志.txt"
+        candidate = manifest_path().parent.parent / "日志" / "更新日志.txt"
     return candidate if candidate.is_file() else None
 
 

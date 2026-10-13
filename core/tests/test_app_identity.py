@@ -35,10 +35,11 @@ def _write_manifest(path: Path, *, version: object = "26.1.0.0", name: str = "�
     return path
 
 
-def test_update_log_path_resolves_repo_root() -> None:
-    """源码模式定位仓库根的更新日志；随包机制由打包脚本保证。"""
+def test_update_log_path_resolves_repo_log_folder() -> None:
+    """源码模式定位仓库 日志/更新日志.txt；随包机制由打包脚本保证。"""
     path = app_identity.update_log_path()
     assert path is not None and path.name == "更新日志.txt"
+    assert path.parent.name == "日志"
     assert path.is_file()
 
 

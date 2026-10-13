@@ -90,7 +90,7 @@ done
 [ -d "$ROOT/core/src/base_audit" ] || { echo "[错误] 缺少共享核心：$ROOT/core/src/base_audit" >&2; exit 1; }
 [ -f "$ROOT/core/frontend/web/index.html" ] || { echo '[错误] 缺少前端 index.html。' >&2; exit 1; }
 [ -f "$ROOT/版本管理/VERSION_MANIFEST.json" ] || { echo '[错误] 缺少版本清单：版本管理/VERSION_MANIFEST.json。' >&2; exit 1; }
-[ -f "$ROOT/更新日志.txt" ] || { echo '[错误] 缺少用户版更新日志：更新日志.txt。' >&2; exit 1; }
+[ -f "$ROOT/日志/更新日志.txt" ] || { echo '[错误] 缺少用户版更新日志：日志/更新日志.txt。' >&2; exit 1; }
 [ -s "$ROOT/core/frontend/assets/app-icon.png" ] || { echo '[错误] 缺少应用图标：core/frontend/assets/app-icon.png。' >&2; exit 1; }
 [ -s "$ROOT/core/frontend/assets/app-icon.ico" ] || { echo '[错误] 缺少 favicon 图标：core/frontend/assets/app-icon.ico。' >&2; exit 1; }
 if [ ! -f "$ROOT/基础数据审核工具使用说明.docx" ] && [ ! -f "$ROOT/core/基础数据审核工具使用说明.docx" ]; then
@@ -256,7 +256,7 @@ set -- --noconfirm --clean --onedir --name "$LINUX_NAME" \
     --paths "$ROOT/core/src" \
     --add-data "$ROOT/core/frontend/assets:assets" \
     --add-data "$ROOT/版本管理/VERSION_MANIFEST.json:版本管理" \
-    --add-data "$ROOT/更新日志.txt:." \
+    --add-data "$ROOT/日志/更新日志.txt:日志" \
     --collect-submodules base_audit \
     --collect-all flask \
     --collect-all openpyxl \
@@ -325,7 +325,8 @@ cp -R "$FROZEN_DIR/." "$PAYLOAD/app/"
 printf '%s\n' "$LINUX_NAME" > "$PAYLOAD/app/executable-name.txt"
 cp -R "$ROOT/core/frontend/." "$PAYLOAD/core/frontend/"
 cp "$ROOT/版本管理/VERSION_MANIFEST.json" "$PAYLOAD/版本管理/VERSION_MANIFEST.json"
-cp "$ROOT/更新日志.txt" "$PAYLOAD/更新日志.txt"
+mkdir -p "$PAYLOAD/日志"
+cp "$ROOT/日志/更新日志.txt" "$PAYLOAD/日志/更新日志.txt"
 cp "$ROOT/core/frontend/assets/app-icon.png" "$STAGE/usr/share/pixmaps/base-audit-v3.png"
 for doc in "$ROOT/基础数据审核工具使用说明.docx" "$ROOT/core/基础数据审核工具使用说明.docx"; do
     if [ -f "$doc" ]; then cp "$doc" "$PAYLOAD/core/"; break; fi

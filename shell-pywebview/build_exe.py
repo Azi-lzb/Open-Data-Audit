@@ -81,7 +81,7 @@ def build(win7: bool) -> int:
             raise SystemExit(f"[错误] 未找到{label}：{path}")
     update_log = update_log_path()
     if update_log is None:
-        raise SystemExit("[错误] 未找到用户版更新日志：更新日志.txt（仓库根）。")
+        raise SystemExit("[错误] 未找到用户版更新日志：日志/更新日志.txt（仓库根）。")
     DIST.mkdir(parents=True, exist_ok=True)
 
     args = [
@@ -92,8 +92,8 @@ def build(win7: bool) -> int:
         "--add-data", f"{CORE / 'frontend' / 'web'}{os_pathSep()}web",
         "--add-data", f"{manifest}{os_pathSep()}版本管理",
         "--add-data", f"{assets}{os_pathSep()}assets",
-        # 用户版更新日志随包分发（运行期 update_log_path 从 _MEIPASS 根定位）。
-        "--add-data", f"{update_log}{os_pathSep()}.",
+        # 用户版更新日志随包分发（运行期 update_log_path 从 _MEIPASS/日志 定位）。
+        "--add-data", f"{update_log}{os_pathSep()}日志",
         "--icon", str(icon),
         "--distpath", str(DIST),
         "--workpath", str(ROOT / "build"),

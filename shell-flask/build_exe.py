@@ -123,7 +123,7 @@ def build(win7: bool) -> int:
             raise SystemExit(f"[错误] 未找到{label}：{path}")
     update_log = update_log_path()
     if update_log is None:
-        raise SystemExit("[错误] 未找到用户版更新日志：更新日志.txt（仓库根）。")
+        raise SystemExit("[错误] 未找到用户版更新日志：日志/更新日志.txt（仓库根）。")
     DIST.mkdir(parents=True, exist_ok=True)
 
     args = [
