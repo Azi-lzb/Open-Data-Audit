@@ -620,6 +620,11 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 .changelog-items li+li{border-top:1px dashed var(--border)}
 .updates-subtabs{display:flex;gap:8px;margin-bottom:12px}
 .faq-answer{font-size:12.5px;color:var(--text);line-height:1.8;word-break:break-word}
+.faq-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.faq-searchbar{margin-bottom:6px}
+.faq-searchbar input{font-size:12.5px}
+.faq-count{margin:0 0 10px;font-size:12px;color:var(--text-3)}
+.faq-cat-tag{margin-left:auto;flex:none;font-size:11px;color:var(--text-3);background:var(--accent-soft);border-radius:6px;padding:1px 7px}
 .guide-flow-row{display:flex;gap:10px;align-items:baseline}
 .guide-flow-row .guide-key{flex:none;width:48px;font-size:12px;font-weight:600;color:var(--text-2)}
 .guide-flow-row .guide-val{flex:1;min-width:0;font-size:12.5px;color:var(--text);line-height:1.7;word-break:break-all}
@@ -1925,11 +1930,10 @@ async function renderUpdates(){
         return;
       }
       body.className='';
-      body.innerHTML=items.map(function(item,i){
-        return '<details class="guide-flow-card"'+(i===0?' open':'')
-          +'><summary><span class="guide-flow-num">Q'+(i+1)+'</span><span>'+esc(item.question||'')+'</span></summary>'
-          +'<div class="guide-flow-body"><div class="faq-answer">'+esc(item.answer||'')+'</div></div></details>';
-      }).join('');
+      FAQ_ALL=items;
+      FAQ_CATEGORY='全部';
+      FAQ_KEYWORD='';
+      renderFaqList(body);
     }
   }catch(e){
     body.className='inspector-empty';
@@ -1949,6 +1953,64 @@ function renderGuide(){
         +'</div></div></details>';
     }).join('');
   pane.innerHTML=html;
+}
+/* ---- 常见问题列表：分类标签 + 关键字搜索（问题与答案全文匹配，可叠加） ---- */
+let FAQ_ALL=[];
+let FAQ_CATEGORY='全部';
+let FAQ_KEYWORD='';
+const FAQ_CATEGORY_ORDER=['全部','准备与数据','逐笔统计系统','报表采集系统','大集中统计系统','通用'];
+function setFaqCategory(cat){
+  FAQ_CATEGORY=cat;
+  var body=document.getElementById('updatesBody');
+  renderFaqList(body);
+}
+function onFaqSearch(value){
+  FAQ_KEYWORD=String(value||'').trim();
+  updateFaqResults();
+}
+function faqHits(){
+  const kw=FAQ_KEYWORD.toLowerCase();
+  return FAQ_ALL.filter(function(item){
+    if(FAQ_CATEGORY!=='全部'&&item.category!==FAQ_CATEGORY)return false;
+    if(!kw)return true;
+    return (String(item.question||'')+String(item.answer||'')+String(item.category||'')).toLowerCase().indexOf(kw)>=0;
+  });
+}
+function faqResultHtml(){
+  const hits=faqHits();
+  const kw=FAQ_KEYWORD.toLowerCase();
+  const count='<p class="faq-count">'+(kw||FAQ_CATEGORY!=='全部'
+      ?'筛选出 '+hits.length+' 条'+(kw?'（关键字：“'+esc(FAQ_KEYWORD)+'”）':'')
+      :'共 '+hits.length+' 条，可按分类筛选或搜索关键字')+'</p>';
+  const list=hits.length?hits.map(function(item){
+      const qIndex=FAQ_ALL.indexOf(item)+1;
+      return '<details class="guide-flow-card"><summary><span class="guide-flow-num">Q'+qIndex+'</span>'
+        +'<span>'+esc(item.question||'')+'</span>'
+        +'<span class="faq-cat-tag">'+esc(item.category||'')+'</span></summary>'
+        +'<div class="guide-flow-body"><div class="faq-answer">'+esc(item.answer||'')+'</div></div></details>';
+    }).join('')
+    :'<div class="inspector-empty">没有匹配的问题。换个关键字试试，或点击「全部」查看所有问题。</div>';
+  return count+list;
+}
+/* 搜索结果只刷新结果区：搜索框不重建，输入焦点与中文输入法不受影响。 */
+function updateFaqResults(){
+  var box=document.getElementById('faqResults');
+  if(box)box.innerHTML=faqResultHtml();
+}
+function renderFaqList(body){
+  if(!body)return;
+  const cats=FAQ_CATEGORY_ORDER.filter(function(c){return c==='全部'||FAQ_ALL.some(function(it){return it.category===c;});});
+  const tabs='<div class="faq-tabs">'+cats.map(function(c){
+    const count=c==='全部'?FAQ_ALL.length:FAQ_ALL.filter(function(it){return it.category===c;}).length;
+    return '<button type="button" class="btn tiny'+(FAQ_CATEGORY===c?' primary':'')+'" onclick="setFaqCategory(\''+esc(c)+'\')">'
+      +esc(c)+'（'+count+'）</button>';
+  }).join('')+'</div>';
+  const search='<div class="faq-searchbar"><input id="faqSearch" class="gen-select" style="width:100%;box-sizing:border-box" '
+    +'placeholder="搜索问题或答案关键字，例如：导出、说明文件、批次" value="'+esc(FAQ_KEYWORD)+'" '
+    +'oninput="onFaqSearch(this.value)"></div>';
+  body.innerHTML=tabs+search+'<div id="faqResults">'+faqResultHtml()+'</div>';
+  const input=document.getElementById('faqSearch');
+  if(input)input.focus();
 }
 /* ---- 常规设置：普通设置（执行与文件 / 外观 / 系统维护）+ 隐藏高级设置 ---- */
 function renderGeneral(){
