@@ -1,0 +1,24 @@
+时间：2026-10-13 15:07:36（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：826c149（desktop 与 origin/main 同源）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。
+任务定位：用户要求做 Q/A 界面，并把更新日志与 Q/A 收进设置中心同一导航栏（页签名经推荐定为「更新与答疑」）；Q/A 内容用户稍后自行维护，本次交付框架与示例。
+
+修改内容：
+- docs/常见问题.json（新建）：Q/A 数据源，结构 [{question, answer}]，首批 3 条示例（校验类型列说明、新增判定说明、更新日志入口说明），用户后续直接编辑此文件。
+- app_identity.py：新增 faq_path()（冻结 _MEIPASS/docs、源码 仓库根/docs，缺失 None），与 update_log_path 同模式。
+- web_app.py：新增 get_faq() 桥接（JSON 原样返回；缺失/损坏/非数组降级 items=[] 并记日志）。
+- 前端 index.html：「更新日志」页签升级为「更新与答疑」（data-tab=updates）——页内两个子页按钮（更新日志 | 常见问题，primary 高亮当前，localStorage 键 updatesSub 记忆）；renderChangelog 改名 renderUpdates 统一加载渲染（log 子页沿用原日期卡渲染；faq 子页 Q1/Q2… 折叠卡，首条默认展开）；新增 .updates-subtabs/.faq-answer CSS。未随包/内容整理中文案各自明示。
+- 四个打包入口（两个 Windows build_exe、Linux DEB/TARGZ、UOS 源码验收包）：预检 + 收录 docs/常见问题.json（--add-data ...:docs / PAYLOAD 与源码包 docs/ 目录）。
+
+修改文件：
+- docs/常见问题.json（新建）、core/src/base_audit/app_identity.py、core/src/base_audit/web_app.py、core/frontend/web/index.html、shell-flask/build_exe.py、shell-pywebview/build_exe.py、shell-flask/Linux-2-打包DEB与TARGZ.sh、shell-flask/Linux-4-打包UOS源码验收包.sh、core/tests/test_web_app.py、日志/更新日志.txt、日志/开发日志.txt、本修改记录。
+
+验证：
+- test_web_app.py 42 过（新增 get_faq 三场景：真实返回/未随包/JSON 损坏）+ test_app_identity 19 过。
+- 前端静态核对（旧函数移除/新函数与子页切换/get_faq 调用/页签文本）全过；内联 JS node --check 通过；两个 build_exe ast 通过、两个 .sh bash -n 通过。
+- 全量回归未重跑（展示层与打包资源新增，无执行链变化；上轮基线 846/7/3）。
+- 真实打包冒烟待下次打包时确认 docs/常见问题.json 在产物内。
+
+影响范围：设置中心展示层与打包资源；不触及业务执行链。

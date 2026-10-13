@@ -618,6 +618,8 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 .changelog-items{flex:1;min-width:0;margin:0;padding:0 0 0 4px;list-style:none}
 .changelog-items li{font-size:12.5px;color:var(--text);line-height:1.7;padding:2px 0;word-break:break-word}
 .changelog-items li+li{border-top:1px dashed var(--border)}
+.updates-subtabs{display:flex;gap:8px;margin-bottom:12px}
+.faq-answer{font-size:12.5px;color:var(--text);line-height:1.8;word-break:break-word}
 .guide-flow-row{display:flex;gap:10px;align-items:baseline}
 .guide-flow-row .guide-key{flex:none;width:48px;font-size:12px;font-weight:600;color:var(--text-2)}
 .guide-flow-row .guide-val{flex:1;min-width:0;font-size:12.5px;color:var(--text);line-height:1.7;word-break:break-all}
@@ -975,7 +977,7 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
       <nav class="settings-nav advanced-locked" id="settingsNav">
         <button type="button" class="settings-tab-btn active" data-tab="general" onclick="setSettingsTab('general')">常规设置</button>
         <button type="button" class="settings-tab-btn" data-tab="guide" onclick="setSettingsTab('guide')">操作指引</button>
-        <button type="button" class="settings-tab-btn" data-tab="changelog" onclick="setSettingsTab('changelog')">更新日志</button>
+        <button type="button" class="settings-tab-btn" data-tab="updates" onclick="setSettingsTab('updates')">更新与答疑</button>
         <button type="button" class="settings-tab-btn settings-advanced-item" data-tab="combine" onclick="setSettingsTab('combine')">组合工作表配置</button>
         <button type="button" class="settings-tab-btn settings-advanced-item" data-tab="advanced" onclick="setSettingsTab('advanced')" ondblclick="toggleAdvancedLayout()" title="双击切换：按系统分类 / 按功能分类">高级设置</button>
       </nav>
@@ -1748,13 +1750,13 @@ function showToast(text){
   showToast._timer=setTimeout(()=>t.classList.remove('show'),2200);
 }
 function setSettingsTab(tab){
-  if(tab!=='general'&&tab!=='guide'&&tab!=='changelog'&&tab!=='combine'&&tab!=='advanced')tab='general';
+  if(tab!=='general'&&tab!=='guide'&&tab!=='updates'&&tab!=='combine'&&tab!=='advanced')tab='general';
   CFG.tab=tab;
   if(!CFG.data){showSettingsPaneLoading();return}
   document.querySelectorAll('#settingsNav .settings-tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   if(tab==='general')renderGeneral();
   else if(tab==='guide')renderGuide();
-  else if(tab==='changelog')renderChangelog();
+  else if(tab==='updates')renderUpdates();
   else if(tab==='combine')renderDagFlowComposer();
   else if(tab==='advanced'){
     renderAdvanced();
@@ -1878,31 +1880,61 @@ document.getElementById('settingsPane').addEventListener('click',function(e){
     try{localStorage.setItem('envZoneCollapsed',card.classList.contains('collapsed')?'1':'0');}catch(e){}
   }
 });
-/* ---- 更新日志（设置中心页签）：bridge 返回结构化条目，程序内渲染 ---- */
+/* ---- 更新与答疑（设置中心页签）：更新日志 + 常见问题 两个子页 ---- */
 const CHANGELOG_BADGE={'新增':'#2e7d32','优化':'#1565c0','修复':'#c62828','其他':'#6b7280'};
-async function renderChangelog(){
+let UPDATES_SUB=(function(){try{return localStorage.getItem('updatesSub')==='faq'?'faq':'log';}catch(e){return 'log';}})();
+function setUpdatesSub(sub){
+  UPDATES_SUB=sub;
+  try{localStorage.setItem('updatesSub',sub);}catch(e){}
+  renderUpdates();
+}
+async function renderUpdates(){
   const pane=document.getElementById('settingsPane');
-  pane.innerHTML='<div class="inspector-empty">正在读取更新日志…</div>';
-  let data;
-  try{data=await bridge.api.get_update_log();}catch(e){
-    pane.innerHTML='<div class="inspector-empty">读取更新日志失败：'+esc(e&&e.message||e)+'</div>';return;
+  const subTabs='<div class="updates-subtabs">'
+    +'<button type="button" class="btn tiny'+(UPDATES_SUB==='log'?' primary':'')+'" onclick="setUpdatesSub(\'log\')">更新日志</button>'
+    +'<button type="button" class="btn tiny'+(UPDATES_SUB==='faq'?' primary':'')+'" onclick="setUpdatesSub(\'faq\')">常见问题</button>'
+    +'</div>';
+  pane.innerHTML='<div class="advanced-zone">'+subTabs+'<div id="updatesBody" class="inspector-empty">正在读取…</div></div>';
+  const body=document.getElementById('updatesBody');
+  try{
+    if(UPDATES_SUB==='log'){
+      const data=await bridge.api.get_update_log();
+      const entries=(data&&data.entries)||[];
+      if(!entries.length){
+        body.className='inspector-empty';
+        body.textContent='当前环境未随包分发更新日志（源码包或旧版包）。';
+        return;
+      }
+      body.className='';
+      body.innerHTML=entries.map(function(entry){
+        const groups=(entry.groups||[]).map(function(group){
+          const badge=CHANGELOG_BADGE[group.label]||CHANGELOG_BADGE['其他'];
+          const items=(group.items||[]).map(function(item){return '<li>'+esc(item)+'</li>';}).join('');
+          return '<div class="changelog-group"><span class="changelog-badge" style="background:'+badge+'">'
+            +esc(group.label)+'</span><ul class="changelog-items">'+items+'</ul></div>';
+        }).join('');
+        return '<details class="guide-flow-card" open><summary><span>'+esc(entry.date||'未注明日期')
+          +'</span></summary><div class="guide-flow-body">'+groups+'</div></details>';
+      }).join('');
+    }else{
+      const data=await bridge.api.get_faq();
+      const items=(data&&data.items)||[];
+      if(!items.length){
+        body.className='inspector-empty';
+        body.textContent='常见问题内容整理中，敬请期待。';
+        return;
+      }
+      body.className='';
+      body.innerHTML=items.map(function(item,i){
+        return '<details class="guide-flow-card"'+(i===0?' open':'')
+          +'><summary><span class="guide-flow-num">Q'+(i+1)+'</span><span>'+esc(item.question||'')+'</span></summary>'
+          +'<div class="guide-flow-body"><div class="faq-answer">'+esc(item.answer||'')+'</div></div></details>';
+      }).join('');
+    }
+  }catch(e){
+    body.className='inspector-empty';
+    body.textContent='读取失败：'+(e&&e.message||e);
   }
-  const entries=(data&&data.entries)||[];
-  if(!entries.length){
-    pane.innerHTML='<div class="inspector-empty">当前环境未随包分发更新日志（源码包或旧版包）。'
-      +'更新日志随安装包分发，每个版本的「新增 / 优化 / 修复」都会记录在这里。</div>';
-    return;
-  }
-  pane.innerHTML='<div class="advanced-zone">'+entries.map(function(entry){
-    const groups=(entry.groups||[]).map(function(group){
-      const badge=CHANGELOG_BADGE[group.label]||CHANGELOG_BADGE['其他'];
-      const items=(group.items||[]).map(function(item){return '<li>'+esc(item)+'</li>';}).join('');
-      return '<div class="changelog-group"><span class="changelog-badge" style="background:'+badge+'">'
-        +esc(group.label)+'</span><ul class="changelog-items">'+items+'</ul></div>';
-    }).join('');
-    return '<details class="guide-flow-card" open><summary><span>'+esc(entry.date||'未注明日期')
-      +'</span></summary><div class="guide-flow-body">'+groups+'</div></details>';
-  }).join('')+'</div>';
 }
 /* ---- 操作指引 ---- */
 function renderGuide(){

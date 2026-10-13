@@ -1107,6 +1107,23 @@ class WebApi:
         self._log(f"已打开使用说明：{path}")
         return self.state
 
+    def get_faq(self) -> dict[str, Any]:
+        """常见问题（docs/常见问题.json，结构化数组）原样返回；未随包降级为空。"""
+        import json as _json
+
+        from .app_identity import faq_path
+        path = faq_path()
+        if path is None:
+            return {"items": [], "source": ""}
+        try:
+            items = _json.loads(path.read_text(encoding="utf-8-sig"))
+        except Exception as exc:
+            self._log(f"常见问题文件读取失败：{exc}")
+            return {"items": [], "source": str(path)}
+        if not isinstance(items, list):
+            return {"items": [], "source": str(path)}
+        return {"items": items, "source": str(path)}
+
     def get_update_log(self) -> dict[str, Any]:
         """解析用户版更新日志为结构化条目（设置中心「更新日志」页渲染用）。
 

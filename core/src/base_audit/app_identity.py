@@ -68,6 +68,15 @@ def icon_path(suffix: str = ".png") -> Path:
     return root / ("app-icon" + suffix)
 
 
+def faq_path() -> Path | None:
+    """常见问题（docs/常见问题.json）的随包路径；未随包时返回 None。"""
+    if getattr(sys, "frozen", False):
+        candidate = Path(sys._MEIPASS) / "docs" / "常见问题.json"
+    else:
+        candidate = manifest_path().parent.parent / "docs" / "常见问题.json"
+    return candidate if candidate.is_file() else None
+
+
 def update_log_path() -> Path | None:
     """用户版更新日志（日志/更新日志.txt）的随包路径；未随包时返回 None。
 

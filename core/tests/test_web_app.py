@@ -789,6 +789,33 @@ class WebAppCompatibilityTests(unittest.TestCase):
                 empty = WebApi(Path(folder)).get_update_log()
         self.assertEqual(empty, {"entries": [], "source": ""})
 
+    def test_get_faq_returns_items_and_degrades_when_missing(self) -> None:
+        """常见问题 JSON 原样返回；未随包/JSON 损坏时降级为空列表。"""
+        from base_audit import app_identity
+
+        api = WebApi(Path(TemporaryDirectory().name))
+        result = api.get_faq()
+        self.assertTrue(result["items"])
+        self.assertIn("question", result["items"][0])
+        self.assertIn("answer", result["items"][0])
+
+        with TemporaryDirectory() as folder:
+            with patch.object(app_identity, "faq_path", return_value=None):
+                empty = WebApi(Path(folder)).get_faq()
+        self.assertEqual(empty["items"], [])
+
+        with TemporaryDirectory() as folder:
+            broken = Path(folder) / "docs"
+            broken.mkdir()
+            (broken / "常见问题.json").write_text("{损坏", encoding="utf-8")
+
+            def _broken():
+                return broken / "常见问题.json"
+
+            with patch.object(app_identity, "faq_path", _broken):
+                degraded = WebApi(Path(folder)).get_faq()
+        self.assertEqual(degraded["items"], [])
+
     def test_export_diagnostic_workbook_writes_structured_sheets(self) -> None:
         with TemporaryDirectory() as folder:
             api = WebApi(Path(folder))

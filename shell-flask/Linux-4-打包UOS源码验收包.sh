@@ -28,6 +28,7 @@ WITH_LOCAL_CONFIG=0
 [ -f "$CORE/frontend/web/index.html" ] || { echo "[错误] 未找到共享前端 index.html"; exit 1; }
 [ -f "$ROOT/版本管理/VERSION_MANIFEST.json" ] || { echo "[错误] 未找到版本清单：版本管理/VERSION_MANIFEST.json"; exit 1; }
 [ -f "$ROOT/日志/更新日志.txt" ] || { echo "[错误] 未找到用户版更新日志：日志/更新日志.txt"; exit 1; }
+[ -f "$ROOT/docs/常见问题.json" ] || { echo "[错误] 未找到常见问题：docs/常见问题.json"; exit 1; }
 [ -s "$CORE/frontend/assets/app-icon.png" ] || { echo "[错误] 未找到应用图标：core/frontend/assets/app-icon.png"; exit 1; }
 [ -s "$CORE/frontend/assets/app-icon.ico" ] || { echo "[错误] 未找到 favicon 图标：core/frontend/assets/app-icon.ico"; exit 1; }
 
@@ -56,8 +57,9 @@ cp "$SCRIPT_DIR/app.py" "$PKG/"
 cp "$SCRIPT_DIR/run.py" "$PKG/"
 cp "$SCRIPT_DIR/requirements.txt" "$PKG/"
 cp "$SCRIPT_DIR/README.md" "$PKG/"
-mkdir -p "$PKG/日志"
+mkdir -p "$PKG/日志" "$PKG/docs"
 cp "$ROOT/日志/更新日志.txt" "$PKG/日志/更新日志.txt"
+cp "$ROOT/docs/常见问题.json" "$PKG/docs/常见问题.json"
 cp "$SCRIPT_DIR/Linux-1-启动审核工具.sh" "$PKG/"
 cp "$SCRIPT_DIR/Linux-4-打包UOS源码验收包.sh" "$SCRIPT_DIR/Linux-2-打包DEB与TARGZ.sh" "$PKG/"
 cp "$SCRIPT_DIR/Linux-3-测试发行包启动.sh" "$PKG/"

@@ -38,7 +38,7 @@ CONFIG_TEMPLATE = next(
 if str(CORE / "src") not in sys.path:
     sys.path.insert(0, str(CORE / "src"))
 
-from base_audit.app_identity import app_title, executable_stem, icon_path, load_product_info, manifest_path, update_log_path
+from base_audit.app_identity import app_title, executable_stem, faq_path, icon_path, load_product_info, manifest_path, update_log_path
 
 COMMON_HIDDEN = [
     "base_audit.excel_com",
@@ -82,6 +82,9 @@ def build(win7: bool) -> int:
     update_log = update_log_path()
     if update_log is None:
         raise SystemExit("[错误] 未找到用户版更新日志：日志/更新日志.txt（仓库根）。")
+    faq = faq_path()
+    if faq is None:
+        raise SystemExit("[错误] 未找到常见问题：docs/常见问题.json（仓库根）。")
     DIST.mkdir(parents=True, exist_ok=True)
 
     args = [
@@ -93,7 +96,9 @@ def build(win7: bool) -> int:
         "--add-data", f"{manifest}{os_pathSep()}版本管理",
         "--add-data", f"{assets}{os_pathSep()}assets",
         # 用户版更新日志随包分发（运行期 update_log_path 从 _MEIPASS/日志 定位）。
-        "--add-data", f"{update_log}{os_pathSep()}日志",
+        "--add-data", f"{update_log}{os_pathsep}日志",
+        # 常见问题随包分发（运行期 faq_path 从 _MEIPASS/docs 定位）。
+        "--add-data", f"{faq}{os_pathsep}docs",
         "--icon", str(icon),
         "--distpath", str(DIST),
         "--workpath", str(ROOT / "build"),
