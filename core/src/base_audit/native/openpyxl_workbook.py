@@ -55,12 +55,17 @@ def _all_defined_names(workbook: Any) -> list[Any]:
     return result
 
 
-def _issue_id(source_file: Path | str, rule: AuditRule, indicator: str = "") -> str:
+def _issue_id(source_file: Path | str, rule: AuditRule, indicator: str = "", check_type: str = "") -> str:
+    """位置身份；校验类型非空时编入定位单元格与校验指标之间（与 COM 侧一致）。"""
     source_name = normalize_template_name(Path(str(source_file)).stem)
-    return "｜".join((
+    parts = [
         source_name or "工作簿未识别", rule.sheet_name or "工作表未识别",
-        rule.formula_cell or "公式单元格未识别", indicator or "校验指标未识别",
-    ))
+        rule.formula_cell or "公式单元格未识别",
+    ]
+    if check_type:
+        parts.append(check_type)
+    parts.append(indicator or "校验指标未识别")
+    return "｜".join(parts)
 
 
 def _formula_error(value: object) -> str:
@@ -451,7 +456,7 @@ def extract_issues(
             target_value = parsed.value if rule.value_from_result else cached_values.get(
                 (rule.sheet_name, rule.target_cell)
             )
-            identity = _issue_id(source_file, rule, parsed.indicator)
+            identity = _issue_id(source_file, rule, parsed.indicator, parsed.check_type)
             result.append(Issue(
                 issue_id=identity, period=period, batch_id=batch_id, audit_time=audit_time,
                 triggered=True, status="", first_seen_period="", previous_seen_period="", consecutive_count=1,
@@ -459,6 +464,7 @@ def extract_issues(
                 rule_id=identity, severity=parsed.severity, formula_cell=rule.formula_cell, target_cell=rule.target_cell,
                 target_value=target_value or "", formula_result=formula_result, message=parsed.message,
                 source_file=str(source_file.resolve()), audit_file=str(audit_path.resolve()), check_field=parsed.indicator,
+                check_type=parsed.check_type,
                 comparison_value=parsed.comparison_value, reference_value=parsed.reference_value,
                 difference_value=parsed.difference_value, detail=parsed.detail,
             ))

@@ -79,9 +79,10 @@ class TemplateTests(unittest.TestCase):
         self.assertFalse(ExcelSession._contains_result_keyword('="提示|请关注"'))
         self.assertFalse(ExcelSession._contains_result_keyword("=SUM(A1:A3)"))
 
-    def test_standard_six_part_result_is_aligned(self) -> None:
-        parsed = parse_formula_result("错|单位贷款|不应该为0|0|0|0")
+    def test_seven_part_result_is_aligned_positionally(self) -> None:
+        parsed = parse_formula_result("错|逾期核对|单位贷款|不应该为0|0|0|0")
         self.assertEqual(parsed.severity, "错误")
+        self.assertEqual(parsed.check_type, "逾期核对")
         self.assertEqual(parsed.indicator, "单位贷款")
         self.assertEqual(parsed.detail, "不应该为0")
         self.assertEqual(parsed.value, "0")
@@ -91,61 +92,68 @@ class TemplateTests(unittest.TestCase):
     def test_missing_tail_segments_stay_empty(self) -> None:
         parsed = parse_formula_result("错|文本1|数字1|文本2|数字2")
         self.assertEqual(parsed.severity, "错误")
-        self.assertEqual(parsed.indicator, "文本1")
-        self.assertEqual(parsed.detail, "数字1")
-        self.assertEqual(parsed.value, "文本2")
-        self.assertEqual(parsed.comparison_value, "数字2")
+        self.assertEqual(parsed.check_type, "文本1")
+        self.assertEqual(parsed.indicator, "数字1")
+        self.assertEqual(parsed.detail, "文本2")
+        self.assertEqual(parsed.value, "数字2")
+        self.assertEqual(parsed.comparison_value, "")
         self.assertEqual(parsed.difference_value, "")
 
     def test_all_empty_segments_keep_blank_fields(self) -> None:
-        parsed = parse_formula_result("错||||")
+        parsed = parse_formula_result("错||||||")
         self.assertEqual(parsed.severity, "错误")
+        self.assertEqual(parsed.check_type, "")
         self.assertEqual(parsed.indicator, "")
         self.assertEqual(parsed.detail, "")
         self.assertEqual(parsed.value, "")
         self.assertEqual(parsed.comparison_value, "")
         self.assertEqual(parsed.difference_value, "")
 
-    def test_three_part_result_uses_third_part_as_description(self) -> None:
+    def test_three_part_result_fills_first_three_slots(self) -> None:
         parsed = parse_formula_result("软性|注册资本|超过百亿，核实是否出现放大倍数的情况")
-        self.assertEqual(parsed.indicator, "注册资本")
-        self.assertEqual(parsed.detail, "超过百亿，核实是否出现放大倍数的情况")
+        self.assertEqual(parsed.check_type, "注册资本")
+        self.assertEqual(parsed.indicator, "超过百亿，核实是否出现放大倍数的情况")
+        self.assertEqual(parsed.detail, "")
         self.assertEqual(parsed.value, "")
         self.assertEqual(parsed.comparison_value, "")
         self.assertEqual(parsed.difference_value, "")
 
-    def test_legacy_four_part_aligned_positionally(self) -> None:
+    def test_four_part_result_fills_first_four_slots(self) -> None:
         parsed = parse_formula_result("错|字段其他|4|不应有数，请核实")
         self.assertEqual(parsed.severity, "错误")
-        self.assertEqual(parsed.indicator, "字段其他")
-        self.assertEqual(parsed.detail, "4")
-        self.assertEqual(parsed.value, "不应有数，请核实")
+        self.assertEqual(parsed.check_type, "字段其他")
+        self.assertEqual(parsed.indicator, "4")
+        self.assertEqual(parsed.detail, "不应有数，请核实")
+        self.assertEqual(parsed.value, "")
         self.assertEqual(parsed.comparison_value, "")
         self.assertEqual(parsed.difference_value, "")
 
-    def test_new_six_part_result_places_description_before_values(self) -> None:
+    def test_six_part_result_fills_first_six_slots(self) -> None:
         parsed = parse_formula_result(
             "错误|贷款余额|基础数据与参考数据不一致|305.22|334.39|-29.17"
         )
-        self.assertEqual(parsed.indicator, "贷款余额")
-        self.assertEqual(parsed.detail, "基础数据与参考数据不一致")
-        self.assertEqual(parsed.value, "305.22")
-        self.assertEqual(parsed.comparison_value, "334.39")
-        self.assertEqual(parsed.difference_value, "-29.17")
+        self.assertEqual(parsed.check_type, "贷款余额")
+        self.assertEqual(parsed.indicator, "基础数据与参考数据不一致")
+        self.assertEqual(parsed.detail, "305.22")
+        self.assertEqual(parsed.value, "334.39")
+        self.assertEqual(parsed.comparison_value, "-29.17")
+        self.assertEqual(parsed.difference_value, "")
 
     def test_full_width_pipe_is_normalised(self) -> None:
-        parsed = parse_formula_result("错｜文本｜描述｜1｜2｜3")
+        parsed = parse_formula_result("错｜类型｜文本｜描述｜1｜2｜3")
         self.assertEqual(parsed.severity, "错误")
+        self.assertEqual(parsed.check_type, "类型")
         self.assertEqual(parsed.indicator, "文本")
         self.assertEqual(parsed.detail, "描述")
         self.assertEqual(parsed.value, "1")
         self.assertEqual(parsed.comparison_value, "2")
         self.assertEqual(parsed.difference_value, "3")
 
-    def test_two_part_result_indicator_is_second_segment(self) -> None:
+    def test_two_part_result_type_is_second_segment(self) -> None:
         parsed = parse_formula_result("错误|余额不能为负数")
         self.assertEqual(parsed.severity, "错误")
-        self.assertEqual(parsed.indicator, "余额不能为负数")
+        self.assertEqual(parsed.check_type, "余额不能为负数")
+        self.assertEqual(parsed.indicator, "")
         self.assertEqual(parsed.detail, "")
         self.assertEqual(parsed.value, "")
         self.assertEqual(parsed.comparison_value, "")
@@ -187,6 +195,21 @@ class TemplateTests(unittest.TestCase):
         moved_id = ExcelSession._issue_id("001", "甲银行_单位存款_2026-06.xlsx", moved)
         self.assertEqual(first_id, "甲银行_单位存款｜单位存款｜M10｜校验指标未识别")
         self.assertNotEqual(first_id, moved_id)
+
+    def test_issue_id_embeds_check_type_between_cell_and_indicator(self) -> None:
+        rule = AuditRule(
+            "DWCK-001", True, "DWCK", "单位存款", "M10", "B10", "错误", "", value_from_result=True,
+        )
+        # 校验类型非空：编入定位单元格与校验指标之间。
+        self.assertEqual(
+            ExcelSession._issue_id("001", "甲银行_单位存款_2026-06.xlsx", rule, "单位贷款", "逾期核对"),
+            "甲银行_单位存款｜单位存款｜M10｜逾期核对｜单位贷款",
+        )
+        # 校验类型为空：保持旧身份格式（未写类型的模板公式历史键不变）。
+        self.assertEqual(
+            ExcelSession._issue_id("001", "甲银行_单位存款_2026-06.xlsx", rule, "单位贷款"),
+            "甲银行_单位存款｜单位存款｜M10｜单位贷款",
+        )
 
     def test_named_range_prefix_is_discovered(self) -> None:
         structure = FeatureMapping("结构", STRUCTURE_COMPARE_FUNCTION, ("表结构区域",), False, "", "")

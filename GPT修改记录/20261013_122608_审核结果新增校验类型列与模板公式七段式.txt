@@ -1,0 +1,44 @@
+时间：2026-10-13 12:26:08（Asia/Shanghai）
+执行者：ZCode（本会话主模型，无子 Agent）。
+修改前 commit：d0ab491（desktop 与 origin/main 同源）；修改后随本记录同提交（待用户确认）。
+工作分支：desktop；origin 为 Open-Data-Audit。未 commit/push/merge/rebase，未改动 main。
+WIP：external/（图片素材）保持未跟踪未纳入。
+任务定位：S1-F01 汇总核查表输出结构增强（用户需求：新增「校验类型」列用于筛选细分）。
+
+修改目的（用户确认的口径）：
+审核结果原格式 …|错误类型|校验指标|描述|当前值|对比值|差值，无法在"错误/软性/条件格式触发"三类之外细分筛选。新增「校验类型」列（错误类型之后）：
+1. 模板校验公式：管道分段**按段序顺序填充**——级别（错误/硬性/错/软性）进错误类型，第 2 段进校验类型，第 3 段进校验指标，第 4 段进描述，第 5~7 段依次 当前值/对比值/差值；段数不足只填前面的格子（用户 2026-10-13 明确：不做新旧格式兼容，后续模板公式统一规范化为 7 段，建议写满 7 段，值段留空但分隔符不可省略，例：错|逾期核对|单位贷款|不应该为0|||）。
+2. 条件格式触发：单元格批注进校验类型，条件格式公式固定进描述（此前为"批注 or 公式"二选一，现两种信息并存）。
+
+修改内容（模型 → 解析 → 三条提取路径 → 两处输出 → 文档）：
+- （用户追加，2026-10-13）规则编号（issue_id 身份串）编入校验类型：校验类型非空时插在定位单元格与校验指标之间（例：…｜D5｜逾期核对｜单位贷款），空则保持旧格式（未写类型的公式历史键不变）；条件格式路径不编入（批注可被人工修改，编入身份会断历史匹配）。excel_com._issue_id 与 native._issue_id 同步实现并各加单测；golden 身份串断言更新（贷款高于存款/拨备不足两条身份含类型段）。影响提示：已写校验类型的公式，其历史身份在升级后首次运行会变化，旧历史记录按规则编号匹配将判为"新增"一次，属预期。
+- models.py：Issue 新增 check_type 字段（check_field 旁）。
+- template.py：ParsedFormulaResult.check_type；parse_formula_result 改为按段序填 7 槽（不做段数分支）。
+- excel_com.py：结构化提取（1287）与历史重提取（2334，stored_or_parsed("校验类型",…)）两处 Issue 构造带 check_type；条件格式 COM 侧（1480 区域）detail 固定公式文本、check_type=comment；OOXML 旁路（1781 区域）同步；_issue_history_row 插 item.check_type。
+- native/openpyxl_workbook.py：结构化 Issue 构造带 check_type。
+- conditional_context.py：native 条件格式 Issue——check_type=批注（comment.formatted）、detail=MessageResolver.resolve(None, 规则文案)；修复过程中发现并规避 resolve 的 comment 参数传 "" 会按对象访问 .text 的问题（须传 None）。
+- history.py：HISTORY_HEADERS 在"错误类型"后插"校验类型"（12→13 列）。
+- native/history_io.py：写行插 check_type；读按列名 get(row,"校验类型")，旧历史文件缺列自动兼容。
+- native/result_writer.py：_issue_row 插 check_type；列宽表补第 5 列（E=20）——该文件此前漏改导致汇总输出整体左移一格（golden 抓获），已修复。
+- name_config.py：条件格式结果提取节点描述同步新口径。
+- config_guide.py：summary 册「核查表校验结果」「校验类型」两条说明写明 13 列结构与顺序填充规则。
+
+测试：
+- test_template.py：7 个解析用例全部改顺序语义（含 7/6/5/4/3/2 段与全角管道）。
+- test_history.py：列断言更新 13 列。
+- test_result_writer.py：契约断言插校验类型值。
+- golden_fixtures.py：FORMULA_RESERVE 用七段式（值段留空带分隔符）；write_history_row 插校验类型空位。
+- test_golden_audit_flow.py / test_golden_native_flow.py：headers 与按索引断言全面更新，同时覆盖 七段式（拨备核对）、三段式（顺序填前 3 槽）、条件格式（批注进类型/公式进描述）三种情况。
+
+排查记录（golden 换位问题）：逐层探针确认 parse 输入正确、Issue 对象正确、pytest 汇总行错位——最终定位 native/result_writer._issue_row 漏插列（DAG 输出走该文件，COM write_summary 与它共用 HISTORY_HEADERS 但行构造各自维护）。中途一次探针编辑引入语法错误导致 COM 检测失败测试全跳过，已彻底清除并验证导入正常。
+
+验证：
+- 定向：test_template 8 过、test_history 5 过、test_result_writer 过、golden COM 2 过、test_web_app 41 过。
+- S1 组：381 过 / 3 失败（test_golden_native_flow 两例 + test_native_uos 一例，均为本机缺 LibreOffice 的既有环境项，native 端到端在 UOS 验证）；全量 843 过 / 7 跳 / 3 失败，与基线一致。
+- 已知残留：仅运行日志 style 的 CF_COMMENT 常量与 native 侧无批注场景在 golden 中覆盖；三段式公式的校验指标语义变化（原第 2 段→现第 3 段）会导致历史 issue_id 身份串变化，跨期历史匹配按规则编号或完整身份键的用户需注意（历史重提取路径有 stored_or_parsed 兜底）。
+
+用户侧动作：
+1. 模板校验公式建议规范化为 7 段（错|校验类型|校验指标|描述|当前值|对比值|差值），旧段数公式仍可运行但段序含义按新口径解释。
+2. 下次运行程序时各册「使用说明」自动刷新（含本批新说明）。
+
+版本管理：输出结构增强（13 列），历史/结果表头变化属可见契约变化，提交时评估 S1 组件 SemVer。

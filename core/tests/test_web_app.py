@@ -751,8 +751,8 @@ class WebAppCompatibilityTests(unittest.TestCase):
             from openpyxl import load_workbook
             workbook = load_workbook(config)
             sheet = workbook[HISTORY_AUDIT_SHEET]
-            sheet.append(("机构A.xlsx", "贷款表", "A1", "错误", "余额", "余额异常", "10", "8", "2", "规则A", "说明A", "通过"))
-            sheet.append(("机构B.xlsx", "贷款表", "B2", "软性", "利率", "利率核实", "", "", "", "规则B", "说明B", "待核实"))
+            sheet.append(("机构A.xlsx", "贷款表", "A1", "错误", "逾期核对", "余额", "余额异常", "10", "8", "2", "规则A", "说明A", "通过"))
+            sheet.append(("机构B.xlsx", "贷款表", "B2", "软性", "", "利率", "利率核实", "", "", "", "规则B", "说明B", "待核实"))
             workbook.save(config)
             workbook.close()
             api = WebApi(root)

@@ -53,6 +53,7 @@ def read_history_xlsx(path: Path, *, sheet_name: str = "") -> list[Issue]:
                 triggered=True, status="", first_seen_period="", previous_seen_period="", consecutive_count=1,
                 org_code="", org_name="", report_code="", sheet_name=sheet_value, rule_id=identity,
                 severity=str(get(row, "错误类型") or "错误"), formula_cell=target_cell, target_cell=target_cell,
+                check_type=str(get(row, "校验类型") or ""),
                 target_value=get(row, "当前值"), formula_result="", message=str(get(row, "描述") or ""),
                 source_file=source_file, audit_file="", check_field=indicator, comparison_value=get(row, "对比值"),
                 difference_value=get(row, "差值"), detail=str(get(row, "描述") or ""),
@@ -75,7 +76,7 @@ def write_history_xlsx(path: Path, issues: Iterable[Issue]) -> None:
         for item in issues:
             sheet.append((
                 Path(item.source_file).name if item.source_file else "", item.sheet_name, item.target_cell,
-                item.severity, item.check_field, item.detail or item.message, item.target_value,
+                item.severity, item.check_type, item.check_field, item.detail or item.message, item.target_value,
                 item.comparison_value, item.difference_value, item.issue_id,
                 item.institution_feedback, item.auditor_opinion,
             ))

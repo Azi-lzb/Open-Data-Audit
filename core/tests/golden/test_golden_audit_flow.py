@@ -22,10 +22,11 @@ pytestmark = [
 ]
 
 HISTORY_HEADERS = [
-    "工作簿名", "工作表名", "定位单元格", "错误类型", "校验指标", "描述",
+    "工作簿名", "工作表名", "定位单元格", "错误类型", "校验类型", "校验指标", "描述",
     "当前值", "对比值", "差值", "规则编号", "历史校验说明", "审核意见",
 ]
-ISSUE_JIA = "甲银行｜20202资产负债表｜D4｜贷款大于存款"
+# 三段式公式顺序填充；校验类型非空编入身份（定位单元格与校验指标之间）。
+ISSUE_JIA = "甲银行｜20202资产负债表｜D4｜贷款大于存款｜贷款高于存款"
 
 
 @pytest.fixture()
@@ -100,7 +101,7 @@ def test_audit_flow_golden_contract(audit_env):
     # 外部表内容完整复制
     assert snap_jia[gf.EXTERNAL_SHEET]["rows"] == [["基准值", 123]]
 
-    # ---- 结果工作簿：单 sheet、12 列表头、行序固定、超链接指向审核副本 ----
+    # ---- 结果工作簿：单 sheet、13 列表头、行序固定、超链接指向审核副本 ----
     summary_path = gf.glob_one(output_dir, "汇总核查表校验_[0-9]*.xlsx")
     summary = gf.snapshot_workbook(summary_path)
     assert list(summary) == ["本期审核结果"]
@@ -111,15 +112,19 @@ def test_audit_flow_golden_contract(audit_env):
     rows = sheet["rows"]
     assert len(rows) == 3
     assert rows[0][0] == "乙银行.xlsx" and rows[0][3] == "错误"
-    assert rows[0][4] == "拨备不足" and rows[0][9] == "乙银行｜20202资产负债表｜D5｜拨备不足"
+    # 七段式公式按段序填充：第 2 段「拨备核对」进校验类型、第 3 段进指标、第 4 段进描述。
+    assert rows[0][4] == "拨备核对" and rows[0][5] == "拨备不足" and rows[0][10] == "乙银行｜20202资产负债表｜D5｜拨备核对｜拨备不足"
     assert rows[1][0] == "乙银行.xlsx" and rows[1][3] == "条件格式触发"
     # COM 条件格式的规则编号=完整位置身份（含行标签）；native 版不带行标签。
-    assert rows[1][4] == "各项存款｜本期情况"
-    assert rows[1][9] == "乙银行｜20202资产负债表｜C4｜各项存款｜本期情况"
+    assert rows[1][5] == "各项存款｜本期情况"
+    assert rows[1][4] == gf.CF_COMMENT
+    assert rows[1][10] == "乙银行｜20202资产负债表｜C4｜各项存款｜本期情况"
     assert rows[1][2] == "C4"
     assert rows[2][0] == "甲银行.xlsx" and rows[2][3] == "核实"
-    assert rows[2][4] == "贷款大于存款" and rows[2][9] == ISSUE_JIA
-    assert rows[2][10] == "去年已说明" and rows[2][11] == "继续关注"
+    # 三段式公式顺序填充前 3 槽：校验类型=贷款大于存款、指标=贷款高于存款；
+    # 描述为空时回退规则表“问题说明”。
+    assert rows[2][4] == "贷款大于存款" and rows[2][5] == "贷款高于存款" and rows[2][10] == ISSUE_JIA
+    assert rows[2][11] == "去年已说明" and rows[2][12] == "继续关注"
     # 超链接：定位单元格列指向对应工作簿（公式问题→审核副本；条件格式→源文件）
     links = {link["cell"]: link for link in sheet["hyperlinks"]}
     assert Path(links["C2"]["target"]).name == Path(copy_yi).name

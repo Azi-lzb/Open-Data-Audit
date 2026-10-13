@@ -1294,7 +1294,7 @@ class ExcelSession:
                 if rule.value_from_result
                 else self._cached_cell_value(values, rule.sheet_name, rule.target_cell)
             )
-            issue_id = self._issue_id(org_code, source_file, rule, parsed.indicator)
+            issue_id = self._issue_id(org_code, source_file, rule, parsed.indicator, parsed.check_type)
             issues.append(
                 Issue(
                     issue_id=issue_id,
@@ -1320,6 +1320,7 @@ class ExcelSession:
                     source_file=str(source_file.resolve()),
                     audit_file=str(audit_file.resolve()),
                     check_field=parsed.indicator,
+                    check_type=parsed.check_type,
                     comparison_value=parsed.comparison_value,
                     reference_value=parsed.reference_value,
                     difference_value=parsed.difference_value,
@@ -1477,7 +1478,9 @@ class ExcelSession:
                     target_cell = _column_letters(column) + str(row)
                     check_field = self._conditional_check_field(sheet, row, column, structure_ranges)
                     comment = self._cell_comment_text(cell)
-                    detail = comment or self._conditional_rules_text(matched_rules, target_cell)
+                    # 批注进「校验类型」供筛选细分；条件格式公式固定进「描述」，
+                    # 两种信息不再互斥（此前为 批注 or 公式 二选一）。
+                    detail = self._conditional_rules_text(matched_rules, target_cell)
                     # 同构结果旁路：COM 侧没有单规则公式时允许空字段。
                     try:
                         rule_type, formula_text, origin_ref = "", "", ""
@@ -1511,7 +1514,8 @@ class ExcelSession:
                         rule_id="条件格式填充", severity="条件格式触发",
                         formula_cell=target_cell, target_cell=target_cell, target_value=_plain(value),
                         formula_result=_plain(value), message=detail, source_file=str(source_file.resolve()),
-                        audit_file=str(source_file.resolve()), check_field=check_field, detail=detail,
+                        audit_file=str(source_file.resolve()), check_field=check_field, check_type=comment,
+                        detail=detail,
                     ))
         return issues
 
@@ -1784,8 +1788,8 @@ class ExcelSession:
                                         else:
                                             detail = self._expression_rule_text(formula, anchor_address, target_cell)
                                         comment = sheet.cell(row=row, column=column).comment
-                                        if comment and comment.text and comment.text.strip():
-                                            detail = comment.text.strip()
+                                        # 批注进「校验类型」，公式固定进「描述」（与 COM 侧一致）。
+                                        check_type = comment.text.strip() if comment and comment.text and comment.text.strip() else ""
                                         check_field = self._conditional_check_field_xlsx(
                                             sheet, row, column, structure_ranges
                                         )
@@ -1809,7 +1813,8 @@ class ExcelSession:
                                             rule_id="条件格式填充", severity="条件格式触发",
                                             formula_cell=target_cell, target_cell=target_cell, target_value=_plain(value),
                                             formula_result=_plain(value), message=detail, source_file=str(source_file.resolve()),
-                                            audit_file=str(source_file.resolve()), check_field=check_field, detail=detail,
+                                            audit_file=str(source_file.resolve()), check_field=check_field, check_type=check_type,
+                                            detail=detail,
                                         ))
             return issues, unsupported
         finally:
@@ -2198,19 +2203,25 @@ class ExcelSession:
         source_file: Path | str,
         rule: AuditRule,
         indicator: str = "",
+        check_type: str = "",
     ) -> str:
         """Return a human-readable, location-based identity for history matching.
 
         The reporting date is stripped from the source workbook name so the
         same institution/report remains comparable across periods.
+        校验类型非空时编入定位单元格与校验指标之间（区分同格同指标不同类型）；
+        为空时保持旧身份格式，未写校验类型的模板公式历史键不受影响。
+        条件格式路径不传 check_type：批注可被人工修改，编入身份会断历史匹配。
         """
         source_name = normalize_template_name(Path(str(source_file)).stem)
-        parts = (
+        parts = [
             source_name or "工作簿未识别",
             rule.sheet_name or "工作表未识别",
             rule.formula_cell or "公式单元格未识别",
-            indicator or "校验指标未识别",
-        )
+        ]
+        if check_type:
+            parts.append(check_type)
+        parts.append(indicator or "校验指标未识别")
         return "｜".join(parts)
 
     def write_navigation(self, workbook: Any, issues: list[Issue]) -> None:
@@ -2374,6 +2385,7 @@ class ExcelSession:
                         source_file=source_file,
                         audit_file=str(get(row, "审核副本") or ""),
                         check_field=indicator or str(stored_or_parsed("校验字段", parsed.indicator) or ""),
+                        check_type=str(stored_or_parsed("校验类型", parsed.check_type) or ""),
                         comparison_value=stored_or_parsed(
                             "对比值", parsed.comparison_value
                         ),
@@ -2537,6 +2549,7 @@ class ExcelSession:
             item.sheet_name,
             item.target_cell,
             item.severity,
+            item.check_type,
             item.check_field,
             item.detail or item.message,
             _plain(item.target_value),

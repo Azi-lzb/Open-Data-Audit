@@ -41,6 +41,7 @@ class ParsedFormulaResult:
     reference_value: str = ""
     difference_value: str = ""
     detail: str = ""
+    check_type: str = ""
 
 
 def normalize_template_name(value: str) -> str:
@@ -87,13 +88,15 @@ def parse_formula_result(
     else:
         severity = default_severity
 
-    # 强制对齐 错误类型|校验指标|描述|当前值|对比值|差值：
-    # 第 0 段是级别关键字（错误/硬性/错/软性），第 1~5 段按位置依次对应，缺段留空。
-    indicator = parts[1] if len(parts) > 1 else ""
-    detail = parts[2] if len(parts) > 2 else ""
-    parsed_value = parts[3] if len(parts) > 3 else ""
-    comparison_value = parts[4] if len(parts) > 4 else ""
-    difference_value = "|".join(parts[5:]).strip() if len(parts) > 5 else ""
+    # 按段序顺序填充七槽：级别|校验类型|校验指标|描述|当前值|对比值|差值。
+    # 模板公式将统一规范化为 7 段；段数不足时前几段依次填充、其余留空，
+    # 不做新旧格式兼容（用户 2026-10-13 确认）。
+    check_type = parts[1] if len(parts) > 1 else ""
+    indicator = parts[2] if len(parts) > 2 else ""
+    detail = parts[3] if len(parts) > 3 else ""
+    parsed_value = parts[4] if len(parts) > 4 else ""
+    comparison_value = parts[5] if len(parts) > 5 else ""
+    difference_value = "|".join(parts[6:]).strip() if len(parts) > 6 else ""
     message = detail or default_message
     return ParsedFormulaResult(
         severity=severity,
@@ -104,6 +107,7 @@ def parse_formula_result(
         reference_value="",
         difference_value=difference_value,
         detail=detail,
+        check_type=check_type,
     )
 
 

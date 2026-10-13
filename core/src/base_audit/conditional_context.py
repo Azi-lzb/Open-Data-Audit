@@ -338,10 +338,14 @@ def build_conditional_issues(
                 comment = context.comment_for(area.sheet_name, address)
                 message_started = time.perf_counter()
                 try:
-                    message = MessageResolver.resolve(comment, str(hit.message or ""))
+                    # 批注进「校验类型」供筛选；描述固定用条件格式规则文案
+                    # （与 excel_com 两侧口径一致，两种信息不再二选一）。
+                    # resolve 的 comment 参数须传 None（传 "" 会按对象访问 .text）。
+                    message = MessageResolver.resolve(None, str(hit.message or ""))
                 finally:
                     message_seconds += time.perf_counter() - message_started
                 detail = message
+                check_type = comment.formatted if comment is not None and comment.text.strip() else ""
                 identity = "｜".join(
                     (workbook_key, area.sheet_name, address,
                      indicator or "校验指标未识别"))
@@ -353,7 +357,7 @@ def build_conditional_issues(
                     address, address,
                     baseline.cell(row, col).value, "", message,
                     str(source_file), str(workbook_path),
-                    check_field=indicator, detail=detail,
+                    check_field=indicator, check_type=check_type, detail=detail,
                 ))
     build_seconds = time.perf_counter() - started
     stats = {

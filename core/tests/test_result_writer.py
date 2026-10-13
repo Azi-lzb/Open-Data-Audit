@@ -16,7 +16,7 @@ def _issue(source: Path, audit: Path) -> Issue:
         rule_id="R001", severity="错误", formula_cell="C6", target_cell="C6",
         target_value=0, formula_result="错|单位贷款|不应该为0|0|0|0",
         message="不应该为0", source_file=str(source), audit_file=str(audit),
-        check_field="单位贷款", comparison_value=0, difference_value=0,
+        check_field="单位贷款", check_type="逾期核对", comparison_value=0, difference_value=0,
         detail="不应该为0", institution_feedback="历史说明", auditor_opinion="复核",
     )
 
@@ -38,7 +38,7 @@ def test_openpyxl_result_writer_preserves_summary_contract(tmp_path):
         sheet = book["本期审核结果"]
         assert tuple(cell.value for cell in sheet[1]) == HISTORY_HEADERS
         assert tuple(cell.value for cell in sheet[2]) == (
-            "甲银行.xlsx", "数据表", "C6", "错误", "单位贷款", "不应该为0",
+            "甲银行.xlsx", "数据表", "C6", "错误", "逾期核对", "单位贷款", "不应该为0",
             "0", "0", "0", "甲银行｜数据表｜C6｜单位贷款", "历史说明", "复核",
         )
         assert sheet["C2"].hyperlink.target == str(audit.resolve())

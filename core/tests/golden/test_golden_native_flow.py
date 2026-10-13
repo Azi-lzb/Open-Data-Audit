@@ -15,9 +15,9 @@ import pytest
 
 import golden_fixtures as gf
 
-# 列序与 HISTORY_HEADERS（Windows 版）一致：描述在第 6 列，当前值第 7 列。
+# 列序与 HISTORY_HEADERS（Windows 版）一致：校验类型第 5 列，描述第 7 列。
 NATIVE_HEADERS = [
-    "工作簿名", "工作表名", "定位单元格", "错误类型", "校验指标", "描述",
+    "工作簿名", "工作表名", "定位单元格", "错误类型", "校验类型", "校验指标", "描述",
     "当前值", "对比值", "差值", "规则编号", "历史校验说明", "审核意见",
 ]
 
@@ -79,10 +79,10 @@ def test_dag_native_flow_golden_contract(native_env):
     # 规则编号统一为“条件格式填充”（与 COM 版一致）；完整身份串在 issue_id。
     assert len(rows) == 1
     # check_field 走统一 IndicatorResolver（合并锚点+多级表头），含父级前缀；
-    # 描述=规则兜底文案（该格无批注），当前值列与 Windows 列序一致。
+    # 批注进校验类型，描述固定为条件格式规则文案；当前值列与 Windows 列序一致。
     assert rows[0] == [
-        "乙银行.xlsx", "20202资产负债表", "C4", "条件格式触发", "各项存款｜本期情况",
-        "存款超过450万元，请核实", "5000000", None, None,
+        "乙银行.xlsx", "20202资产负债表", "C4", "条件格式触发", gf.CF_COMMENT,
+        "各项存款｜本期情况", "条件格式规则：C4>4500000", "5000000", None, None,
         "乙银行｜20202资产负债表｜C4｜各项存款｜本期情况", None, None,
     ]
     # 超链接指向审核副本目录（当前实现为绝对路径，Windows/UOS 一致）
@@ -109,7 +109,7 @@ def test_dag_native_flow_golden_contract(native_env):
     assert len(data_rows) == 1
     assert data_rows[0][0] == "乙银行.xlsx" and data_rows[0][2] == "C4"
     # 历史库“规则编号”列存的是完整身份串（历史匹配键），与结果表的 rule_id 不同。
-    assert data_rows[0][9] == "乙银行｜20202资产负债表｜C4｜各项存款｜本期情况"
+    assert data_rows[0][10] == "乙银行｜20202资产负债表｜C4｜各项存款｜本期情况"
 
 
 def test_s1_business_outputs_are_identical_when_run_log_export_changes(native_env):

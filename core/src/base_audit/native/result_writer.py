@@ -17,7 +17,8 @@ def _plain(value):
 def _issue_row(item):
     return (
         Path(item.source_file).name if item.source_file else "", item.sheet_name,
-        item.target_cell, item.severity, item.check_field, item.detail or item.message,
+        item.target_cell, item.severity, item.check_type, item.check_field,
+        item.detail or item.message,
         _plain(item.target_value), _plain(item.comparison_value), _plain(item.difference_value),
         item.issue_id, item.institution_feedback, item.auditor_opinion,
     )
@@ -52,7 +53,7 @@ def write_audit_summary(path: Path, issues, *, sheet_name: str = "本期审核�
         cell.style = "Hyperlink"
     sheet.freeze_panes = "A2"
     sheet.auto_filter.ref = sheet.dimensions
-    for column, width in zip("ABCDEFGHIJKL", (38, 24, 14, 16, 28, 42, 18, 18, 18, 38, 34, 24)):
+    for column, width in zip("ABCDEFGHIJKLM", (38, 24, 14, 16, 20, 28, 42, 18, 18, 18, 38, 34, 24)):
         sheet.column_dimensions[column].width = width
     path.parent.mkdir(parents=True, exist_ok=True)
     book.save(path); book.close()

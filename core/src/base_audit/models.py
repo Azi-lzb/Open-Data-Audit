@@ -117,6 +117,7 @@ class Issue:
     source_file: str
     audit_file: str
     check_field: str = ""
+    check_type: str = ""
     comparison_value: Any = ""
     reference_value: Any = ""
     difference_value: Any = ""
