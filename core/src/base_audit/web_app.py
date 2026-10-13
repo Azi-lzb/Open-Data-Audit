@@ -1127,6 +1127,8 @@ class WebApi:
                 continue
             if "更新日志" in line and "审核工具" in line:
                 continue  # 文件大标题行
+            if line.startswith("（本日志"):
+                continue  # 文件头部的维护说明行
             stripped = line.strip("─ ").strip()
             if stripped and (line.startswith("─") or line.startswith("═")):
                 current_entry = {"date": stripped, "groups": []}
