@@ -49,9 +49,9 @@ def _build_template(path: Path, *, codes: tuple[str, ...] = CODES,
     book = Workbook()
     listing = book.active
     listing.title = "报表清单"
-    listing.append(("报表代码", "报表名称", "频度", "批次"))
+    listing.append(("报表代码", "报表名称", "频度", "批次", "是否启用写入"))
     for code in codes:
-        listing.append((code, f"表{code}", "月", "1"))
+        listing.append((code, f"表{code}", "月", "1", "是"))
     for code in codes:
         sheet = book.create_sheet(code)
         sheet.append(("指标代码", "指标名称", "行序号", "余额", "发生额"))

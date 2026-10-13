@@ -1,6 +1,38 @@
 # S3-F05 比较文件到金融表单
 
-当前版本：v1.1.0
+当前版本：v2.0.0
+
+## v2.0.0 — 2026-10-13 21:54
+
+变更类型：Breaking / MAJOR
+
+前版本：v1.1.0
+新版本：v2.0.0
+
+修改内容：
+- 本条为汇总追溯 `40875d7..1b0ae87` 的已完成调整，并按当前确认口径登记。
+- 报表清单 E 列“是否启用写入”：空值（含纯空白文本）、“否”“0”“false”禁用并从输出移除工作表，非空值忽略首尾空格与大小写；“是”“1”“true”“y”等其他值启用。非法值由配置检查提示警告，但运行时仍按启用处理。
+- E 列缺失的旧模板等价于空值，报表不再写入。希望输出的报表须在 E 列明确填写“是”（也支持“1”“true”“y”）；程序不会自动填入正式配置。
+- OpenPyXL 与 FAST_OOXML 两种渲染路径共用此判定。
+
+影响文件：
+- core/src/base_audit/systems/s3_central_statistics/form_template.py
+- core/src/base_audit/systems/s3_central_statistics/fast_ooxml.py
+- core/src/base_audit/systems/s3_central_statistics/forms_config_check.py
+- core/tests/test_central_forms.py
+- core/tests/test_s3_forms_config_check.py
+
+配置影响：S3-CFG-03 更新至 v2.0.0（报表清单 E 列写入规则）；配置路径为 `config/3.3大集中指标比较拆分_配置.xlsx`。S3-CFG-00 保持 v2.0.2、S3-CFG-01 为 v3.0.3、S3-CFG-02 保持 v1.0.3。
+
+测试与限制：
+- 历史验证见 GPT修改记录/20261013_153644_指标比较拆分报表清单新增是否启用写入列.txt；其中空值用例按旧“空值启用”口径断言，不能作为当前“空值/缺列禁用”契约的通过证据；也未覆盖非法值告警但仍写入。本次未重跑。
+- 本次未重打包，未做 Office 真机验收。
+
+GPT修改记录：
+- GPT修改记录/20261013_215438_统一3.3写入口径并补齐发布组件版本.txt
+
+Git提交：
+- 未提交。
 
 ## v1.1.0 — 2026-09-24
 

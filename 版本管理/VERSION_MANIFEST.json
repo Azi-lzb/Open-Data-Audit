@@ -2,7 +2,7 @@
   "product": {
     "id": "V3",
     "name": "审核工具",
-    "version": "26.1.0.0",
+    "version": "26.1.1.0",
     "version_scheme": "YY.MAJOR.MINOR.PATCH（年份.大版本.中版本.小版本）",
     "changelog": "版本管理/产品发布/CHANGELOG.md",
     "description": "V3 是产品身份/项目代号；整包发布版本使用年份.大版本.中版本.小版本，业务功能和配置使用独立的组件 SemVer。"
@@ -23,12 +23,12 @@
   "features": {
     "S1-F01": {
       "name": "汇总核查表校验",
-      "version": "1.2.0",
+      "version": "2.0.0",
       "system": "S1",
       "implementation": "core/src/base_audit/service.py",
       "description": "逐笔统计系统主流程：模板体检、表结构比对、公式复制、Excel/WPS 重算、问题提取与审核副本输出（DAG 编排）。",
       "changelog": "版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md",
-      "version_note": "v1.2.0：MINOR——运行明细展示与运行日志 Excel 导出拆分为独立用户设置；旧设置兼容迁移，业务结果不变。保留 v1.1.1 条件格式逐格求值与 Excel 15 位数值语义修复。"
+      "version_note": "v2.0.0：MAJOR——审核结果新增校验类型，输出由 12 列改为 13 列；模板公式按七段位置解释，不兼容旧段序；非空校验类型进入公式问题身份键，历史匹配可能首次变化。"
     },
     "S1-F02": {
       "name": "汇总校验结果说明",
@@ -77,43 +77,43 @@
     },
     "S3-F01": {
         "name": "两期数据到比较文件",
-        "version": "1.5.1",
+        "version": "1.5.2",
       "system": "S3",
       "implementation": "core/src/base_audit/systems/s3_central_statistics/comparison_engine.py",
       "description": "大集中统计系统：两期数据文件配对、环比与警戒着色，生成比较文件。",
       "changelog": "版本管理/S3_大集中统计系统/功能/S3-F01_两期数据到比较文件/CHANGELOG.md",
-        "version_note": "v1.5.1：PATCH——规则动作的配置备注与动态判定均为空时，在阈值后结束文案，不再输出无备注或尾部连字符。"
+        "version_note": "v1.5.2：PATCH——运行日志增加表达式规则频度/批次就绪及跳过统计；既有过滤与业务判定语义不变。"
     },
     "S3-F02": {
       "name": "比较文件到说明文件",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "system": "S3",
       "implementation": "core/src/base_audit/systems/s3_central_statistics/explanation_exporter.py",
       "description": "大集中统计系统：按“输出说明”标记导出简化说明文件。",
       "changelog": "版本管理/S3_大集中统计系统/功能/S3-F02_比较文件到说明文件/CHANGELOG.md",
-      "version_note": "v1.0.1：源码按 S1/S2/S3 归位（Refactor），业务逻辑无变化"
+      "version_note": "v1.1.0：MINOR——新增多地区与村镇银行长机构代码导出支持，金额列显示两位小数，底层数值不舍入。"
     },
     "S3-F03": {
       "name": "机构说明到说明文件",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "system": "S3",
       "implementation": "core/src/base_audit/systems/s3_central_statistics/explanation_exporter.py",
       "description": "大集中统计系统：批量导入机构反馈说明文件并回写变动原因。",
       "changelog": "版本管理/S3_大集中统计系统/功能/S3-F03_机构说明到说明文件/CHANGELOG.md",
-      "version_note": "v1.0.1：源码按 S1/S2/S3 归位（Refactor），业务逻辑无变化"
+      "version_note": "v1.1.0：MINOR——新增长机构代码与反馈格式兼容；按机构代码、指标代码、数据值和增减额匹配，金额按四位小数比较，名称不参与匹配，冲突明确报告。"
     },
     "S3-F04": {
       "name": "本期数值核对",
-      "version": "1.2.1",
+      "version": "1.2.2",
       "system": "S3",
       "implementation": "core/src/base_audit/systems/s3_central_statistics/cross_period_engine.py",
       "description": "大集中统计系统：按本期数值核对规则做多频度多批次数值核对。",
       "changelog": "版本管理/S3_大集中统计系统/功能/S3-F04_本期数值核对/CHANGELOG.md",
-      "version_note": "v1.2.1：PATCH——统一 3.2 配置检查报告的【问题】与【取数词表提示】标题；业务结果不变。"
+      "version_note": "v1.2.2：PATCH——按固定绝对差异 1E-12（亿元）消除浮点残差；核对值显示两位小数，零值留空，保留底层精度。"
     },
     "S3-F05": {
       "name": "比较文件到金融表单",
-      "version": "1.1.0",
+      "version": "2.0.0",
       "system": "S3",
       "implementation": [
         "core/src/base_audit/systems/s3_central_statistics/form_template.py",
@@ -121,19 +121,19 @@
       ],
       "description": "大集中统计系统：按机构回填金融表单并应用警戒颜色（FAST_OOXML 为固定默认渲染路径）。",
       "changelog": "版本管理/S3_大集中统计系统/功能/S3-F05_比较文件到金融表单/CHANGELOG.md",
-      "version_note": "v1.1.0：MINOR——新增 3.3 配置只读检查入口，预检必需工作表、转表设置单位及内嵌表单引用；业务结果不变。"
+      "version_note": "v2.0.0：MAJOR——新增报表清单 E 列写入选择并改为空值默认不写入；空/否/0/false 禁用，其余启用，非法值只警告仍写入。两种渲染器共用判定，旧模板需明确填写启用值。"
     }
   },
   "configs": {
     "S1-CFG-01": {
       "name": "逐笔统计系统配置",
-      "version": "1.0.5",
+      "version": "2.0.0",
       "system": "S1",
       "file": "config/1.逐笔统计系统_配置.xlsx",
       "description": "逐笔统计系统两个流程的审核历史与人工说明配置。",
       "note": "文件名中的 1./2./3.0~3.3 是历史文件编号，不是版本号；是否改名另行迁移。",
       "changelog": "版本管理/S1_逐笔统计系统/配置/S1-CFG-01_逐笔统计系统配置/CHANGELOG.md",
-      "version_note": "v1.0.5：PATCH——补齐正式配置及默认快照全部配置表头批注，明确任务说明留存列；业务数据和逻辑不变。"
+      "version_note": "v2.0.0：MAJOR——核查表校验结果新增校验类型列，历史结果由 12 列变为 13 列；维护七段式公式及历史身份变化说明，旧配置/模板需按新协议核对。"
     },
     "S2-CFG-01": {
         "name": "报表采集系统配置",
@@ -157,13 +157,13 @@
     },
     "S3-CFG-01": {
       "name": "大集中执行比较配置",
-        "version": "3.0.2",
+        "version": "3.0.3",
       "system": "S3",
       "file": "config/3.1大集中执行比较_配置.xlsx",
       "description": "执行比较专属（V3）：规则动作 + 表达式校验。",
       "note": "文件名中的 1./2./3.0~3.3 是历史文件编号，不是版本号；是否改名另行迁移。",
       "changelog": "版本管理/S3_大集中统计系统/配置/S3-CFG-01_大集中执行比较配置/CHANGELOG.md",
-      "version_note": "v3.0.2：PATCH——补齐五段表达式校验 A:L 表头批注，并同步默认快照已有规则动作批注；规则数据与执行逻辑不变。"
+      "version_note": "v3.0.3：PATCH——使用说明补齐五段取数、频度/批次就绪、跨批选数、说明落点与软性去重机制；规则数据及配置协议不变。"
     },
     "S3-CFG-02": {
       "name": "大集中本期数值核对配置",
@@ -177,13 +177,13 @@
     },
     "S3-CFG-03": {
       "name": "大集中指标比较拆分配置",
-      "version": "1.0.4",
+      "version": "2.0.0",
       "system": "S3",
       "file": "config/3.3大集中指标比较拆分_配置.xlsx",
-      "description": "指标比较拆分专属：报表清单（唯一权威表单来源）与转表设置；“金融表单映射”已退出运行依赖。",
+      "description": "指标比较拆分专属：报表清单（含是否启用写入）与转表设置；空白默认不写入，金融表单映射已退出运行依赖。",
       "note": "文件名中的 1./2./3.0~3.3 是历史文件编号，不是版本号；是否改名另行迁移。",
       "changelog": "版本管理/S3_大集中统计系统/配置/S3-CFG-03_大集中指标比较拆分配置/CHANGELOG.md",
-      "version_note": "v1.0.4：PATCH——补齐报表清单 B:D 表头批注并同步默认快照；模板内容与执行逻辑不变。"
+      "version_note": "v2.0.0：MAJOR——报表清单新增 E 列是否启用写入；空/否/0/false 禁用，其余启用，非法值仅警告仍写入。空白和缺列不再默认启用，需要人工明确选择输出报表。"
     }
   }
 }

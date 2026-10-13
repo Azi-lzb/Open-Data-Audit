@@ -32,9 +32,9 @@ def _write_template(path: Path) -> None:
     book = Workbook()
     listing = book.active
     listing.title = "报表清单"
-    listing.append(("报表代码", "报表名称", "频度", "批次"))
-    listing.append(("A1411", "资产负债项目月报表", "月", "1"))
-    listing.append(("A1433", "涉农贷款简报", "月", "2"))
+    listing.append(("报表代码", "报表名称", "频度", "批次", "是否启用写入"))
+    listing.append(("A1411", "资产负债项目月报表", "月", "1", "是"))
+    listing.append(("A1433", "涉农贷款简报", "月", "2", "是"))
     sheet = book.create_sheet("A1411")
     sheet.append(("指标代码", "指标名称", "行序号", "余额", "发生额"))
     for r in range(1, 6):

@@ -349,9 +349,16 @@ class TemplateCompiler:
             code = _cell_text(cells.get(1), shared).strip()
             if not code or "A" not in code:
                 continue
-            # E 列「是否启用写入」=否 的报表记入禁用集（与 openpyxl TemplateMeta
-            # 同口径）：渲染时其工作表从输出删除，即使比较文件有数据也不写入。
-            if not form_write_enabled(_cell_text(cells.get(5), shared)):
+            # 保留单元格数值/布尔类型，与 openpyxl 的 0/False 禁用口径一致；
+            # 文本值按原样交给共用判定，非法文本仍启用写入。
+            flag_cell = cells.get(5)
+            raw_flag: object = _cell_text(flag_cell, shared)
+            if flag_cell and _attr(flag_cell, "t") in {"", "n", "b"}:
+                try:
+                    raw_flag = float(raw_flag)
+                except ValueError:
+                    pass
+            if not form_write_enabled(raw_flag):
                 disabled.add(code)
                 continue
             forms.append({
@@ -681,7 +688,7 @@ class FastOoxmlRenderer:
         plan = SheetPlan(self.compiled.sheet_registry)
         for sheet_name in self.compiled.internal_config_sheets:
             plan.mark_deleted(sheet_name)
-        # 报表清单「是否启用写入」=否 的报表：工作表无条件从输出删除，
+        # 报表清单未启用写入的报表：工作表无条件从输出删除，
         # 不受 delete_empty_sheets 影响（用户语义：不写入 = 输出中不存在）。
         for sheet_name in self.compiled.disabled_form_codes:
             plan.mark_deleted(sheet_name)

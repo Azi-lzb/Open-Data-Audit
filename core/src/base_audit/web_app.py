@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .app_identity import app_title, icon_path, load_product_info, render_app_page
+from .developer_access import DeveloperAccessStore, DEVELOPER_SYSTEMS, developer_password_matches
 
 from .discovery import (
     classify_source_files,
@@ -189,6 +190,8 @@ class WebApi:
         self._system_environment_text = system_environment_text()
         self._system_environment_info = system_environment_summary()
         hide_application_data_directory(project_root / "data")
+        self.developer_access_store = DeveloperAccessStore(project_root / "data" / "开发设置.json")
+        self._developer_unlocked: set[str] = set()
         self.settings_store = SettingsStore(project_root / "data" / "用户设置.json")
         self.settings = self.settings_store.load(file_picker_default=self._file_picker_default)
         # 旧布局（如已取消的 unified/config/）被删除后，失效路径会在加载时清空；
@@ -431,7 +434,23 @@ class WebApi:
         return self._refresh_period_config_check()
 
     def get_state(self) -> dict[str, Any]:
+        # 每次状态刷新读取独立开关，允许开发人员手工修改 JSON 后直接生效。
+        configured = self.developer_access_store.load()
+        self.state["developerAccess"] = {
+            system: configured[system] or system in self._developer_unlocked
+            for system in DEVELOPER_SYSTEMS
+        }
+        self.state["developerAccessMessage"] = self.developer_access_store.message
         return self.state
+
+    def unlock_developer_system(self, system: str, password: str) -> dict[str, Any]:
+        """开发口令只在后端验证；本次运行解锁，不改写用户/开发设置或记录密码。"""
+        if system not in DEVELOPER_SYSTEMS:
+            return {"ok": False, "message": "该系统没有开发入口。"}
+        if not developer_password_matches(password):
+            return {"ok": False, "message": "密码不正确，请重新输入。"}
+        self._developer_unlocked.add(system)
+        return {"ok": True, "state": self.get_state()}
 
     def refresh_system_environment(self) -> dict[str, Any]:
         """刷新本机环境摘要；高级设置展示用。"""

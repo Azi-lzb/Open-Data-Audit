@@ -1,6 +1,34 @@
 # S3-F01 两期数据到比较文件
 
-当前版本：v1.5.1
+当前版本：v1.5.2
+
+## v1.5.2 — 2026-10-13 21:54
+
+变更类型：Bugfix / PATCH
+
+前版本：v1.5.1
+新版本：v1.5.2
+
+修改内容：
+- 本条为汇总追溯 `40875d7..1b0ae87` 的已完成调整，并按当前确认口径登记。
+- 为已有的表达式规则频度/批次就绪过滤补充可见统计：记录就绪数、未就绪跳过数及最多五个跳过规则编号，并写入运行日志；频度过滤与规则执行语义不变。
+
+影响文件：
+- core/src/base_audit/systems/s3_central_statistics/complex_rule_engine.py
+- core/src/base_audit/systems/s3_central_statistics/service.py
+- core/tests/test_complex_rule_preflight.py
+
+配置影响：S3-CFG-00 保持 v2.0.2；S3-CFG-01 更新至 v3.0.3（仅使用说明，规则数据与协议不变）。
+
+测试与限制：
+- 历史验证见 GPT修改记录/20261010_235213_表达式规则频度就绪统计与配置备注完善.txt：定向 53 passed、S3 组 438 passed；均为既有记录，本次未重跑。
+- 本次未重打包，未做 Office 真机验收。
+
+GPT修改记录：
+- GPT修改记录/20261013_215438_统一3.3写入口径并补齐发布组件版本.txt
+
+Git提交：
+- 未提交。
 
 ## v1.5.1 — 2026-09-24
 

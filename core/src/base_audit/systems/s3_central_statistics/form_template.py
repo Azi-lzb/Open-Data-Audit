@@ -5,8 +5,8 @@
 第 1 列为指标代码）。渲染按 VBA C系统导数转表 语义：表头扩为 本期/上期/
 增减额/环比 四块，按 业务类+指标代码+数据属性+币种 匹配比较结果回填；
 警戒色应用到每指标组的四个单元格；空行隐藏、空表按配置删除。
-「报表清单」E 列「是否启用写入」：空/是=写入；否=该报表不写入（即使比较
-文件有数据），清单加载层直接剔除，OPENPYXL 与 FAST_OOXML 两渲染器同口径。
+「报表清单」E 列「是否启用写入」：空/否/0/false 不写入（即使比较文件
+有数据）；其他值均写入，非法值由配置检查提示警告。两渲染器同口径。
 
 性能设计：模板元数据（表清单、清理列、每行回填键计划）只在
 ``load_template_meta`` 计算一次、跨机构复用；每个机构只写有数据命中的
@@ -20,18 +20,28 @@ from io import BytesIO
 from pathlib import Path
 
 from openpyxl import load_workbook
-
-
-def form_write_enabled(raw: object) -> bool:
-    """报表清单 E 列「是否启用写入」：空/是=启用；否/0/false=禁用（宽容大小写）。
-
-    FAST_OOXML 渲染器 (_read_form_list) 使用同一判定口径，两处修改需同步。
-    """
-    text = str(raw or "").strip().lower()
-    return text not in {"否", "0", "false"}
 from openpyxl.styles import PatternFill
 
 from .comparison_exporter import VBA_COLOR_PALETTE
+
+
+FORM_WRITE_ALLOWED_FLAGS = frozenset({"", "是", "否", "0", "1", "true", "false", "y"})
+FORM_WRITE_DISABLED_FLAGS = frozenset({"", "否", "0", "false"})
+
+
+def normalize_form_write_flag(raw: object) -> str:
+    """共用取值归一化；空格/大小写宽容，保留数值 0 和布尔 False 的禁用语义。"""
+    if raw is None:
+        return ""
+    if isinstance(raw, (int, float)) and raw in (0, 1):
+        return str(int(raw))
+    return str(raw).strip().lower()
+
+
+def form_write_enabled(raw: object) -> bool:
+    """空/否/0/false 禁用；其余值均启用，非法值仅警告，两个渲染器共用。"""
+    return normalize_form_write_flag(raw) not in FORM_WRITE_DISABLED_FLAGS
+
 
 HEADER_PREFIXES = ("上期-", "增减额-", "环比-")
 # 3.3 配置工作簿同时承载金融表单模板。它们用于程序维护，不应随每家机构
@@ -109,7 +119,7 @@ class TemplateMeta:
                 code = str(row[0] or "").strip()
                 if not code or "A" not in code:
                     continue
-                # E 列「是否启用写入」=否 的报表记入禁用集：渲染时工作表从输出
+                # E 列「是否启用写入」为空/否/0/false 的报表记入禁用集：工作表从输出
                 # 删除（无条件，不受 delete_empty_sheets 影响），不进 forms。
                 if not form_write_enabled(row[4] if len(row) > 4 else None):
                     self.disabled_form_codes.add(code)
@@ -311,7 +321,7 @@ def render_org_workbook(
     for sheet_name in meta.internal_config_sheets:
         if sheet_name in book.sheetnames:
             book.remove(book[sheet_name])
-    # 报表清单「是否启用写入」=否 的报表：工作表无条件从输出删除。
+    # 报表清单未启用写入的报表：工作表无条件从输出删除。
     for sheet_name in meta.disabled_form_codes:
         if sheet_name in book.sheetnames:
             book.remove(book[sheet_name])

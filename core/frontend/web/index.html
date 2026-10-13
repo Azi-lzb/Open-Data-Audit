@@ -713,6 +713,10 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
     大集中统计系统
   </button>
+  <button type="button" class="sidenav-item" data-page="dijin" onclick="openDijinWorkbench()" title="地金系统">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 10h1M14 10h1M9 14h1M14 14h1M10 21v-3h4v3"/></svg>
+    地金系统
+  </button>
   <button type="button" class="sidenav-item" data-page="settings" onclick="openSettingsWorkbench()" title="设置中心">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1.51 1 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     设置中心
@@ -975,6 +979,15 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
   </div>
 </section><!-- /page-central -->
 
+<section class="page" id="page-dijin">
+  <main class="layout">
+    <section class="card">
+      <h3>地金系统</h3>
+      <p class="about-body">开发预览：功能正在准备中，业务功能暂未开放。</p>
+    </section>
+  </main>
+</section>
+
 <section class="page" id="page-settings">
   <div class="settings-page">
   <div class="settings-dialog">
@@ -1057,6 +1070,33 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     <p class="about-version" id="appVersion">__AUDIT_APP_TITLE__</p>
     <div class="about-actions">
       <button class="btn" onclick="closeAbout()">知道了</button>
+    </div>
+  </div>
+</div>
+
+<div class="about-mask" id="unavailableMask" onclick="closeUnavailableFeature()">
+  <div class="about-card" role="dialog" aria-modal="true" aria-labelledby="unavailableTitle" aria-describedby="unavailableMessage" onclick="event.stopPropagation()">
+    <p class="about-title" id="unavailableTitle">功能暂未<span id="unavailableUnlockTrigger" style="user-select:none" onclick="registerUnavailableUnlockClick()">开放</span></p>
+    <div class="about-body">
+      <p id="unavailableMessage">该功能暂未开放，敬请期待。如需使用，请联系开发人员。</p>
+    </div>
+    <div class="about-actions">
+      <button type="button" class="btn primary" id="unavailableOk" onclick="closeUnavailableFeature()">知道了</button>
+    </div>
+  </div>
+</div>
+
+<div class="about-mask" id="developerUnlockMask" onclick="closeDeveloperUnlock()">
+  <div class="about-card" role="dialog" aria-modal="true" aria-labelledby="developerUnlockTitle" onclick="event.stopPropagation()">
+    <p class="about-title" id="developerUnlockTitle">开发人员入口</p>
+    <div class="about-body">
+      <p>请输入开发口令以进入该系统。</p>
+      <input id="developerPassword" type="password" autocomplete="off" aria-label="开发口令" placeholder="请输入密码" onkeydown="if(event.key==='Enter'){event.preventDefault();forceDeveloperEntry()}">
+      <p id="developerUnlockError" role="alert" aria-live="polite"></p>
+    </div>
+    <div class="about-actions">
+      <button type="button" class="btn" onclick="closeDeveloperUnlock()">退出</button>
+      <button type="button" class="btn primary" id="developerUnlockOk" onclick="forceDeveloperEntry()">强制进入</button>
     </div>
   </div>
 </div>
@@ -1591,17 +1631,22 @@ function showSettingsPaneLoading(){
 }
 /* ---------- 主界面页面切换（逐笔统计 / 报表采集 / 设置中心） ---------- */
 let currentPage='audit';
+const developerPages={audit:'S1',collect:'S2',central:'S3',dijin:'S4'};
 function updateAuditWorkbenchMode(){
   const primary=document.getElementById('auditPrimaryButton'),summary=document.getElementById('auditSummaryButton');
   if(primary){primary.dataset.action='dag:汇总核查表校验';primary.title='DAG 主流程：复制公式、计算并生成审核副本与问题汇总';}
   if(summary){summary.dataset.action='dag:汇总校验结果说明';summary.title='DAG 主流程：汇总校验结果与报送说明';}
 }
 function openAuditWorkbench(){
-  registerAuditEggClick();
-  updateAuditWorkbenchMode();
-  switchPage('audit');
+  if(developerSystemOpen('S1')){
+    registerAuditEggClick();
+    updateAuditWorkbenchMode();
+  }
+  requestSystemNavigation('S1','audit');
 }
 function switchPage(page){
+  const system=developerPages[page];
+  if(system&&!developerSystemOpen(system)){showUnavailableFeature(system,page);return}
   if(page===currentPage){return}
   if(currentPage==='settings'&&CFG.dirty){
     askDiscardSettings(page);
@@ -2883,11 +2928,88 @@ async function openPath(p){await bridge.api.open_path(p);await refresh()}
 async function openGuide(){await bridge.api.open_user_guide()}
 function openAbout(){document.getElementById('aboutMask').style.display='flex'}
 function closeAbout(){document.getElementById('aboutMask').style.display='none'}
+let unavailableReturnFocus=null;
+let unavailableTarget=null;
+let unavailableUnlockClicks=[];
+function showUnavailableFeature(system,page){
+  unavailableTarget=system&&page?{system:system,page:page}:null;
+  unavailableUnlockClicks=[];
+  unavailableReturnFocus=document.activeElement;
+  document.getElementById('unavailableMask').style.display='flex';
+  document.getElementById('unavailableOk').focus();
+}
+function closeUnavailableFeature(){
+  document.getElementById('unavailableMask').style.display='none';
+  unavailableTarget=null;
+  unavailableUnlockClicks=[];
+  if(unavailableReturnFocus&&typeof unavailableReturnFocus.focus==='function')unavailableReturnFocus.focus();
+  unavailableReturnFocus=null;
+}
+function registerUnavailableUnlockClick(){
+  if(!unavailableTarget||document.getElementById('unavailableMask').style.display!=='flex')return;
+  const now=Date.now();
+  unavailableUnlockClicks=unavailableUnlockClicks.filter(t=>now-t<2000);
+  unavailableUnlockClicks.push(now);
+  if(unavailableUnlockClicks.length<5)return;
+  const target=unavailableTarget;
+  closeUnavailableFeature();
+  openDeveloperUnlock(target.system,target.page);
+}
+let developerUnlockTarget=null;
+let developerReturnFocus=null;
+let developerUnlockBusy=false;
+function developerSystemOpen(system){
+  if(!state||!state.developerAccess)return system==='S1'||system==='S2';
+  return state.developerAccess[system]===true;
+}
+function requestSystemNavigation(system,page){
+  if(developerSystemOpen(system)){switchPage(page);return}
+  showUnavailableFeature(system,page);
+}
+function openDeveloperUnlock(system,page){
+  developerReturnFocus=document.activeElement;
+  developerUnlockTarget={system:system,page:page};
+  const names={S1:'逐笔统计系统',S2:'报表采集系统',S3:'大集中统计系统',S4:'地金系统'};
+  document.getElementById('developerUnlockTitle').textContent=names[system]+' · 开发人员入口';
+  document.getElementById('developerPassword').value='';
+  document.getElementById('developerUnlockError').textContent=state&&state.developerAccessMessage||'';
+  document.getElementById('developerUnlockMask').style.display='flex';
+  document.getElementById('developerPassword').focus();
+}
+function closeDeveloperUnlock(){
+  document.getElementById('developerUnlockMask').style.display='none';
+  document.getElementById('developerPassword').value='';
+  developerUnlockTarget=null;
+  if(developerReturnFocus&&typeof developerReturnFocus.focus==='function')developerReturnFocus.focus();
+  developerReturnFocus=null;
+}
+async function forceDeveloperEntry(){
+  if(!developerUnlockTarget||developerUnlockBusy)return;
+  const target=developerUnlockTarget;
+  const password=document.getElementById('developerPassword').value;
+  const button=document.getElementById('developerUnlockOk');
+  developerUnlockBusy=true;button.disabled=true;
+  try{
+    const result=await bridge.api.unlock_developer_system(target.system,password);
+    if(developerUnlockTarget!==target)return;
+    if(!result.ok){
+      document.getElementById('developerUnlockError').textContent=result.message||'无法验证开发口令。';
+      document.getElementById('developerPassword').focus();
+      return;
+    }
+    state=result.state;
+    closeDeveloperUnlock();
+    switchPage(target.page);
+  }catch(e){
+    if(developerUnlockTarget===target)document.getElementById('developerUnlockError').textContent='无法验证开发口令，请重新启动审核工具后重试。';
+  }finally{developerUnlockBusy=false;button.disabled=false}
+}
 let pendingConfirm=null;
 
 function openAuditEgg(){registerAuditEggClick();}
-function openCollectWorkbench(){switchPage('collect')}
-function openCentralWorkbench(){switchPage('central')}
+function openCollectWorkbench(){requestSystemNavigation('S2','collect')}
+function openCentralWorkbench(){requestSystemNavigation('S3','central')}
+function openDijinWorkbench(){requestSystemNavigation('S4','dijin')}
 const CENTRAL_PATHS=[["centralCommonConfig","centralCommonConfigName"],["centralComparisonConfig","centralComparisonConfigName"],["centralCrossConfig","centralCrossConfigName"],["centralFormsConfig","centralFormsConfigName"],["centralCur","centralCurName"],["centralPre","centralPreName"],["centralOutput","centralOutputName"],["centralCrossCur","centralCrossCurName"],["centralCrossOutput","centralCrossOutputName"],["centralCompareFile","centralCompareFileName"],["centralExplainFile","centralExplainFileName"],["centralFormOutput","centralFormOutputName"]];
 function renderCentral(s){
   CENTRAL_PATHS.forEach(([key,id])=>{
@@ -3488,6 +3610,23 @@ async function doCreatePeriodAudit(){
   await refresh();
 }
 document.addEventListener('keydown',e=>{
+  const developer=document.getElementById('developerUnlockMask');
+  if(developer&&developer.style.display==='flex'){
+    if(e.key==='Escape'){e.preventDefault();closeDeveloperUnlock()}
+    else if(e.key==='Tab'){
+      const items=[...developer.querySelectorAll('input,button:not([disabled])')];
+      const first=items[0],last=items[items.length-1];
+      if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
+      else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
+    }
+    return;
+  }
+  const unavailable=document.getElementById('unavailableMask');
+  if(unavailable&&unavailable.style.display==='flex'){
+    if(e.key==='Escape'){e.preventDefault();closeUnavailableFeature()}
+    else if(e.key==='Tab'){e.preventDefault();document.getElementById('unavailableOk').focus()}
+    return;
+  }
   if(e.key!=='Escape')return;
   const nm=document.getElementById('settingsNameMask');
   if(nm&&nm.style.display==='flex'){cancelFlowName();return}
@@ -3624,6 +3763,10 @@ async function refresh(){
   }
   setConnectionLost(false);
   state=s;
+  if(developerPages[currentPage]&&!developerSystemOpen(developerPages[currentPage])){
+    const fallback=Object.keys(developerPages).find(page=>developerSystemOpen(developerPages[page]));
+    applySwitchPage(fallback||'settings');
+  }
   if(s.appInfo){document.title=s.appInfo.title;document.getElementById('appVersion').textContent=s.appInfo.title}
   // 背景颜色以后端保存的设置为准（localStorage 仅用于启动前预应用，避免闪白）。
   applyTheme(s.uiTheme||'日间');

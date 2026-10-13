@@ -30,8 +30,8 @@ def _write_template(path: Path) -> None:
     book = Workbook()
     listing = book.active
     listing.title = "报表清单"
-    listing.append(("报表代码", "报表名称", "频度", "批次"))
-    listing.append(("A1411", "资产负债项目月报表", "月", "1"))
+    listing.append(("报表代码", "报表名称", "频度", "批次", "是否启用写入"))
+    listing.append(("A1411", "资产负债项目月报表", "月", "1", "是"))
     sheet = book.create_sheet("A1411")
     sheet.append(("指标代码", "指标名称", "行序号", "余额"))
     sheet.append(("12A09", "一、房地产开发贷款", 1, None))
@@ -97,7 +97,7 @@ class RenderFormsTests(unittest.TestCase):
 
     def test_write_flag_no_column_skips_disabled_form_both_renderers(self):
         """报表清单 E 列「是否启用写入」=否 的报表不写入（双渲染器同口径）；
-        空/是正常写入；不在清单的表仍不受影响。"""
+        空值不写入、是正常写入；不在清单的表仍不受影响。"""
         from base_audit.systems.s3_central_statistics.renderers import (
             RENDERER_FAST_OOXML, RENDERER_OPENPYXL,
         )
@@ -107,7 +107,7 @@ class RenderFormsTests(unittest.TestCase):
             listing = book.active
             listing.title = "报表清单"
             listing.append(("报表代码", "报表名称", "频度", "批次", "是否启用写入"))
-            listing.append(("A1411", "资产负债项目月报表", "月", "1", None))      # 空 = 启用
+            listing.append(("A1411", "资产负债项目月报表", "月", "1", None))      # 空 = 禁用
             listing.append(("A1412", "存款期限结构情况表", "月", "1", "否"))       # 禁用
             listing.append(("A1413", "涉农贷款简报", "月", "2", "是"))             # 显式启用
             for code in ("A1411", "A1412", "A1413"):
@@ -148,7 +148,7 @@ class RenderFormsTests(unittest.TestCase):
                     self.assertTrue(result.files)
                     book = load_workbook(result.files[0], read_only=True)
                     try:
-                        self.assertIn("A1411", book.sheetnames)    # 空 = 启用
+                        self.assertNotIn("A1411", book.sheetnames)  # 空 = 不写入
                         self.assertIn("A1413", book.sheetnames)    # 是 = 启用
                         self.assertNotIn("A1412", book.sheetnames)  # 否 = 不写入
                     finally:

@@ -14,7 +14,11 @@ from .config import (
     CentralConfigError,
     _locate_header,
 )
-from .form_template import has_embedded_form_template
+from .form_template import (
+    FORM_WRITE_ALLOWED_FLAGS,
+    has_embedded_form_template,
+    normalize_form_write_flag,
+)
 
 
 REQUIRED_TOFORM_SETTINGS = {
@@ -313,26 +317,26 @@ def check_forms_config(path: Path | str) -> dict[str, Any]:
         else:
             _set_check(report, "form_references", "not_run", "报表清单工作表或运行时表头缺失。")
 
-        # E 列「是否启用写入」取值检查：允许 空/是/否（宽容大小写与 0/1），
-        # 其他值按笔误警告（运行时按禁用处理会产生"报表没出来"的困惑）。
+        # 与运行时共用归一化：空值合法；非法值只警告，仍启用写入。
+        # 禁用值为 空/否/0/false（大小写与首尾空格宽容）。
         flag_start = len(report["errors"])
         if FORM_SHEET in names and form_headers is not None:
             bad_rows: list[str] = []
             for row_number, row in enumerate(
                 book[FORM_SHEET].iter_rows(min_row=2, values_only=True), start=2
             ):
-                flag = (
-                    str(row[form_headers["是否启用写入"]]).strip()
+                raw_flag = (
+                    row[form_headers["是否启用写入"]]
                     if "是否启用写入" in form_headers and form_headers["是否启用写入"] < len(row)
-                    else ""
+                    else None
                 )
-                if flag and flag not in {"是", "否", "1", "0", "true", "false", "True", "False", "Y", "y"}:
-                    bad_rows.append(f"第{row_number}行（{flag}）")
+                if normalize_form_write_flag(raw_flag) not in FORM_WRITE_ALLOWED_FLAGS:
+                    bad_rows.append(f"第{row_number}行（{raw_flag}）")
             if bad_rows:
                 _add_issue(
                     report,
                     "warnings",
-                    "「是否启用写入」存在无法识别的取值（运行时按不写入处理）："
+                    "「是否启用写入」存在无法识别的取值（仍启用写入；空/否/0/false 不写入）："
                     + "、".join(bad_rows[:8]),
                     sheet=FORM_SHEET,
                     field="是否启用写入",
@@ -341,7 +345,7 @@ def check_forms_config(path: Path | str) -> dict[str, Any]:
                 report,
                 "form_write_flag",
                 flag_start,
-                "已校验报表清单「是否启用写入」列取值（空/是/否）。" if bad_rows
+                "已校验报表清单「是否启用写入」列取值；非法值仍写入，请人工复核。" if bad_rows
                 else "报表清单「是否启用写入」列取值全部有效（或未启用该列）。",
             )
         else:

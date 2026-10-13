@@ -34,8 +34,8 @@ def _make_config(path: Path, *, include_settings: bool = True, include_form: boo
     book = Workbook()
     listing = book.active
     listing.title = "报表清单"
-    listing.append(("报表代码", "报表名称", "频度", "批次"))
-    listing.append(("A1411", "测试报表", "月", 1))
+    listing.append(("报表代码", "报表名称", "频度", "批次", "是否启用写入"))
+    listing.append(("A1411", "测试报表", "月", 1, "是"))
 
     if include_form:
         form = book.create_sheet("A1411")
