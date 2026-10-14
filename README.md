@@ -17,6 +17,8 @@
 
 ## 运行依赖：LibreOffice Calc（离线安装包不入库）
 
+审核工具 V26.1.2.0 起，Linux 用户可在 **设置中心 → 帮助与更新 → 安装 LibreOffice** 选择两种方式：查看终端安装步骤，或选择 DEB 格式的 tar.gz 安装包/解压目录，通过系统管理员授权窗口辅助安装。Windows 不显示该入口。操作及限制见 [Linux 安装说明](docs/LibreOffice安装说明.md)。
+
 逐笔统计（S1）、报表采集（S2）、大集中统计（S3）的 Excel 读写与条件格式处理依赖
 **LibreOffice Calc**（Windows 侧对应 Excel/WPS）。目标机已装有 LibreOffice 或能联网
 安装的，无需额外处理；目标机无网络且未安装时，需要用 LibreOffice 官方离线包安装
@@ -50,7 +52,7 @@ tar -xzf LibreOffice_26.8.0_Linux_x86-64_deb.tar.gz -C /tmp
 cd /tmp/LibreOffice*_deb/DEBS && sudo dpkg -i *.deb
 ```
 
-装完 LibreOffice 后再安装审核工具的 DEB（`dist/` 构建产物同样不入库，见打包
+可以先安装审核工具的 DEB，再通过内置入口安装 LibreOffice（`dist/` 构建产物同样不入库，见打包
 脚本说明）。审核工具启动与冒烟不依赖 LibreOffice，仅执行涉及 Excel 的功能
 （如 S1 汇总核查表校验）时需要。
 

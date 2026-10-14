@@ -1,0 +1,77 @@
+【时间与执行者】
+2026-10-14，记录时间戳 22:46:58；后续同轮补充终端方式与 Docker 验收。
+执行者：主 Agent 集成/UI/接口/版本/回归；gpt-6-luna max 实现安装适配层及隔离安装测试；gpt-6.1-sol high 审查方向与风险。
+修改前/后 commit：4605383d8c305b187d76c0cc02531303d8dc8635 → 未提交（仍为同一 HEAD）；当前 desktop。
+修改前 tracked 工作区干净；已有未跟踪 external/、地金工具/ 保留，本轮不纳入 Git。没有 commit/push/merge/main 修改。
+
+【目的】
+Linux 用户在帮助与更新选择两条路径：终端安装步骤，或选择 LibreOffice tar.gz/tgz/DEBS 文件夹，由工具检查并通过系统授权安装。
+
+【新增文件】
+core/src/base_audit/native/libreoffice_install.py
+core/tests/test_libreoffice_install.py
+core/tests/test_libreoffice_install_api.py
+docs/LibreOffice安装说明.md
+本修改记录。
+
+【修改文件】
+core/src/base_audit/web_app.py
+core/src/base_audit/path_browser.py
+core/frontend/web/index.html
+core/tests/conftest.py
+shell-flask/app.py
+README.md
+shell-flask/README.md
+rules/11_版本管理与组件编号.md
+日志/更新日志.txt
+日志/开发日志.txt
+版本管理/VERSION_MANIFEST.json
+版本管理/产品发布/CHANGELOG.md
+
+【实现】
+公共 native 安装器独立于审核任务、业务核心和六册配置。共享 WebApi 提供 get_libreoffice_install、choose_libreoffice_source、start_libreoffice_install，路径选择器新增复合扩展名过滤。
+帮助页 Linux 专属第三子页提供两种方式，默认辅助安装；终端说明 cd -- "/实际路径/DEBS" 与 sudo dpkg -i *.deb，指出 -i 后的空格及密码输入方式。手动命令只是文案，不交给后端执行。
+后台检查并暂存 DEB 文件。归档限制成员数、层级、总大小、磁盘空间，拒绝路径穿越、重复项、链接和特殊文件；文件夹限制扫描数量。读取 dpkg-deb 的真实带字段名信息，核对唯一主包、核心/Calc 组件、版本和架构，安装前再检查暂存 SHA256。
+实际官方包中 41 个主程序包 7.6.7.2-2/amd64、菜单包 7.6.7-2/all。仅针对同版本菜单包三段版本兼容，其余核心包须与主包精确一致；ure/uno-libs-private 也不能混版。
+安装 argv 固定为 pkexec --disable-internal-agent /usr/bin/dpkg --install 加绝对暂存文件；已是 root 时直接调用固定 dpkg。无 shell 用户命令、无密码字段/日志、无自动联网依赖修复、无卸载/强制覆盖参数。
+恢复冻结程序调用系统工具时的系统库环境；等待真实安装进程结束，不因任意超时中断包管理器。清理完成后发布终态，避免旧安装清空新准备任务。安装与审核启动检查共用锁，阻止并发启动；未改变业务算法。
+安装成功必须确认 /opt/libreoffice<主.中>/program/soffice 的本次目标版本可启动，不以其他已安装版本替代证明；成功后刷新环境摘要。
+Flask 安装接口仅接受本机回环/主机名的 JSON 请求，Origin 存在时须同源；错误 Origin、跨站、非 JSON 和远程请求被拒绝。
+
+【实际验证】
+Python 编译：python -m compileall -q core/src shell-flask/app.py，通过。
+Win7 兼容边界：相关三个模块 ast.parse(feature_version=(3,7)) 通过；没有实际 Win7 运行/重打包验收。
+JavaScript：从 index.html 提取脚本，node --check 通过；Node VM 检查 Linux 子页、Windows 隐藏、两种方式切换、终端命令、来源选择、重复启动拦截和切页后的旧状态保护，通过。
+定向：test_libreoffice_install、test_libreoffice_install_api、test_path_browser、test_web_app、test_app_identity、test_version_manifest，共 137 passed / 0 skipped / 0 failed / 0 errors。使用工作 venv 的 Flask 依赖补入测试解释器，不修改环境依赖。
+Windows 全量：测试解释器先将工作 .venv/Lib/site-packages 追加到 sys.path，再调用 pytest.main(['-q','core/tests','-m','s1 or s2 or s3','--junitxml=core/data/libreoffice-installer-check/regression-release.xml'])，最终 911 passed / 7 skipped / 3 failed / 0 errors / 2 subtests passed（146.75 秒）。所有新增测试登记到共享三组。
+剩余三项：golden/test_golden_native_flow.py::test_dag_native_flow_golden_contract、::test_s1_business_outputs_are_identical_when_run_log_export_changes；test_native_uos.py::test_dag_audit_dispatches_to_native。均在强制 native 预检阶段报未找到 LibreOffice Calc，未伪造通过。
+第一轮全量 904 passed / 7 skipped / 3 failed / 2 subtests passed；第二轮在后续用户消息后中断，日志停留在 85%，不视为完整结果；完整重跑 911 passed（162.45 秒），最后补充离开安装页仍刷新环境摘要的保护后再次全量得到上述 911 passed（146.75 秒）。
+WSL Ubuntu 24.04：从用户 Needed Release 取实际 LibreOffice_7.6.7.2_Linux_x86-64_deb.tar.gz，只进行检查，未安装 WSL 软件；tar.gz 与其 DEBS 文件夹均 ready，识别 42 个包，文件夹来源 42 个 SHA256 不变。
+Docker：使用官方 python:3.12-slim-bookworm 临时容器，代码和实际安装包只读挂载，无 privileged/host-network/宿主 Docker 管道挂载。实际执行产品安装器；极简环境 dpkg 返回 0，但目标版本缺 libXinerama.so.1 不能启动，安装器正确报告失败。依据 ldd 缺库信息仅在容器补齐系统库后，重跑达到 success；目标 LibreOffice 7.6.7.2 --version 返回 0，headless 重算示例公式缓存得到 2。实际安装和库准备只发生在测试容器中；无宿主机 LibreOffice 安装。
+Docker 的 root 路径不能替代真实桌面 pkexec 授权；取消/拒绝授权由模拟单测覆盖，麒麟/UOS 真机授权弹窗、目标系统兼容性、完整 S1 真机业务数据验收未执行。
+Docker 追加上述三个 native 流程用例，使用项目兼容的 openpyxl 3.1.5 后 3 passed，附一个 s1 标记未登记的环境警告。只复制选定测试/自带夹具、只读挂载 core/src，未挂载真实配置。最初 Bookworm 提供的 openpyxl 3.0.9 因缺 DefinedNameList.add 导致测试失败，补齐测试依赖后重跑通过，未修改产品代码去适应旧测试库。
+已删除本轮容器 v3-lo-installer-check，Docker Desktop 保持运行。公式样例、实际安装日志、最初缺库失败、补库记录及三个 native 用例结果都保存在忽略的 docker 证据目录。
+
+【配置与原始文件】
+本轮无配置内容/VBA 迁移，无审核规则、S1/S2/S3 计算语义变更。
+六册测试配置均逐文件优先选 config-real。config-real、公开 config、地金原始资料的 144 个仍存在文件 SHA256 不变；另一个 ~$地金笔记.doc Office 临时锁文件已不在目录，不作为源资料缺失或代码删除。
+Release tar.gz 的 Docker 前后 SHA256 一致。全部证据、安装包、系统包日志、回归 XML/文本、测试工作簿放在忽略的 core/data/libreoffice-installer-check/，不入公开仓库。
+
+【组件版本】
+整包：V26.1.1.0 → V26.1.2.0（公共 Linux 辅助安装能力新增，MINOR）。
+现有 S1/S2/S3 功能组件：全部保持原值。
+六册配置组件：全部保持原值。
+不新建业务 Sx-Fxx 或配置编号；本功能归公共平台辅助层。
+MANIFEST、产品发布 CHANGELOG、当前版本说明和打包名称示例同步。
+
+【已知限制与未执行】
+只支持 DEB 体系，普通用户需要 pkexec/桌面授权代理；不支持 RPM 包。包名和架构检查不是发布者身份验证，用户应使用可信来源。
+架构一致不保证 glibc/系统库兼容。上游 DEB 依赖清单可能不完整，因此安装成功后另做启动验证；失败时部分包可能已安装，不自动回滚或 apt 修复。
+已有 LibreOffice、BASE_AUDIT_SOFFICE 等显式配置可能影响实际审核使用的引擎，环境信息保留实际检测结果。
+本轮没有重新构建 DEB/EXE，已有 dist 产物不会自动包含本功能；需基于新源码重新打包。
+未提交/推送；未修改 main/laptop 或 Close 历史仓库。
+
+【删除与回滚】
+无项目文件删除。内部暂存副本仅在换源、失败、取消或安装结束后清理；原始压缩包/DEBS 文件不删除。
+测试容器清理只针对本轮创建的容器。拉取的官方 Docker 测试镜像保留为本机缓存，Docker Desktop 因测试启动。
+回滚代码时按本记录文件清单撤销本轮改动，并将整包版本及说明恢复到 V26.1.1.0；不覆盖原有 external/、地金工具/ 和 config-real/。系统级 LibreOffice 安装由包管理器管理，代码回滚不自动卸载软件。

@@ -6,6 +6,7 @@ import sys
 import time
 import traceback
 from datetime import datetime
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
@@ -181,10 +182,23 @@ def _diagnostic_display(value: object) -> str:
     return str(value)
 
 
+def serialize_execution_start(method):
+    """只串行化启动检查，后台审核和安装本身仍在线程中运行。"""
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        with self._execution_start_lock:
+            return method(self, *args, **kwargs)
+    return guarded
+
+
 class WebApi:
     def __init__(self, project_root: Path, *, file_picker_default: str = "系统原生") -> None:
         self.project_root = project_root
+        self._execution_start_lock = threading.RLock()
         self._file_picker_default = file_picker_default if file_picker_default in FILE_PICKER_MODES else "系统原生"
+        from .native.libreoffice_install import LibreOfficeInstaller
+        self._libreoffice_installer = LibreOfficeInstaller(project_root / "data")
+        self._libreoffice_install_refreshed = ""
         # 本机环境摘要（系统/引擎/COM 接管/外壳依赖）：高级设置展示与报障定位用。
         from .system_info import system_environment_summary, system_environment_text
         self._system_environment_text = system_environment_text()
@@ -283,6 +297,7 @@ class WebApi:
             "systemEnvironmentInfo": self._system_environment_info,
             # 桌面外壳提供系统原生对话框；Flask 可覆盖为 false。
             "filePickerSystemNativeAvailable": True,
+            "libreOfficeInstallAvailable": sys.platform.startswith("linux"),
             "xlsxRenderMode": self.settings.xlsx_render_mode,
             # V3 已转正：规则引擎不再暴露选择，历史存档值一律按 v3 执行。
             "centralRuleEngine": "v3",
@@ -434,6 +449,9 @@ class WebApi:
         return self._refresh_period_config_check()
 
     def get_state(self) -> dict[str, Any]:
+        # 即使用户已离开安装页，完成后也刷新全局环境信息。
+        if self._libreoffice_installer.snapshot().get("phase") == "success":
+            self.get_libreoffice_install()
         # 每次状态刷新读取独立开关，允许开发人员手工修改 JSON 后直接生效。
         configured = self.developer_access_store.load()
         self.state["developerAccess"] = {
@@ -1126,6 +1144,52 @@ class WebApi:
         self._log(f"已打开使用说明：{path}")
         return self.state
 
+    def get_libreoffice_install(self) -> dict[str, Any]:
+        """Linux 安装任务的独立状态，不写入审核设置或配置工作簿。"""
+        result = self._libreoffice_installer.snapshot()
+        result["auditBusy"] = bool(self.state["busy"])
+        log_path = str(result.get("logPath") or "")
+        if result.get("phase") == "success" and log_path != self._libreoffice_install_refreshed:
+            from .system_info import system_environment_summary, system_environment_text
+            self._system_environment_info = system_environment_summary(probe_version=True)
+            self._system_environment_text = system_environment_text()
+            self.refresh_system_environment()
+            self._libreoffice_install_refreshed = log_path
+        return result
+
+    def choose_libreoffice_source(self, folder: bool = False, path: str = "") -> dict[str, Any]:
+        if not sys.platform.startswith("linux"):
+            return self.get_libreoffice_install()
+        if not isinstance(folder, bool) or not isinstance(path, str):
+            raise ValueError("请选择 LibreOffice 安装包或解压目录。")
+        current = self.get_libreoffice_install()
+        if current.get("busy") or self.state["busy"]:
+            return dict(current, message="正在处理任务，请结束后再选择 LibreOffice 安装包。")
+        if not path:
+            selected = self._select_path(
+                folder=folder, current=str(Path.home()),
+                file_types=(("LibreOffice 安装包", "*.tar.gz *.tgz"),),
+            )
+            path = str(selected[0]) if selected else ""
+        if not path:
+            return current
+        return self._libreoffice_installer.prepare(path)
+
+    @serialize_execution_start
+    def start_libreoffice_install(self) -> dict[str, Any]:
+        if self.state["busy"]:
+            return dict(self.get_libreoffice_install(), message="审核任务正在运行，请完成后再安装 LibreOffice。")
+        return self._libreoffice_installer.start()
+
+    def _execution_busy(self) -> bool:
+        """安装期间不能启动会使用或探测 Office 的新任务。"""
+        if self.state["busy"]:
+            return True
+        if self._libreoffice_installer.snapshot().get("phase") == "installing":
+            self.state["status"] = "正在安装 LibreOffice，请完成后再执行审核任务。"
+            return True
+        return False
+
     def get_faq(self) -> dict[str, Any]:
         """常见问题（docs/常见问题.json，结构化数组）原样返回；未随包降级为空。"""
         import json as _json
@@ -1379,13 +1443,14 @@ class WebApi:
             self._refresh_config_issues()
         return value
 
+    @serialize_execution_start
     def create_template_merge(self, base: str = "", picked: list[str] | None = None) -> bool:
         """Interactive, manual-only creation of one combined audit template.
 
         It deliberately bypasses the workbench form and template recommendation:
         the user selects both the base and every input workbook in dialogs.
         """
-        if self.state["busy"]:
+        if self._execution_busy():
             return False
         base_dir = self.state.get("templateDir") or self.project_root
         self.state["status"] = "第 1 步：请选择基准模板"
@@ -2036,9 +2101,10 @@ class WebApi:
         value = str(self.state.get(kind_key) or "")
         return Path(value) if value else None
 
+    @serialize_execution_start
     def start_central_comparison(self) -> bool:
         """执行比较：两期大集中导数（CSV/XLSX）→ 比较结果.xlsx。"""
-        if self.state["busy"]:
+        if self._execution_busy():
             return False
         cur, pre = self.state.get("centralCur"), self.state.get("centralPre")
         if not cur or not pre:
@@ -2099,9 +2165,10 @@ class WebApi:
             self._log(f"任务结束，本次耗时：{time.monotonic() - started:.1f} 秒")
             self.state["busy"] = False
 
+    @serialize_execution_start
     def start_central_cross_period(self) -> bool:
         """本期数值核对：专用单期数据文件（CSV/XLSX）→ 对比结果工作簿。"""
-        if self.state["busy"]:
+        if self._execution_busy():
             return False
         # 本期数值核对与两期执行比较使用不同来源，不能静默借用两期的数据文件。
         cur = self.state.get("centralCrossCur")
@@ -2142,9 +2209,10 @@ class WebApi:
             self._log(f"任务结束，本次耗时：{time.monotonic() - started:.1f} 秒")
             self.state["busy"] = False
 
+    @serialize_execution_start
     def start_central_forms(self) -> bool:
         """指标比较拆分：比较结果 + 3.3 内嵌金融表单 → 每机构一个 xlsx。"""
-        if self.state["busy"]:
+        if self._execution_busy():
             return False
         compare_file = self.state.get("centralCompareFile")
         if not compare_file or not Path(compare_file).is_file():
@@ -2186,9 +2254,10 @@ class WebApi:
             self._log(f"任务结束，本次耗时：{time.monotonic() - started:.1f} 秒")
             self.state["busy"] = False
 
+    @serialize_execution_start
     def start_central_explanation_export(self) -> bool:
         """将比较结果中人工标记“输出说明=是”的行导出为简化说明文件。"""
-        if self.state["busy"]:
+        if self._execution_busy():
             return False
         compare_file = self.state.get("centralCompareFile")
         if not compare_file or not Path(compare_file).is_file():
@@ -2227,9 +2296,10 @@ class WebApi:
             self._log(f"任务结束，本次耗时：{time.monotonic() - started:.1f} 秒")
             self.state["busy"] = False
 
+    @serialize_execution_start
     def import_central_explanation_feedback(self, paths: list[str] | None = None) -> bool:
         """批量选择机构反馈说明，并按业务标识回写当前说明文件。"""
-        if self.state["busy"]:
+        if self._execution_busy():
             return False
         target = self.state.get("centralExplainFile")
         if not target or not Path(target).is_file():
@@ -2332,9 +2402,10 @@ class WebApi:
         self._log("跨期比较：输出目录" + ("跟随本期目录" if auto else "已固定"))
         return not auto
 
+    @serialize_execution_start
     def start_period_compare(self) -> bool:
         """报表采集系统页：用页面已选择的三路径启动跨期比较。"""
-        if self.state["busy"]:
+        if self._execution_busy():
             return False
         cur = self.state.get("pcCurDir")
         pre = self.state.get("pcPreDir")
@@ -2399,9 +2470,10 @@ class WebApi:
             self._log(f"任务结束，本次耗时：{elapsed:.1f} 秒")
             self.state["busy"] = False
 
+    @serialize_execution_start
     def start_period_compare_v2(self) -> bool:
         """启动当前报表采集审核主流程，输出带时间戳的报表审核清单。"""
-        if self.state["busy"]:
+        if self._execution_busy():
             return False
         config_report = self._refresh_period_config_check()
         if not config_report["passed"]:
@@ -2685,8 +2757,9 @@ class WebApi:
         self.state["selectedFilesInitialized"] = True
         return self.state
 
+    @serialize_execution_start
     def start(self, action: str, strict: bool = True) -> bool:
-        if self.state["busy"]:
+        if self._execution_busy():
             return False
         self.state["busy"] = True
         self.state["status"] = "正在处理，请勿关闭窗口……"
@@ -2698,6 +2771,7 @@ class WebApi:
         threading.Thread(target=self._worker, args=(action, strict), daemon=True).start()
         return True
 
+    @serialize_execution_start
     def start_dag_flow(
         self,
         workflow_id: str,
@@ -2716,7 +2790,7 @@ class WebApi:
             return False
         if not name.startswith("dag:"):
             name = "dag:" + name
-        if self.state["busy"]:
+        if self._execution_busy():
             return False
         self._cancel_event.clear()
         self.state["cancelRequested"] = False

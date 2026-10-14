@@ -1,0 +1,53 @@
+【时间与执行者】
+2026-10-14 23:18:03，主 Agent。
+修改前 commit：4605383d8c305b187d76c0cc02531303d8dc8635。
+修改后 commit：本记录与本轮代码一并提交；具体哈希由 Git 历史确定，并在完成回复中报告。
+分支：本机 desktop；用户本轮明确授权提交并同步 main。
+
+【WIP 与同步检查】
+origin 已核对为 https://github.com/Azi-lzb/Open-Data-Audit.git。
+fetch 后 desktop、main、origin/desktop、origin/main 同为 4605383，没有分叉；origin/laptop 也已由远端更新到该基线，本机 laptop 未改动。
+原有未跟踪 external/、地金工具/ 保留。config-real、测试数据、安装包、Docker 证据与构建产物不纳入提交。
+本轮 17 个代码/测试/说明/日志/版本文件的 WIP 副本、哈希和 diff 保存在忽略的 core/data/git-sync-20261014_231803/；本同步记录为第 18 个拟提交文件。
+仅按明确文件清单暂存，运行 tools/check_public_snapshot.py 后提交 desktop；推送 desktop 后通过快进更新 main 并推送，最后返回 desktop。不强推，不修改 laptop，不操作 Close 历史仓库。
+
+【提交范围】
+core/src/base_audit/native/libreoffice_install.py
+core/src/base_audit/web_app.py
+core/src/base_audit/path_browser.py
+core/frontend/web/index.html
+core/tests/test_libreoffice_install.py
+core/tests/test_libreoffice_install_api.py
+core/tests/conftest.py
+shell-flask/app.py
+README.md
+shell-flask/README.md
+docs/LibreOffice安装说明.md
+rules/11_版本管理与组件编号.md
+版本管理/VERSION_MANIFEST.json
+版本管理/产品发布/CHANGELOG.md
+日志/更新日志.txt
+日志/开发日志.txt
+GPT修改记录/20261014_224658_Linux内置LibreOffice安装入口.txt
+本同步记录。
+
+【验证结果】
+复用本轮已完成且覆盖当前 Python 实现的 core 全量：911 passed / 7 skipped / 3 failed / 0 errors / 2 subtests passed。3 项为 Windows 本机缺少 LibreOffice 的既有 native 环境失败。
+定向 137 passed。Docker 实际安装 LibreOffice 7.6.7.2、启动及公式重算成功；上述三个 native 流程测试在容器使用兼容依赖后 3 passed，附一个测试标记警告。
+同步前重新执行 core/src 与 Flask 入口 compileall、前端 node 语法检查、安装页 Node VM 交互检查，通过。只追加提交留痕，不重复业务回归。
+真实配置、公开配置与地金原始资料 144 个文件 SHA256 不变；Docker/WSL 原包只读。详细证据及测试边界见功能修改记录。
+暂存公开内容检查已通过：18 个暂存文件，0 个配置工作簿；无真实配置、原始资料、安装包或构建产物。同步前去除两个新增 Python 文件末尾的多余空行，无逻辑变更；暂存 diff 空白检查及编译再次通过。
+
+【组件版本】
+整包 V26.1.1.0 → V26.1.2.0，为本轮 Linux 公共安装辅助能力新增。
+现有 S1/S2/S3 功能与六册配置组件版本不变；本同步操作不再次升级版本。
+配置/VBA 迁移影响：无。
+
+【风险与未执行】
+仅支持 DEB 系统，GUI 授权需要目标系统 pkexec/桌面授权代理；麒麟/UOS 桌面授权及真实业务数据验收未执行。
+已有 dist 产物尚未重打，本次 Git 同步不发布新 DEB/EXE 或 GitHub Release。
+Windows 三项环境失败如上，不描述为全量通过；Docker 通过不能代替麒麟/UOS 桌面验收。
+
+【删除与回滚】
+无项目文件删除；不覆盖本机真实配置或已有未跟踪资料。
+代码回滚应按 Git 历史执行可审查的撤销提交，避免强推及重置覆盖他人 WIP；不自动卸载 Linux 已安装的 LibreOffice。

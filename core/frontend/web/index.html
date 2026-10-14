@@ -1932,21 +1932,27 @@ document.getElementById('settingsPane').addEventListener('click',function(e){
 });
 /* ---- 更新与答疑（设置中心页签）：更新日志 + 常见问题 两个子页 ---- */
 const CHANGELOG_BADGE={'新增':'#2e7d32','优化':'#1565c0','修复':'#c62828','其他':'#6b7280'};
-let UPDATES_SUB=(function(){try{return localStorage.getItem('updatesSub')==='faq'?'faq':'log';}catch(e){return 'log';}})();
+let UPDATES_SUB=(function(){try{const sub=localStorage.getItem('updatesSub');return ['faq','libreoffice'].includes(sub)?sub:'log';}catch(e){return 'log';}})();
 function setUpdatesSub(sub){
   UPDATES_SUB=sub;
   try{localStorage.setItem('updatesSub',sub);}catch(e){}
   renderUpdates();
 }
 async function renderUpdates(){
+  if(UPDATES_SUB==='libreoffice'&&!state.libreOfficeInstallAvailable)UPDATES_SUB='log';
   const pane=document.getElementById('settingsPane');
   const subTabs='<div class="updates-subtabs">'
     +'<button type="button" class="btn tiny'+(UPDATES_SUB==='log'?' primary':'')+'" onclick="setUpdatesSub(\'log\')">更新日志</button>'
     +'<button type="button" class="btn tiny'+(UPDATES_SUB==='faq'?' primary':'')+'" onclick="setUpdatesSub(\'faq\')">常见问题</button>'
+    +(state.libreOfficeInstallAvailable?'<button type="button" class="btn tiny'+(UPDATES_SUB==='libreoffice'?' primary':'')+'" onclick="setUpdatesSub(\'libreoffice\')">安装 LibreOffice</button>':'')
     +'</div>';
   pane.innerHTML='<div class="advanced-zone">'+subTabs+'<div id="updatesBody" class="inspector-empty">正在读取…</div></div>';
   const body=document.getElementById('updatesBody');
   try{
+    if(UPDATES_SUB==='libreoffice'){
+      await refreshLibreOfficeInstall();
+      return;
+    }
     if(UPDATES_SUB==='log'){
       const data=await bridge.api.get_update_log();
       const entries=(data&&data.entries)||[];
@@ -1984,6 +1990,79 @@ async function renderUpdates(){
     body.className='inspector-empty';
     body.textContent='读取失败：'+(e&&e.message||e);
   }
+}
+/* Linux 安装状态独立轮询；切换页签后不再改写页面，安装仍由后台完成。 */
+let LO_INSTALL={};
+let LO_INSTALL_POLLING=false;
+let LO_INSTALL_PICKING=false;
+let LO_INSTALL_METHOD='helper';
+function setLibreOfficeInstallMethod(method){LO_INSTALL_METHOD=method==='terminal'?'terminal':'helper';renderLibreOfficeInstall(LO_INSTALL)}
+function libreOfficeInstallVisible(){return currentPage==='settings'&&CFG.tab==='updates'&&UPDATES_SUB==='libreoffice'}
+function renderLibreOfficeInstall(data){
+  if(!libreOfficeInstallVisible())return;
+  const body=document.getElementById('updatesBody');
+  if(!body)return;
+  LO_INSTALL=data||{};
+  body.className='';
+  const busy=!!LO_INSTALL.busy||LO_INSTALL_PICKING;
+  const locked=busy||!!LO_INSTALL.auditBusy;
+  const disable=locked?' disabled':'';
+  const row=(name,desc,right,title='')=>'<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">'+esc(name)+'</div><div class="gen-row-desc" title="'+esc(title||desc)+'">'+esc(desc)+'</div></div><div class="gen-row-right">'+right+'</div></div>';
+  const installed=LO_INSTALL.installed||(state.systemEnvironmentInfo||{}).libreoffice||'尚未取得检测结果';
+  const installedVersion=/LibreOffice\s+[\d.]+/.exec(installed);
+  const sourceName=LO_INSTALL.sourceName||'未选择';
+  const packageInfo=LO_INSTALL.packageVersion?('版本 '+LO_INSTALL.packageVersion+' · '+LO_INSTALL.architecture+' · '+LO_INSTALL.packageCount+' 个安装文件'):'支持 DEB 格式的 .tar.gz 安装包、解压目录或 DEBS 文件夹';
+  const methods='<div class="updates-subtabs"><button class="btn tiny'+(LO_INSTALL_METHOD==='terminal'?' primary':'')+'" onclick="setLibreOfficeInstallMethod(\'terminal\')">方式一：终端安装</button><button class="btn tiny'+(LO_INSTALL_METHOD==='helper'?' primary':'')+'" onclick="setLibreOfficeInstallMethod(\'helper\')">方式二：辅助安装</button></div>';
+  let html=methods+'<div class="gen-card">'
+    +row('已检测到 LibreOffice',installedVersion?installedVersion[0]:installed,'<button class="btn tiny" onclick="refreshLibreOfficeInstall()">刷新</button>',installed)
+    +row('选择安装来源',packageInfo,'<button class="btn tiny" onclick="pickLibreOfficeSource(false)"'+disable+'>选择安装包</button><button class="btn tiny" style="margin-left:8px" onclick="pickLibreOfficeSource(true)"'+disable+'>选择文件夹</button>')
+    +row('已选文件',LO_INSTALL.source?'将安装此来源对应的 LibreOffice。':'选择安装包或解压目录。','<span style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(LO_INSTALL.source||'')+'">'+esc(sourceName)+'</span>')
+    +row('安装状态',LO_INSTALL.message||'选择可信来源的 LibreOffice 安装包后，检查通过即可安装。','<button class="btn tiny primary" onclick="installLibreOffice()"'+((!LO_INSTALL.canInstall||locked)?' disabled':'')+'>'+(LO_INSTALL.phase==='installing'?'正在安装…':'开始安装')+'</button>')
+    +'</div><p class="module-help-desc">请先保存并关闭正在编辑的 Office 文档。点击“开始安装”后，在系统授权窗口输入管理员密码。本页不会读取或保存密码。安装期间请保持审核工具打开。</p>'
+    +'<p class="module-help-desc">仅支持使用 DEB 软件包的 Linux 系统。请选择项目提供或 LibreOffice 官方来源的安装包；检查名称和架构不代表验证了发布者身份。离线安装若缺少系统依赖，请把安装日志交给管理员处理。</p>'
+    +'<p class="module-help-desc"><a href="https://github.com/Azi-lzb/Open-Data-Audit/releases/tag/Needed" target="_blank" rel="noopener noreferrer">获取 LibreOffice 安装包</a></p>';
+  if(LO_INSTALL_METHOD==='terminal'){
+    html=methods+'<div class="gen-card"><p class="gen-card-title">终端安装步骤</p>'
+      +row('1. 下载并解压','选择与本机 CPU 架构、系统版本相符的 Linux DEB 安装包，解压后打开其中的 DEBS 文件夹。','')
+      +row('2. 打开终端','可在 DEBS 文件夹空白处右键选择“在终端中打开”。如果终端不在该文件夹，先执行下面的 cd 命令，并将示例路径改为实际 DEBS 路径。','')
+      +'<pre style="margin:12px 20px;white-space:pre-wrap"><code>cd -- "/实际路径/DEBS"</code></pre>'
+      +row('3. 执行安装','在 DEBS 目录中执行下面的命令。注意 -i 后有一个空格；管理员密码在终端输入，屏幕通常不显示字符。','')
+      +'<pre style="margin:12px 20px;white-space:pre-wrap"><code>sudo dpkg -i *.deb</code></pre>'
+      +row('4. 检查结果','等待安装完成。若出现依赖缺失、架构不匹配或包管理器被占用，请保留终端输出并联系管理员。不要在审核任务运行时安装。','')
+      +'</div><p class="module-help-desc">请先保存并关闭 Office 文档，使用项目提供或 LibreOffice 官方来源的安装包。只适用于支持 DEB 的 Linux 系统。</p>'
+      +'<p class="module-help-desc"><a href="https://github.com/Azi-lzb/Open-Data-Audit/releases/tag/Needed" target="_blank" rel="noopener noreferrer">获取 LibreOffice 安装包</a></p>';
+  }
+  if(LO_INSTALL.auditBusy)html+='<p class="module-help-desc">审核任务正在运行，请完成后再安装。</p>';
+  if(LO_INSTALL.logPath)html+='<div class="inspector-actions"><button class="btn tiny" onclick="openPath(LO_INSTALL.logPath)">查看安装日志</button></div>';
+  body.innerHTML=html;
+}
+async function refreshLibreOfficeInstall(){
+  if(LO_INSTALL_POLLING||!libreOfficeInstallVisible())return;
+  LO_INSTALL_POLLING=true;
+  try{renderLibreOfficeInstall(await bridge.api.get_libreoffice_install())}
+  catch(e){renderLibreOfficeInstall({...LO_INSTALL,message:'读取安装状态失败，请确认审核工具仍在运行。'})}
+  finally{LO_INSTALL_POLLING=false}
+}
+async function pickLibreOfficeSource(folder){
+  if(LO_INSTALL_PICKING||LO_INSTALL.busy)return;
+  LO_INSTALL_PICKING=true;
+  renderLibreOfficeInstall(LO_INSTALL);
+  try{
+    let path='';
+    if(usesBrowserPathPicker()){
+      const paths=await pickPathViaBrowser({title:folder?'选择 LibreOffice 解压目录':'选择 LibreOffice 安装包',select:folder?'dir':'file',mode:folder?'':'libreoffice_archive',start:LO_INSTALL.source||''});
+      if(!paths.length)return;
+      path=paths[0];
+    }
+    LO_INSTALL=await bridge.api.choose_libreoffice_source(folder,path);
+  }catch(e){LO_INSTALL={...LO_INSTALL,message:'选择安装来源失败：'+(e&&e.message||e)}}
+  finally{LO_INSTALL_PICKING=false;renderLibreOfficeInstall(LO_INSTALL)}
+}
+async function installLibreOffice(){
+  if(!LO_INSTALL.canInstall||LO_INSTALL.busy||LO_INSTALL.auditBusy)return;
+  if(!confirm('将安装 LibreOffice '+(LO_INSTALL.packageVersion||'')+'。请保存并关闭 Office 文档，确认安装包来自可信来源。随后系统将请求管理员授权，是否继续？'))return;
+  try{renderLibreOfficeInstall(await bridge.api.start_libreoffice_install())}
+  catch(e){renderLibreOfficeInstall({...LO_INSTALL,message:'无法开始安装：'+(e&&e.message||e)})}
 }
 /* ---- 操作指引 ---- */
 function renderGuide(){
@@ -4029,6 +4108,7 @@ document.getElementById('explanationList').addEventListener('click',e=>{
   if(row&&row.dataset.path)openPath(row.dataset.path);
 });
 setInterval(()=>{if(window.bridge)refresh()},800);
+setInterval(()=>{if(window.bridge&&libreOfficeInstallVisible())refreshLibreOfficeInstall()},1500);
 </script>
 </body>
 </html>

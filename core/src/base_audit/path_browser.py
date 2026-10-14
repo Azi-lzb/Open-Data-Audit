@@ -11,6 +11,7 @@ BROWSE_FILTERS: dict[str, tuple[str, ...]] = {
     "excel": (".xlsx", ".xlsm", ".xls"),
     "data": (".csv", ".xlsx"),
     "config": (".xlsx",),
+    "libreoffice_archive": (".tar.gz", ".tgz"),
     # 精确模式（UOS 验收 ISSUE-F：与系统原生选择器口径一致）
     "excel_ooxml": (".xlsx", ".xlsm"),          # openpyxl 读取入口，不放行 .xls
     "central_data": (".csv", ".xlsx", ".xls"),  # 大集中查询导出（xlrd 纯读取兼容 .xls）
@@ -57,7 +58,7 @@ def browse_directory(project_root: Path, path: str = "", mode: str = "") -> dict
     extensions = BROWSE_FILTERS.get(mode or "", ())
     selected_file = ""
     if target.is_file():
-        if target.name.startswith((".", "~$")) or (extensions and target.suffix.lower() not in extensions):
+        if target.name.startswith((".", "~$")) or (extensions and not target.name.lower().endswith(extensions)):
             return _empty(target.parent, root, "该文件不符合当前选择类型")
         selected_file = str(target)
         target = target.parent
@@ -73,7 +74,7 @@ def browse_directory(project_root: Path, path: str = "", mode: str = "") -> dict
             try:
                 if entry.is_dir():
                     directories.append({"name": entry.name, "path": str(entry)})
-                elif not extensions or entry.suffix.lower() in extensions:
+                elif not extensions or entry.name.lower().endswith(extensions):
                     size = entry.stat().st_size
                     files.append({
                         "name": entry.name,

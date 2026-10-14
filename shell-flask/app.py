@@ -20,6 +20,7 @@ import sys
 import threading
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, request, send_from_directory
 
@@ -41,7 +42,7 @@ if str(CORE / "src") not in sys.path:
     sys.path.insert(0, str(CORE / "src"))
 
 from base_audit.path_browser import browse_directory  # noqa: E402
-from base_audit.web_app import WebApi  # noqa: E402
+from base_audit.web_app import WebApi, serialize_execution_start  # noqa: E402
 from base_audit.app_identity import load_product_info, render_app_page  # noqa: E402
 
 
@@ -270,11 +271,12 @@ class FlaskApi(WebApi):
         self._log(f"已选择历史审核配置：{value}")
         return value
 
+    @serialize_execution_start
     def create_template_merge(self, base: str = "", picked: list[str] | None = None) -> bool:
         """两步选择改由前端浏览器目录浏览完成：base=基准模板，picked=并入清单。"""
         if not base and picked is None:
             return super().create_template_merge()
-        if self.state["busy"]:
+        if self._execution_busy():
             return False
         base_template = Path(str(base or "")).resolve() if base else None
         if base_template is None or not base_template.is_file():
@@ -441,6 +443,20 @@ def create_app() -> Flask:
 
     @app.post("/api/<method>")
     def call(method: str):
+        if method in {"get_libreoffice_install", "choose_libreoffice_source", "start_libreoffice_install"}:
+            # 安装入口只接受本机页面的 JSON 请求；拒绝跨站表单和 DNS 重绑定主机名。
+            origin = request.headers.get("Origin", "")
+            local_hosts = {"127.0.0.1", "localhost", "::1"}
+            try:
+                origin_url = urlsplit(origin)
+                local_host = urlsplit(request.host_url).hostname in local_hosts
+            except ValueError:
+                return jsonify({"error": "请从本机审核工具页面使用 LibreOffice 安装入口。"}), 403
+            if (not request.is_json or request.remote_addr not in local_hosts
+                    or not local_host
+                    or (origin and (origin_url.netloc != request.host
+                                    or origin_url.scheme != request.scheme))):
+                return jsonify({"error": "LibreOffice 安装入口仅允许从本机审核工具页面使用。"}), 403
         handler = getattr(api, method, None)
         if handler is None or not callable(handler):
             return jsonify({"error": f"未知接口：{method}"}), 404

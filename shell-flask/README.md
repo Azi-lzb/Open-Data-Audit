@@ -5,12 +5,12 @@ Windows）共用 `core` 的唯一业务核心（`base_audit` 后端 +
 `frontend` 前端 + `tests` 测试）。本目录只放外壳与平台启动/打包脚本。
 
 窗口标题、关于页面与程序文件名统一读取 `版本管理/VERSION_MANIFEST.json`。
-当前整包版本为 `V26.1.1.0`（年份.大版本.中版本.小版本），对应：
+当前整包版本为 `V26.1.2.0`（年份.大版本.中版本.小版本），对应：
 
-- pywebview：`审核工具_V26.1.1.0.exe`
-- Flask Win10/11：`审核工具_Flask_V26.1.1.0.exe`
-- Flask Win7：`审核工具_Flask_Win7兼容_V26.1.1.0.exe`
-- UOS/Linux 可执行程序：`审核工具_V26.1.1.0`
+- pywebview：`审核工具_V26.1.2.0.exe`
+- Flask Win10/11：`审核工具_Flask_V26.1.2.0.exe`
+- Flask Win7：`审核工具_Flask_Win7兼容_V26.1.2.0.exe`
+- UOS/Linux 可执行程序：`审核工具_V26.1.2.0`
 
 图标采用 `core/frontend/assets/app-icon.png` 的红色图形，Windows 程序使用同源 `.ico`。
 
@@ -43,8 +43,8 @@ EXE 与共用的 `core\`、`config\` 放在一起；用户按自己的 Windows �
 ```
 dist\
 └─ windows-YYYYMMDD_HHMMSS\
-   ├─ 审核工具_Flask_V26.1.1.0.exe          ← Win10/11
-   ├─ 审核工具_Flask_Win7兼容_V26.1.1.0.exe  ← Win7
+   ├─ 审核工具_Flask_V26.1.2.0.exe          ← Win10/11
+   ├─ 审核工具_Flask_Win7兼容_V26.1.2.0.exe  ← Win7
    ├─ core\                              ← src、frontend 与空的 data 目录
    ├─ config\                            ← 当前正式配置副本
    ├─ 运行库修复\                         ← Win7 缺运行库时使用
