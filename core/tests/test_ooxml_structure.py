@@ -144,13 +144,42 @@ class FastOoxmlCompileTests(unittest.TestCase):
             self.skipTest("缺少 3.3 正式配置")
         return template
 
+    def _enable_one_form(self, book) -> str:
+        """仅在测试副本中明确启用一张现存报表，不依赖本机配置启停状态。"""
+        candidates = []
+        for row in book["报表清单"].iter_rows(min_row=2, min_col=1, max_col=5):
+            code = str(row[0].value or "").strip()
+            if not code:
+                continue
+            row[4].value = "否"
+            if code in book.sheetnames:
+                candidates.append((code, row[4]))
+        if not candidates:
+            self.skipTest("3.3 配置没有可用报表模板，无法构造启用样例")
+        code, flag = candidates[0]
+        flag.value = "是"
+        return code
+
     def test_compile_real_33_without_form_mapping_sheet(self) -> None:
+        import tempfile
+
+        from openpyxl import load_workbook
         from base_audit.systems.s3_central_statistics.fast_ooxml import TemplateCompiler
 
-        compiled = TemplateCompiler(self._template()).compile()
-        self.assertTrue(any(e["name"] == "报表清单" for e in compiled.sheet_registry))
-        self.assertFalse(any(e["name"] == "金融表单映射" for e in compiled.sheet_registry))
-        self.assertTrue(len(compiled.forms) >= 40)
+        with tempfile.TemporaryDirectory() as folder:
+            prepared = Path(folder) / "enabled.xlsx"
+            book = load_workbook(self._template())
+            try:
+                if "金融表单映射" in book.sheetnames:
+                    del book["金融表单映射"]
+                selected = self._enable_one_form(book)
+                book.save(prepared)
+            finally:
+                book.close()
+            compiled = TemplateCompiler(prepared).compile()
+            self.assertTrue(any(e["name"] == "报表清单" for e in compiled.sheet_registry))
+            self.assertFalse(any(e["name"] == "金融表单映射" for e in compiled.sheet_registry))
+            self.assertEqual([form["报表代码"] for form in compiled.forms], [selected])
 
     def test_openpyxl_resaved_template_compiles(self) -> None:
         import tempfile
@@ -177,15 +206,18 @@ class FastOoxmlCompileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             trimmed = Path(folder) / "trimmed.xlsx"
             book = load_workbook(template)
-            for name in list(book.sheetnames):
-                if name.startswith("A1"):
-                    del book[name]
-            book.save(trimmed)
-            book.close()
+            try:
+                for name in list(book.sheetnames):
+                    if name.startswith("A1"):
+                        del book[name]
+                selected = self._enable_one_form(book)
+                book.save(trimmed)
+            finally:
+                book.close()
             from base_audit.systems.s3_central_statistics.fast_ooxml import TemplateCompiler
 
             compiled = TemplateCompiler(trimmed).compile()
-            self.assertTrue(compiled.forms)
+            self.assertEqual([form["报表代码"] for form in compiled.forms], [selected])
 
 
 class DeleteSheetIntegrityTests(unittest.TestCase):

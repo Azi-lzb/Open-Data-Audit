@@ -1,0 +1,36 @@
+【时间与执行者】
+2026-10-14 21:50:43（Asia/Shanghai），Codex。
+当前desktop；提交前HEAD a7205f82a5e899014757fda40b7c9228d4ff318b。提交及同步后的hash以本次Git提交历史为准。
+用户明确授权先提交desktop并同步main，随后自行打包到Linux测试。
+
+【WIP与范围】
+保护已有pywebview打包修复、开发日志、两份修改记录与四份S4分析文档；external/及地金原始工具仍不暂存。
+本轮新增测试适配：core/tests/test_ooxml_structure.py。
+本轮修改：日志/开发日志.txt（追加检查结果）、docs/S4_总行工具迁移分析.md（去掉EOF多余空行）。
+新增本记录。无删除。其余本轮拟提交文件见已有20261014_000302与20261014_102028记录。
+
+【原因及实现】
+首轮全量847通过、7跳过、5失败、2个subtest通过；其中3项缺LibreOffice，另2项结构测试仍假定真实3.3报表配置默认启用/至少40张，与用户已确认的空值不写入口径冲突。
+仅调整测试副本：报表清单显式关闭其他报表，启用一张现存模板；缺金融表单映射及删A1表后编译都断言保留选中报表。取消固定数量>=40的假设，使用精确启用代码断言。源配置只读，副本在临时目录修改，工作簿资源finally关闭。
+未修改生产core/API/UI或业务口径，未改真实配置。pywebview两处打包修复此前已实际构建成功，本轮静态编译复核通过。
+
+【验证】
+读取项目配置时按config_paths.resolve_test_config核对：六本正式配置均选择config-real；默认快照沿相对路径独立选择。
+初次定向复核在新增断言中误用code字段，已改为编译结果既有报表代码字段；随后定向13 passed（10.22s）。
+最终core全量：849 passed、7 skipped、3 failed、0 errors、2 subtests passed（146.61s）。失败：
+- golden/test_golden_native_flow.py::test_dag_native_flow_golden_contract
+- golden/test_golden_native_flow.py::test_s1_business_outputs_are_identical_when_run_log_export_changes
+- test_native_uos.py::test_dag_audit_dispatches_to_native
+三项均因未找到LibreOffice Calc在原生路径预检查阻断。未在本轮Windows环境执行Linux/UOS真机或证明这三项通过，需目标Linux装好Calc后补测。
+测试前460个保护文件建立指纹，测试结束唯一内容变更为本轮预期的test_ooxml_structure.py；19个config-real及113个地金原始文件不变。之后开发日志追加为预期记录修改。
+本机证据/备份：core/data/git-sync-20261014_213900/，受data忽略规则保护，不入Git。
+公开快照检查与暂存格式检查在提交前执行；源代码/测试静态compile通过。未添加新的测试用例，维护既有结构测试契约。
+
+【组件版本】
+不升级。打包路径拼写、测试夹具与分析文档不改变业务算法/配置协议，产品保持V26.1.1.0，S1/S2/S3组件与配置版本不动；S4仅分析，未新增业务组件。
+
+【配置/VBA迁移与风险】
+无迁移。本轮不将原工具、真实配置、伪数据、日志证据或构建产物提交公开仓库。全量并非全绿，明确存在缺LibreOffice的环境阻断，不把Git同步当Linux发布验收。
+
+【回滚】
+撤销本轮测试夹具/日志增量或以Git新提交恢复，保留原始业务文件与其他WIP；不要为了通过旧测试恢复空值默认启用的旧业务口径。

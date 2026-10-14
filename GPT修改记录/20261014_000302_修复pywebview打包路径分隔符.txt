@@ -1,0 +1,25 @@
+【时间与执行者】
+2026-10-14 00:03:02（Asia/Shanghai），Codex。
+分支：desktop；修改前/后Git HEAD：a7205f8（未提交）。
+WIP：保留上次已提交代码及工作区已有未跟踪 external/ 图片、地金 VBA/工作簿；不纳入本次修改。
+
+【目的与修改文件】
+修复用户运行 shell-pywebview/打包pywebview.bat 时，build_exe.py 因 os_pathsep 未定义而中断的问题。
+修改：shell-pywebview/build_exe.py；日志/开发日志.txt。
+新增：本记录。无文件删除。
+
+【实现】
+更新日志和常见问题两项 PyInstaller --add-data 参数的路径分隔符函数名从未定义的 os_pathsep 改为现有 os_pathSep()。其它资源参数已使用同一函数，此修复不改变打包布局。
+
+【版本/配置影响】
+无产品、业务功能或配置组件版本变更；无工作簿配置/VBA迁移。构建按项目既有策略从 config-real 优先选取发行配置，本机 dist/config 刷新为19个文件，不进入 Git；dist/core/data 原有用户运行数据保留。用户更新日志未改。
+
+【验证结果】
+Python 3.12.10、pywebview 6.2.1、PyInstaller 6.22.3。
+python -m py_compile shell-pywebview/build_exe.py：通过。
+python build_exe.py：PyInstaller 构建成功，产物 shell-pywebview/dist/审核工具_V26.1.1.0.exe，23,898,810 字节；打包后检查 core/src/base_audit/developer_access.py、core/frontend/web/index.html 与 core/data 均存在。
+PyInstaller 有缺失隐藏导入 pycparser.lextab/yacctab 警告，构建成功；未启动 GUI 进行运行冒烟、Office/业务回归。
+git diff --check：通过。dist/build 产物保持本机，不提交。
+
+【回滚与风险】
+回滚可将两处调用恢复为原拼写，但会重现 NameError。若不需要本次生成的发行包，可删除新版本 exe；旧审核工具_V26.1.0.0.exe 保留。新包使用本机正式配置构建，发送给他人前先确认 config-real 内容可随包交付。

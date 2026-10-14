@@ -96,9 +96,9 @@ def build(win7: bool) -> int:
         "--add-data", f"{manifest}{os_pathSep()}版本管理",
         "--add-data", f"{assets}{os_pathSep()}assets",
         # 用户版更新日志随包分发（运行期 update_log_path 从 _MEIPASS/日志 定位）。
-        "--add-data", f"{update_log}{os_pathsep}日志",
+        "--add-data", f"{update_log}{os_pathSep()}日志",
         # 常见问题随包分发（运行期 faq_path 从 _MEIPASS/docs 定位）。
-        "--add-data", f"{faq}{os_pathsep}docs",
+        "--add-data", f"{faq}{os_pathSep()}docs",
         "--icon", str(icon),
         "--distpath", str(DIST),
         "--workpath", str(ROOT / "build"),
