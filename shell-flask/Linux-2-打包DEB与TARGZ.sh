@@ -257,7 +257,7 @@ set -- --noconfirm --clean --onedir --name "$LINUX_NAME" \
     --paths "$ROOT/core/src" \
     --add-data "$ROOT/core/frontend/assets:assets" \
     --add-data "$ROOT/版本管理/VERSION_MANIFEST.json:版本管理" \
-    --add-data "$ROOT/日志/更新日志.txt:日志"
+    --add-data "$ROOT/日志/更新日志.txt:日志" \
     --add-data "$ROOT/docs/常见问题.json:docs" \
     --collect-submodules base_audit \
     --collect-all flask \

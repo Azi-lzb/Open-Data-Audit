@@ -1711,8 +1711,10 @@ function applyEggState(){
   document.body.classList.toggle('dag-extras-locked',!auditExtrasUnlocked());
   if(CFG.tab==='guide'&&CFG.data)renderGuide();
 }
+let settingsAdvancedUnlockedSession=false;
 function settingsAdvancedUnlocked(){
-  return localStorage.getItem('uiSettingsAdvancedUnlocked')==='1';
+  /* 默认隐藏；连点解锁仅本会话有效（不写 localStorage，重启回归隐藏）。 */
+  return settingsAdvancedUnlockedSession;
 }
 function applySettingsEggState(){
   const nav=document.getElementById('settingsNav');
@@ -1744,7 +1746,7 @@ async function exportDiagInfo(btn){
   btn.textContent='导出本机设置信息';
 }
 function hideAdvancedSettings(){
-  localStorage.setItem('uiSettingsAdvancedUnlocked','0');
+  settingsAdvancedUnlockedSession=false;
   applySettingsEggState();
   if(CFG.tab==='advanced'||CFG.tab==='combine')setSettingsTab('general');
   showToast('高级设置已隐藏（再次连点“设置中心”5 次可重新显示）');
@@ -1756,8 +1758,8 @@ function registerSettingsEggClick(){
   settingsEggClickTimes.push(now);
   if(settingsEggClickTimes.length<5){applySettingsEggState();return}
   settingsEggClickTimes=[];
-  const unlocked=!settingsAdvancedUnlocked();
-  localStorage.setItem('uiSettingsAdvancedUnlocked',unlocked?'1':'0');
+  const unlocked=!settingsAdvancedUnlockedSession;
+  settingsAdvancedUnlockedSession=unlocked;
   applySettingsEggState();
   showToast(unlocked?'已显示高级设置与组合工作表配置':'已隐藏高级设置与组合工作表配置');
   if(!unlocked&&(CFG.tab==='combine'||CFG.tab==='advanced'))setSettingsTab('general');
