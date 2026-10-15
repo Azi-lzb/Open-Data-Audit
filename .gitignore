@@ -36,3 +36,5 @@ build-win7-venv-rebuilt/
 # Release 或随包介质分发，不入 git（超 GitHub 单文件 100MB 上限）。
 /LibreOffice_*_deb.tar.gz
 /LO_*_deb.tar.gz
+# 上述离线包的本地归档目录（多版本/多架构），同样不入 git
+/LODEB/
