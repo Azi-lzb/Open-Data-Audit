@@ -1,0 +1,11 @@
+时间：2026-10-16 00:33:56（Asia/Shanghai）
+执行者：Codex
+目的：按用户确认重新打包 Linux AMD64/ARM64 的 S1/S2 交付。
+Git/WIP：保留全部先前未提交修改，无 commit/push，禁止提交 dist。
+执行：WSL Ubuntu 注册 ARM64 binfmt（首次预检 exec format error，注册后 uname=aarch64），在同一 WSL 会话运行 Linux-7-Docker双架构打包_S1-S2专用.sh，输出到 dist/.s1s2-rebuild-20261016，构建退出 0。完成两架构内容核对后发布到正式目录，移走旧同版本包至 归档-旧发行包-20261016 的 -003356 子目录，无永久删除。
+产物：shell-flask/dist/Linux-amd64_V26.1.5.1_S1-S2、Linux-arm64_V26.1.5.1_S1-S2。每目录三个文件：DEB、便携 TAR.GZ、带 LibreOffice 25.8.7 的离线 TAR.GZ。真实配置来源 config-real，S1/S2 正式配置两册及默认配置两册共四册；不含 3.0—3.3。
+检查：两架构 install.sh --check 均通过（未安装）；各42个LO DEB。DEB Package=audit-tools-s1-s2、Version=1:26.1.5.1、Architecture=amd64/arm64；ELF machine=62/183。DEB 与便携页及配置内容一致；四册 SHA256 与源真实配置一致。嵌入 enabledSystems=[S1,S2]，含 CSS 解锁修复与关于口令入口，无旧暂未开放弹框和旧系统口令调用。离线包内审核工具 DEB SHA256 与外部独立 DEB 相同。最终各目录恰好三个文件，全部被 Git 忽略。
+未执行：本轮业务测试、冻结服务启动检查、实际浏览器视觉点击、原生 ARM64 设备、麒麟/UOS 真机安装。不能将构建与产物检查等同实际业务验收。
+留痕：日志/开发日志.txt、本记录。构建与内容核对日志/脚本放在被忽略的 shell-flask/build 下：linux-s1s2-20261016-final.log、linux-s1s2-inventory-20261016.json、linux-s1s2-publish-20261016.json。没有修改产品更新日志、业务源码或配置内容。
+组件版本：产品保持 V26.1.5.1；业务及配置版本不变。
+回滚：正式目录可移走后恢复归档对应版本；不触碰源配置、完整版、Windows 或其它 WIP。

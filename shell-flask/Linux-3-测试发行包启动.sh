@@ -15,6 +15,11 @@ set -u
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 DIST=${FLASK_DIST_DIR:-$SCRIPT_DIR/dist}
+START_TIMEOUT=${FLASK_SMOKE_START_TIMEOUT:-30}
+case "$START_TIMEOUT" in
+    ''|*[!0-9]*|0*) echo '[错误] FLASK_SMOKE_START_TIMEOUT 必须是正整数秒数。' >&2; exit 2 ;;
+esac
+START_ATTEMPTS=$((START_TIMEOUT * 2))
 
 for tool in curl tar mktemp grep sed find; do
     command -v "$tool" >/dev/null 2>&1 || { echo "[错误] 缺少 $tool。" >&2; exit 2; }
@@ -25,9 +30,9 @@ FAIL_COUNT=0
 NEXT_PORT=8800
 
 if [ $# -eq 0 ]; then
-    NEWEST_DEB=$(cd "$DIST" 2>/dev/null && ls -t 审核工具_V*_*.deb 2>/dev/null | head -1 || true)
+    NEWEST_DEB=$(cd "$DIST" 2>/dev/null && ls -t Audit-Tools-S1-S2_V*_*.deb Audit-Tools_V*_*.deb 审核工具_V*_*.deb 2>/dev/null | head -1 || true)
     # UOS 源码验收包也带产品版本，但不属于本入口测试的冻结发行包。
-    NEWEST_TGZ=$(cd "$DIST" 2>/dev/null && ls -t 审核工具_V*_*.tar.gz 2>/dev/null | grep -v '^审核工具_V[^_]*_UOS_' | head -1 || true)
+    NEWEST_TGZ=$(cd "$DIST" 2>/dev/null && ls -t Audit-Tools-S1-S2_V*_*.tar.gz Audit-Tools_V*_*.tar.gz 审核工具_V*_*.tar.gz 2>/dev/null | grep -v '^审核工具_V[^_]*_UOS_' | head -1 || true)
     # set -- 为整体替换，追加用 "set -- "$@" 新项"，否则 tar.gz 会覆盖 .deb。
     [ -n "$NEWEST_DEB" ] && set -- "$DIST/$NEWEST_DEB"
     [ -n "$NEWEST_TGZ" ] && set -- "$@" "$DIST/$NEWEST_TGZ"
@@ -96,7 +101,7 @@ test_one() {  # $1=产物绝对/相对路径
             break
         fi
         case "$LABEL" in
-            "审核工具_V${FROZEN_VERSION}_"*) : ;;
+            "审核工具_V${FROZEN_VERSION}_"*|"Audit-Tools_V${FROZEN_VERSION}_"*|"Audit-Tools-S1-S2_V${FROZEN_VERSION}_"*) : ;;
             *) FAILURE="产物文件名与冻结程序版本不一致：$LABEL / $FROZEN_NAME"; break ;;
         esac
         tab=$(printf '\t')
@@ -135,7 +140,7 @@ test_one() {  # $1=产物绝对/相对路径
         PID=$!
         PORT=
         i=0
-        while [ "$i" -lt 60 ]; do
+        while [ "$i" -lt "$START_ATTEMPTS" ]; do
             PORT=$(sed -n 's/.*Running on http:\/\/127\.0\.0\.1:\([0-9][0-9]*\).*/\1/p' "$LOG" 2>/dev/null | head -n1)
             [ -n "$PORT" ] && break
             kill -0 "$PID" 2>/dev/null || break
@@ -144,7 +149,7 @@ test_one() {  # $1=产物绝对/相对路径
         done
         NEXT_PORT=$((NEXT_PORT + 5))
         if [ -z "$PORT" ]; then
-            FAILURE="服务 30 秒内未就绪；日志尾部：$(tail -5 "$LOG" 2>/dev/null | tr '\n' ' ')"
+            FAILURE="服务 $START_TIMEOUT 秒内未就绪；日志尾部：$(tail -5 "$LOG" 2>/dev/null | tr '\n' ' ')"
             break
         fi
 

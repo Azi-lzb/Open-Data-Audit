@@ -1,0 +1,31 @@
+【时间、执行者与 WIP】
+2026-10-15 09:17（Asia/Shanghai）；执行者 Codex。
+修改前/后 commit 均为 f695136c181f9cf99720f51559b84bcfc75ff58d（desktop）；未提交、未推送。
+工作区已有 KARE/LibreOffice、打包和版本清单等未提交改动；本次只在现有内容上编辑下列相关文件，未清理或覆盖其他 WIP。
+
+【目的】
+将 Linux DEB 和 tar.gz 发行包从 base-audit-v3 的用户可见命名迁移为 Audit-Tools，并包含产品版本、构建时间、系统、Python、glibc 和 CPU 架构信息。简体中文菜单显示“审核工具”，其他语言回退为 audit-tools。
+
+【修改文件】
+- shell-flask/Linux-2-打包DEB与TARGZ.sh：产物基名改为 Audit-Tools_V版本_时间_系统_py版本_glibc版本_架构；DEB 标识改为 audit-tools，并声明 Conflicts/Replaces: base-audit-v3。桌面入口按 locale 显示中文/英文名，图标与命令改用 audit-tools；保留 base-audit-v3 命令兼容入口。保留 /opt/base-audit-v3 和 ~/.local/share/base-audit-v3 数据目录，安装后清理旧系统菜单入口并刷新桌面菜单。
+- 版本管理/VERSION_MANIFEST.json：整包版本 V26.1.3.0 → V26.1.3.1（PATCH）。
+- 版本管理/产品发布/CHANGELOG.md、版本管理/README.md、rules/11_版本管理与组件编号.md：更新当前版本和命名迁移记录。
+- shell-flask/README.md：更新当前版本、Linux DEB 入口与文件名说明。
+- 日志/更新日志.txt、日志/开发日志.txt：登记用户可见变化和打包实现。
+- 本记录。
+
+【组件版本】
+系统：Linux 安装/打包；无新增 Sx-Fxx 编号。
+影响功能：S1/S2/S3 业务功能版本不变。
+影响配置：S1/S2/S3 配置组件版本不变；真实配置、用户配置和审核数据目录不迁移。
+未修改的相关组件：全部业务功能和配置组件。
+版本升级原因：整包 PATCH——修改 Linux 安装包命名、菜单显示及旧 DEB 包迁移元数据；业务审核逻辑不变。
+
+【验证】
+- 未执行测试、打包或安装；本轮需求只实施命名调整，且项目级指令要求未被请求时不运行测试。
+- 执行 git diff --check，无空白错误；Git 提示打包脚本和 README 将在后续 Git 操作时从 CRLF 标准化为 LF。
+- Ubuntu/UOS/麒麟安装器如何展示 DEB 描述、Conflicts/Replaces 的实际升级行为尚待新包实测；桌面菜单 locale 显示也未在目标系统验证。
+
+【删除清单和回滚】
+- 未删除源文件、旧发行包、真实配置或用户数据。打包清理逻辑仍能识别旧命名批次。
+- 源码回滚本记录涉及的命名脚本、版本和文档改动即可；若已安装新 DEB，回退时需安装旧 base-audit-v3 包。原 /opt 与用户数据路径保持不变。

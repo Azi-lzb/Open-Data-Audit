@@ -1,0 +1,20 @@
+【时间、执行者与 WIP】
+2026-10-15 09:28（Asia/Shanghai）；执行者 Codex。
+分支 desktop；保留工作区此前全部未提交 WIP，本次只更新 KARE 方案文档并新增本记录。
+
+【目的】
+根据用户追加的麒麟 V11 Guest 截图，记录 KARE 环境列表、应用列表状态及 `try-install` 的实际参数格式。
+
+【修改文件】
+- docs/麒麟V11_KARE安装LibreOffice与S1计算方案.md：确认环境为 v10sp1 与 shadow、upper 路径为 `/opt/kare-applications/v10sp1/upper`、KARE 应用列表为空；记录 `kare try-install --env ENV deb_file` 只做安装预检，并补充示例命令与后续检查步骤。
+- 本记录。
+
+【组件版本】
+纯方案文档和实测信息补录；产品版本、业务功能和配置组件版本均不升级。
+
+【验证】
+- 依据用户提供的终端截图；未安装 DEB、未执行 KARE 安装、未改代码、未运行测试。
+- KARE 预检命令格式已由 `kare try-install --help` 截图确认；LibreOffice DEB 预检输出及真实安装仍未执行。
+
+【删除清单和回滚】
+无删除。回滚时撤销方案文档本次补充即可；未修改 Guest 环境或用户数据。

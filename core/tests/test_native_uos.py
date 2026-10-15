@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import shutil
 import sys
+import json
 import pytest
 from pathlib import Path
 from types import SimpleNamespace
@@ -56,6 +57,65 @@ def test_linglong_engine_uses_verified_command_prefix(monkeypatch) -> None:
     engine = engines.libreoffice.find_calc_engine()
     assert engine is not None
     assert engine.command_prefix == ("/usr/bin/ll-cli", "run", "org.libreoffice.libreoffice", "--", "soffice")
+
+
+def test_kare_engine_requires_explicit_app_id_and_upper_layer(monkeypatch, tmp_path: Path) -> None:
+    upper = tmp_path / "opt" / "kare-applications" / "v10sp1" / "upper"
+    upper.mkdir(parents=True)
+    monkeypatch.setenv("BASE_AUDIT_ENGINE", "kare")
+    monkeypatch.setenv("BASE_AUDIT_KARE_APP_ID", "org.libreoffice.libreoffice")
+    monkeypatch.setenv("BASE_AUDIT_KARE_UPPER_ROOT", str(upper))
+    monkeypatch.setattr(
+        engines.libreoffice.shutil, "which",
+        lambda name: "/usr/bin/kare" if name == "kare" else None,
+    )
+
+    engine = engines.libreoffice.find_calc_engine()
+
+    assert engine is not None
+    assert engine.command_prefix == ("/usr/bin/kare", "run", "org.libreoffice.libreoffice")
+    assert engine.kare_upper_root == upper.resolve()
+    assert engine.display == "kare run org.libreoffice.libreoffice"
+
+
+def test_kare_engine_is_not_selected_without_configured_app_id(monkeypatch, tmp_path: Path) -> None:
+    upper = tmp_path / "upper"
+    upper.mkdir()
+    monkeypatch.setenv("BASE_AUDIT_ENGINE", "kare")
+    monkeypatch.delenv("BASE_AUDIT_KARE_APP_ID", raising=False)
+    monkeypatch.setenv("BASE_AUDIT_KARE_UPPER_ROOT", str(upper))
+    monkeypatch.setattr(
+        engines.libreoffice.shutil, "which",
+        lambda name: "/usr/bin/kare" if name == "kare" else None,
+    )
+
+    assert engines.libreoffice.find_calc_engine() is None
+
+
+def test_explicit_kare_config_is_used_after_app_restart(monkeypatch, tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    upper = tmp_path / "opt" / "kare-applications" / "v10sp1" / "upper"
+    upper.mkdir(parents=True)
+    data_dir.mkdir()
+    (data_dir / "libreoffice-kare.json").write_text(json.dumps({
+        "environment": "v10sp1", "appId": "libreoffice25.8", "upperRoot": str(upper),
+    }), encoding="utf-8")
+    monkeypatch.setenv("BASE_AUDIT_ENGINE", "auto")
+    monkeypatch.setenv("BASE_AUDIT_DATA_DIR", str(data_dir))
+    monkeypatch.delenv("BASE_AUDIT_KARE_APP_ID", raising=False)
+    monkeypatch.delenv("BASE_AUDIT_KARE_UPPER_ROOT", raising=False)
+    monkeypatch.setattr(
+        engines.libreoffice.shutil, "which",
+        lambda name: "/usr/bin/kare" if name == "kare" else None,
+    )
+    monkeypatch.setattr(engines.libreoffice, "_find_direct_engine", lambda: None)
+
+    engine = engines.libreoffice.find_calc_engine()
+
+    assert engine is not None
+    assert engine.source == "银河麒麟 KARE"
+    assert engine.command_prefix == ("/usr/bin/kare", "run", "libreoffice25.8")
+    assert engine.kare_upper_root == upper.resolve()
 
 
 def test_recalculate_stages_and_replaces_only_after_success(tmp_path: Path, monkeypatch) -> None:
@@ -581,7 +641,9 @@ def test_dag_audit_dispatches_to_native(tmp_path: Path, monkeypatch) -> None:
 
     service = _service(tmp_path)
     history = tmp_path / "历史审核配置.xlsx"
-    with patch.object(sys, "platform", "linux"), patch.object(
+    with patch.object(sys, "platform", "linux"), patch(
+        "base_audit.engines.calculation_engine_preflight", return_value=(True, "mocked LibreOffice preflight")
+    ), patch.object(
         engines.libreoffice.LibreOfficeCalculator, "recalculate", fake_recalculate
     ), patch.object(engines.libreoffice.LibreOfficeCalculator, "require_available", lambda self: None):
         result = run_dag_flow(

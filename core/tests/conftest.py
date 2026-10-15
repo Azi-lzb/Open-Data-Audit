@@ -89,6 +89,7 @@ _SYSTEM_TEST_FILES = {
     },
 }
 _SHARED_TEST_FILES = {
+    "test_distribution_profile.py",
     "test_libreoffice_install.py",
     "test_libreoffice_install_api.py",
     "test_config_paths.py",

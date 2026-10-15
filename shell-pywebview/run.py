@@ -9,6 +9,7 @@ pywebview 壳仅面向 Windows（WebView2）。
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -41,6 +42,8 @@ from base_audit.app_identity import app_title
 def main() -> int:
     import multiprocessing
 
+    # pywebview uses the profile embedded in its packaged HTML, not Flask's runtime override.
+    os.environ.pop("BASE_AUDIT_DISTRIBUTION_PROFILE", None)
     multiprocessing.freeze_support()   # 打包 EXE 中多进程渲染的必需入口
     hide_application_data_directory(CORE / "data")
     parser = argparse.ArgumentParser(description=app_title())

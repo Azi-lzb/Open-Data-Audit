@@ -1,0 +1,40 @@
+【时间、执行者与 WIP】
+2026-10-15（Asia/Shanghai）；执行者 Codex。
+修改前/后 commit 均为 f695136c181f9cf99720f51559b84bcfc75ff58d（desktop）；本轮未提交或推送。
+保留 LibreOffice 官方下载入口、V26.1.2.2、Windows/Linux 打包及其它既有 WIP；只在现有基础上追加 DEB 安装信息修复。
+
+【目的】
+修复 Linux DEB 安装器显示构建时间戳、系统菜单标题/版本升级后未同步的问题，并使新包能够覆盖此前使用时间戳版本号的安装。
+
+【修改文件】
+- shell-flask/Linux-2-打包DEB与TARGZ.sh：DEB Version 使用 `1:$APP_VERSION`，Description 使用中文产品名；desktop 文件增加 `Name[zh_CN]`；新增 postinst，在安装/升级配置阶段刷新 desktop 数据库与系统菜单缓存。最终权限归一化后保留 postinst 可执行权限。
+- 版本管理/VERSION_MANIFEST.json：产品整包版本 V26.1.2.2 → V26.1.2.3。
+- 版本管理/产品发布/CHANGELOG.md、日志/更新日志.txt、日志/开发日志.txt：登记版本与安装器/菜单修复。
+- rules/11_版本管理与组件编号.md、shell-flask/README.md：同步当前版本号与产物命名示例。
+- 本记录。
+
+【组件版本】
+系统：公共 Linux 安装/打包；无新增 Sx-Fxx 编号。
+影响功能：S1/S2/S3 全部保持原版本。
+影响配置：S1/S2/S3 全部保持原版本，不修改工作簿或用户设置。
+未修改的相关组件：全部业务功能与配置组件。
+版本升级原因：整包 PATCH，修复 DEB 安装显示和升级后菜单缓存未更新；配置及业务组件不变。
+
+【DEB 与隐私】
+内部 amd64 包：shell-flask/dist/交付-V26.1.2.3-20261015/Linux-amd64-x86_64/审核工具_V26.1.2.3_2026.10.15.080538_ubuntu-24.04_py3.12.14_glibc2.25_amd64.deb。
+包内 config/ 的 19 个文件与本机 config-real/ 完全一致；仅用于内部测试，禁止外发或上传 GitHub。SHA-256 为 732459d79a0bfaf0e569ccac8007a67d3a4579478142db67f57901404ff8a2f3。
+DEB 的 Package 字段必须使用 ASCII 包标识，因此保留 `base-audit-v3` 以便与已有安装匹配；图形安装器若只展示 Package 字段，仍可能看到该技术标识。Description 和桌面菜单标题已改为“审核工具 V26.1.2.3”。DEB 原生版本字段采用 `1:26.1.2.3`，系统界面若显示 epoch 会带 `1:`；应用菜单与页面展示纯产品版本 V26.1.2.3。
+
+【验证】
+- Ubuntu 24.04 WSL 构建 amd64 DEB 成功；冻结程序实测最低 glibc 2.25，低于目标基线 2.28。
+- DEB 元数据为 Package=base-audit-v3、Version=1:26.1.2.3、Architecture=amd64，Description 为中文。
+- dpkg 比较旧包 2026.10.14.235510 与新包 1:26.1.2.3，确认新包版本更高，可覆盖升级旧时间戳版本。
+- 用隔离 dpkg root 安装新旧同名模拟包，确认重装旧版本时 dpkg 发出 downgrade 警告后成功覆盖包文件与登记版本；未操作系统包数据库。
+- postinst 为 755、shell 语法检查通过，并含 update-desktop-database 与 xdg-desktop-menu forceupdate；desktop Name/Name[zh_CN] 均为“审核工具 V26.1.2.3”。
+- 解包后 19 个配置文件与 config-real 完全一致；Linux 发行包启动冒烟通过（1 通过/0 失败）：HTTP 200、标题“审核工具 V26.1.2.3”、图标可取、服务退出后端口释放。
+- git diff --check 通过（仅提示若干 CRLF 文件将标准化为 LF）。未在本机安装 DEB；UOS V11/麒麟桌面安装器展示及菜单缓存效果未实测。
+- Windows EXE 未重建；当前新交付物仅为 Linux amd64 内部测试 DEB。
+
+【限制与回滚】
+DEB 安装器可见名称若直接来自 Debian Package 字段，受 ASCII 包名规则限制，不能合法写成中文；保留原包标识可维持原位升级兼容。epoch 用于让新版产品号高于历史时间戳号。
+未删除旧安装包、真实配置或历史记录。源代码回滚可撤销本记录所列包装脚本、版本及文档增量；内部 DEB 保留在 dist，不属于 Git 提交内容。

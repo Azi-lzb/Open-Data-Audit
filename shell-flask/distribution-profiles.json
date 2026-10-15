@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "systems": [
+    {
+      "id": "S1",
+      "name": "逐笔统计系统",
+      "page": "audit",
+      "faqCategories": ["逐笔统计系统"],
+      "contentKeywords": ["S1", "逐笔统计系统", "汇总核查表校验", "汇总校验结果说明", "组合工作表", "制作联合模板"],
+      "uiComponents": ["导航菜单", "操作指引", "问答中心", "常规设置配置项", "高级设置栏目"]
+    },
+    {
+      "id": "S2",
+      "name": "报表采集系统",
+      "page": "collect",
+      "faqCategories": ["报表采集系统"],
+      "contentKeywords": ["S2", "报表采集系统", "执行报表规则", "报表采集平台"],
+      "uiComponents": ["导航菜单", "操作指引", "问答中心", "常规设置配置项"]
+    },
+    {
+      "id": "S3",
+      "name": "大集中统计系统",
+      "page": "central",
+      "faqCategories": ["大集中统计系统"],
+      "contentKeywords": ["S3", "大集中统计系统", "大集中统计", "大集中比较", "大集中指标查询", "大集中通用配置", "大集中执行比较", "大集中本期数值核对", "大集中指标比较拆分", "两期数据 ⇨", "比较文件 ⇨", "机构说明 ⇨", "本期数值核对", "指标比较拆分", "3.0大集中", "3.1大集中", "3.2大集中", "3.3大集中"],
+      "uiComponents": ["导航菜单", "操作指引", "问答中心", "常规设置配置项", "高级设置栏目"]
+    },
+    {
+      "id": "S4",
+      "name": "地金系统",
+      "page": "dijin",
+      "faqCategories": ["地金系统"],
+      "contentKeywords": ["S4", "地金系统", "地金工具"],
+      "uiComponents": ["导航菜单", "操作指引", "问答中心", "常规设置配置项", "高级设置栏目"]
+    }
+  ],
+  "profiles": {
+    "full": {
+      "name": "完整版",
+      "enabledSystems": ["S1", "S2", "S3", "S4"],
+      "artifactPrefix": "Audit-Tools",
+      "outputSuffix": "",
+      "debPackage": "audit-tools",
+      "debConflicts": ["audit-tools-s1-s2", "base-audit-v3"],
+      "productScope": "Full edition"
+    },
+    "s1s2": {
+      "name": "S1/S2 交付版",
+      "enabledSystems": ["S1", "S2"],
+      "excludedConfigPatterns": ["3.[0-3]*"],
+      "artifactPrefix": "Audit-Tools-S1-S2",
+      "outputSuffix": "_S1-S2",
+      "debPackage": "audit-tools-s1-s2",
+      "debConflicts": ["audit-tools", "base-audit-v3"],
+      "productScope": "S1/S2 only; S3/S4 navigation and related guide, FAQ, settings, and advanced settings are hidden"
+    }
+  },
+  "uiBindings": {
+    "navigation": "sidenav-item[data-system]",
+    "guide": "GUIDE_FLOWS[].editionSystem",
+    "faq": "docs/常见问题.json category or systems",
+    "settings": "visible system id conditions in settings renderer",
+    "advancedSettings": "visible system id conditions in advanced settings renderer"
+  }
+}

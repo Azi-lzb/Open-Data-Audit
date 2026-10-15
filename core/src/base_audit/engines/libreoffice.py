@@ -7,16 +7,22 @@ files, so it never touches a user's open LibreOffice session or a source file.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import quote
 
 
 LINGLONG_APP_DEFAULT = "org.libreoffice.libreoffice"
+KARE_APP_ENV = "BASE_AUDIT_KARE_APP_ID"
+KARE_UPPER_ENV = "BASE_AUDIT_KARE_UPPER_ROOT"
+KARE_CONFIG_NAME = "libreoffice-kare.json"
 
 
 def _system_command_env() -> dict[str, str]:
@@ -41,6 +47,9 @@ class CalcEngine:
     source: str
     command_prefix: tuple[str, ...]
     display: str
+    # KARE's overlay upperdir is its host-side backing store. Paths passed to
+    # ``kare run`` must use the corresponding in-container namespace path.
+    kare_upper_root: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +77,28 @@ def _direct_candidates() -> list[tuple[Path, str]]:
         candidates.extend((root / name, "环境变量 BASE_AUDIT_LIBREOFFICE_DIR") for name in (
             "soffice", "libreoffice", "scalc", "program/soffice",
         ))
+
+    # TDF DEB bundles install each major.minor release into its own /opt
+    # directory and intentionally do not register a global `soffice` command.
+    # Prefer the numerically newest complete versioned install so the engine
+    # used by audits agrees with the version the installer has just verified.
+    versioned: list[tuple[tuple[int, ...], Path]] = []
+    for pattern in ("libreoffice*/program/soffice", "LibreOffice*/program/soffice"):
+        try:
+            paths = Path("/opt").glob(pattern)
+        except OSError:
+            continue
+        for candidate in paths:
+            match = re.fullmatch(r"(?:libreoffice|LibreOffice)([0-9]+\.[0-9]+)", candidate.parent.parent.name)
+            if match:
+                versioned.append((tuple(int(part) for part in match.group(1).split(".")), candidate))
+    seen_versioned: set[str] = set()
+    for _version, candidate in sorted(versioned, key=lambda item: item[0], reverse=True):
+        key = str(candidate)
+        if key not in seen_versioned:
+            candidates.append((candidate, "版本化 DEB 安装目录（优先最新版本）"))
+            seen_versioned.add(key)
+
     for command in ("soffice", "libreoffice", "scalc"):
         located = shutil.which(command)
         if located:
@@ -76,8 +107,6 @@ def _direct_candidates() -> list[tuple[Path, str]]:
         "/usr/bin/soffice", "/usr/bin/libreoffice",
         "/usr/lib/libreoffice/program/soffice", "/usr/lib64/libreoffice/program/soffice",
     ))
-    for pattern in ("/opt/libreoffice*/program/soffice", "/opt/LibreOffice*/program/soffice"):
-        candidates.extend((candidate, "版本化 DEB 安装目录") for candidate in sorted(Path("/").glob(pattern.lstrip("/"))))
     home = Path.home()
     for root in (home / "Desktop", home / "Downloads", Path("/opt")):
         if not root.is_dir():
@@ -116,15 +145,78 @@ def _find_linglong_engine() -> CalcEngine | None:
     return CalcEngine("LibreOffice Calc（玲珑商店版）", "玲珑商店版", prefix, "ll-cli run {} -- soffice".format(app_id))
 
 
+def _load_kare_config() -> dict[str, str]:
+    data_dir = os.environ.get("BASE_AUDIT_DATA_DIR", "").strip()
+    if not data_dir:
+        return {}
+    path = Path(data_dir).expanduser() / KARE_CONFIG_NAME
+    try:
+        if path.is_symlink() or not path.is_file():
+            return {}
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    environment = value.get("environment")
+    app_id = value.get("appId")
+    upper_root = value.get("upperRoot")
+    if not all(isinstance(item, str) and item for item in (environment, app_id, upper_root)):
+        return {}
+    if any(character in environment + app_id for character in "\x00\n\r"):
+        return {}
+    return {"environment": environment, "appId": app_id, "upperRoot": upper_root}
+
+
+def _find_kare_engine() -> CalcEngine | None:
+    kare = shutil.which("kare")
+    config = _load_kare_config()
+    app_id = os.environ.get(KARE_APP_ENV, "").strip() or config.get("appId", "")
+    if not kare or not app_id:
+        return None
+
+    configured_root = os.environ.get(KARE_UPPER_ENV, "").strip() or config.get("upperRoot", "")
+    if configured_root:
+        upper_root = Path(configured_root).expanduser().resolve()
+    else:
+        # A single installed KARE environment can be discovered. Multiple
+        # environments require an explicit selection to avoid writing into the
+        # wrong overlay layer.
+        roots = sorted(Path("/opt/kare-applications").glob("*/upper"))
+        if len(roots) != 1:
+            return None
+        upper_root = roots[0].resolve()
+    if not upper_root.is_dir():
+        return None
+
+    prefix = (kare, "run", app_id)
+    return CalcEngine(
+        "LibreOffice Calc（KARE）", "银河麒麟 KARE", prefix,
+        "kare run {}".format(app_id), upper_root,
+    )
+
+
 def find_calc_engine() -> CalcEngine | None:
-    """Find the configured direct or Linglong LibreOffice Calc entry."""
+    """Find a direct, Linglong, or explicitly configured KARE Calc entry."""
     mode = os.environ.get("BASE_AUDIT_ENGINE", "auto").strip().casefold() or "auto"
-    if mode not in {"auto", "direct", "ll-cli"}:
+    if mode not in {"auto", "direct", "ll-cli", "kare"}:
         mode = "auto"
+    if mode == "kare":
+        return _find_kare_engine()
     if mode in {"auto", "direct"}:
+        # An explicit KARE config opts into that engine even if a separate host
+        # LibreOffice is available. The built-in installer does not create it.
+        if mode == "auto" and _load_kare_config():
+            kare = _find_kare_engine()
+            if kare is not None:
+                return kare
         direct = _find_direct_engine()
         if direct is not None:
             return direct
+    if mode == "auto":
+        kare = _find_kare_engine()
+        if kare is not None:
+            return kare
     if mode in {"auto", "ll-cli"}:
         return _find_linglong_engine()
     return None
@@ -211,6 +303,8 @@ class LibreOfficeCalculator:
             raise LibreOfficeUnavailableError(
                 "未找到 LibreOffice Calc。可安装 LibreOffice、设置 BASE_AUDIT_SOFFICE 指向 soffice、"
                 "设置 BASE_AUDIT_LIBREOFFICE_DIR 指向安装目录，或确认应用商店已安装 LibreOffice。"
+                "麒麟 KARE 环境需设置 BASE_AUDIT_ENGINE=kare、BASE_AUDIT_KARE_APP_ID，"
+                "并在无法唯一识别兼容层时设置 BASE_AUDIT_KARE_UPPER_ROOT。"
             )
         return engine
 
@@ -244,8 +338,18 @@ class LibreOfficeCalculator:
         # 应用商店的玲珑版 LibreOffice 通常无法读取 /tmp 中的宿主文件。
         # 将临时副本放到用户 HOME 的缓存目录，且采用 ASCII 文件名和 file URI，
         # 同时规避中文路径/文件名在 soffice CLI 中被错误解析为 source 的问题。
-        cache_root = Path(os.environ.get("XDG_CACHE_HOME", "")).expanduser() if os.environ.get("XDG_CACHE_HOME") else Path.home() / ".cache"
-        cache_root = cache_root / "base_audit_lo"
+        namespace_cache_root = Path(os.environ.get("XDG_CACHE_HOME", "")).expanduser() if os.environ.get("XDG_CACHE_HOME") else Path.home() / ".cache"
+        if not namespace_cache_root.is_absolute():
+            namespace_cache_root = Path.home() / namespace_cache_root
+        if engine.kare_upper_root is not None:
+            try:
+                cache_root = engine.kare_upper_root / namespace_cache_root.relative_to("/") / "base_audit_lo"
+            except ValueError as exc:
+                raise LibreOfficeUnavailableError(
+                    "KARE 计算缓存必须位于 KARE 根文件系统可映射的绝对路径下。"
+                ) from exc
+        else:
+            cache_root = namespace_cache_root / "base_audit_lo"
         try:
             cache_root.mkdir(parents=True, exist_ok=True)
         except OSError:
@@ -269,10 +373,29 @@ class LibreOfficeCalculator:
             profile_dir.mkdir()
             staged = source_dir / "audit_input.xlsx"
             shutil.copy2(workbook_path, staged)
+            if engine.kare_upper_root is not None:
+                def _kare_namespace_path(host_path: Path) -> PurePosixPath:
+                    try:
+                        relative = host_path.resolve().relative_to(engine.kare_upper_root)
+                    except ValueError as exc:
+                        raise LibreOfficeUnavailableError(
+                            "KARE 临时文件没有落在已配置的兼容层目录中，无法安全传递给计算引擎。"
+                        ) from exc
+                    return PurePosixPath("/") / PurePosixPath(relative.as_posix())
+
+                guest_profile = _kare_namespace_path(profile_dir)
+                guest_source = _kare_namespace_path(staged)
+                guest_output = str(_kare_namespace_path(output_dir))
+                profile_uri = "file://" + quote(guest_profile.as_posix(), safe="/")
+                source_uri = "file://" + quote(guest_source.as_posix(), safe="/")
+            else:
+                guest_output = str(output_dir)
+                profile_uri = profile_dir.as_uri()
+                source_uri = staged.as_uri()
             command = [
                 *engine.command_prefix, "--headless", "--nologo", "--nodefault", "--nolockcheck",
-                "--nofirststartwizard", "-env:UserInstallation=" + profile_dir.as_uri(),
-                "--convert-to", "xlsx:Calc MS Excel 2007 XML", "--outdir", str(output_dir), staged.as_uri(),
+                "--nofirststartwizard", "-env:UserInstallation=" + profile_uri,
+                "--convert-to", "xlsx:Calc MS Excel 2007 XML", "--outdir", guest_output, source_uri,
             ]
             try:
                 completed = subprocess.run(

@@ -10,6 +10,8 @@ from urllib.parse import urlsplit
 import pytest
 
 from base_audit import web_app
+from base_audit.engines import libreoffice as libreoffice_engine
+from base_audit.native import libreoffice_install
 from base_audit.path_browser import browse_directory
 
 
@@ -31,6 +33,34 @@ class FakeInstaller:
         return dict(self.data, phase="installing", busy=True)
 
 
+def test_download_guidance_uses_official_sources_only():
+    root = Path(__file__).resolve().parents[2]
+    html = (root / "core/frontend/web/index.html").read_text(encoding="utf-8")
+    assert html.count('href="https://www.libreoffice.org/download/"') == 2
+    assert html.count('href="https://downloadarchive.documentfoundation.org/libreoffice/old/"') == 2
+    assert html.count("开发人员推荐 LibreOffice 25.8.7") == 2
+    assert "github.com/Azi-lzb" not in html
+    for filename in ("README.md", "docs/LibreOffice安装说明.md"):
+        text = (root / filename).read_text(encoding="utf-8")
+        assert "https://www.libreoffice.org/download/" in text
+        assert "25.8.7" in text
+        assert "releases/tag/Needed" not in text
+
+
+def test_help_update_keeps_libreoffice_and_kylin_sections_visible_on_every_platform():
+    root = Path(__file__).resolve().parents[2]
+    html = (root / "core/frontend/web/index.html").read_text(encoding="utf-8")
+    updates = html.split("async function renderUpdates(){", 1)[1].split("/* Linux 安装状态", 1)[0]
+    installer = html.split("function renderLibreOfficeInstall(data){", 1)[1].split("async function refreshLibreOfficeInstall", 1)[0]
+
+    assert "安装 LibreOffice</button>" in updates
+    assert "state.libreOfficeInstallAvailable?" not in updates
+    assert "const maintenance=LO_INSTALL.kylinMaintenance||{};" in installer
+    assert "const maintenanceSupported=!!maintenance.supported;" in installer
+    assert "!maintenanceSupported?' disabled':''" in installer
+    assert "当前运行环境不支持 DEB 安装" in installer
+
+
 def make_api():
     api = web_app.WebApi.__new__(web_app.WebApi)
     api.state = {"busy": False}
@@ -38,6 +68,94 @@ def make_api():
     api._libreoffice_installer = FakeInstaller()
     api._libreoffice_install_refreshed = ""
     return api
+
+
+def test_installer_command_prefers_apt_for_all_validated_debs(monkeypatch, tmp_path):
+    package_paths = [tmp_path / "uno-libs-private.deb", tmp_path / "libreoffice25.8-calc.deb"]
+    packages = [
+        libreoffice_install._StagedPackage("uno-libs-private", "25.8.7.3", "amd64", path, "a", 1)
+        for path in package_paths
+    ]
+    apt_get = tmp_path / "apt-get"
+    monkeypatch.setattr(libreoffice_install, "APT_GET_EXECUTABLE", apt_get)
+    monkeypatch.setattr(libreoffice_install.shutil, "which", lambda name: None)
+    monkeypatch.setattr(libreoffice_install, "_is_executable", lambda path: Path(path) == apt_get)
+    monkeypatch.setattr(libreoffice_install, "_is_root", lambda: True)
+
+    command, authorized = libreoffice_install._build_install_command(packages)
+
+    assert command == [str(apt_get), "install", "--yes", "--no-install-recommends", *(str(path.resolve()) for path in package_paths)]
+    assert not authorized
+
+
+def test_installer_command_uses_pkexec_for_apt_when_app_runs_unprivileged(monkeypatch, tmp_path):
+    package = libreoffice_install._StagedPackage(
+        "libreoffice25.8", "25.8.7.3", "amd64", tmp_path / "libreoffice.deb", "a", 1
+    )
+    apt_get = tmp_path / "apt-get"
+    pkexec = tmp_path / "pkexec"
+    monkeypatch.setattr(libreoffice_install, "APT_GET_EXECUTABLE", apt_get)
+    monkeypatch.setattr(libreoffice_install, "PKEXEC_EXECUTABLE", pkexec)
+    monkeypatch.setattr(libreoffice_install.shutil, "which", lambda name: None)
+    monkeypatch.setattr(libreoffice_install, "_is_root", lambda: False)
+    monkeypatch.setattr(libreoffice_install, "_is_executable", lambda path: Path(path) in (apt_get, pkexec))
+
+    command, authorized = libreoffice_install._build_install_command([package])
+
+    assert command == [
+        str(pkexec), "--disable-internal-agent", str(apt_get), "install", "--yes",
+        "--no-install-recommends", str(package.path.resolve()),
+    ]
+    assert authorized
+
+
+def test_installer_falls_back_to_dpkg_when_apt_is_unavailable(monkeypatch, tmp_path):
+    package = libreoffice_install._StagedPackage(
+        "libreoffice25.8", "25.8.7.3", "amd64", tmp_path / "libreoffice.deb", "a", 1
+    )
+    monkeypatch.setattr(libreoffice_install, "APT_GET_EXECUTABLE", tmp_path / "apt-get")
+    monkeypatch.setattr(libreoffice_install.shutil, "which", lambda name: None)
+    monkeypatch.setattr(libreoffice_install, "_is_executable", lambda path: False)
+    monkeypatch.setattr(libreoffice_install, "_is_root", lambda: True)
+
+    command, authorized = libreoffice_install._build_install_command([package])
+
+    assert command == [str(libreoffice_install.DPKG_EXECUTABLE), "--install", str(package.path.resolve())]
+    assert not authorized
+
+
+def test_kylin_v11_detection_mentions_maintenance_mode(monkeypatch):
+    original = Path.read_text
+
+    def fake_read_text(path, *args, **kwargs):
+        if path == Path("/etc/os-release"):
+            return 'NAME="Kylin"\nVERSION="银河麒麟桌面操作系统V11"\nID=kylin\n'
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fake_read_text)
+
+    assert libreoffice_install._is_kylin_v11()
+
+
+def test_install_version_probe_falls_back_to_direct_host_engine(monkeypatch, tmp_path):
+    direct = libreoffice_engine.CalcEngine(
+        "LibreOffice Calc", "系统路径", (str(tmp_path / "soffice"),), str(tmp_path / "soffice")
+    )
+    monkeypatch.setattr(libreoffice_engine, "find_calc_engine", lambda: None)
+    monkeypatch.setattr(libreoffice_engine, "_find_direct_engine", lambda: direct)
+    monkeypatch.setattr(
+        libreoffice_install, "_is_executable",
+        lambda path: Path(path) == Path(direct.command_prefix[0]),
+    )
+    monkeypatch.setattr(
+        libreoffice_install.subprocess, "run",
+        lambda command, **kwargs: SimpleNamespace(returncode=0, stdout="LibreOffice 25.8.7.3\n"),
+    )
+
+    version, display = libreoffice_install._probe_engine_version((25, 8, 7, 3))
+
+    assert version == "25.8.7.3"
+    assert display == direct.display
 
 
 def test_explicit_source_keeps_audit_state_unchanged(monkeypatch, tmp_path):
@@ -83,7 +201,7 @@ def test_installing_blocks_new_audit_jobs(name, args):
     api._libreoffice_installer.data["phase"] = "installing"
     api._log = lambda *_: None
     assert getattr(api, name)(*args) is False
-    assert "正在安装" in api.state["status"]
+    assert "正在管理 LibreOffice 或系统维护模式" in api.state["status"]
 
 
 def test_finished_install_refreshes_environment_once(monkeypatch):

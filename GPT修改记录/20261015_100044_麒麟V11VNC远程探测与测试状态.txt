@@ -1,0 +1,24 @@
+【时间、执行者与 WIP】
+2026-10-15 10:00（Asia/Shanghai）；执行者 Codex。
+分支 desktop；保留工作区此前全部未提交 WIP。本次只补充 VNC 远程探测结论和测试状态，未改安装器或 Guest 数据。
+
+【目的】
+根据用户提供的 VNC 口令和麒麟桌面口令，继续真实麒麟 V11 KARE 安装与 LibreOffice 转换验收。
+
+【修改文件】
+- docs/麒麟V11_KARE安装LibreOffice与S1计算方案.md：更新真实 Guest 连接状态和当前限制。
+- 日志/开发日志.txt：记录本次 VNC 与定向回归结果。
+- 本记录。
+
+【实测结果】
+- 从本机 VNC 端口 5900 成功认证并取得画面，Guest 桌面名为 `azi-pc`，画面停留在麒麟启动页。
+- 随后 VNC 端口停止响应；VMware Tools 状态仍为 unknown，vmrun 未取得 Guest IP，SSH 无法连接。未到达登录界面，因此未使用桌面口令；未传输 DEB、未执行 KARE 安装或真机转换。
+- `python -m pytest -q core/tests/test_libreoffice_install_api.py core/tests/test_native_uos.py -k 'kare or libreoffice_install'`：23 passed、6 skipped、27 deselected。
+- `py_compile` 覆盖安装器、引擎、web app 和相关测试，通过；`git diff --check` 通过（有既有换行符提示）。
+- 此前 WSL2 Docker 模拟验证结果仍有效，但不能替代真实麒麟 V11 验收。
+
+【版本】
+无功能代码变更，本轮不升级产品、功能或配置版本；不打包、不提交、不推送。
+
+【后续】
+恢复 Guest 的 VNC 连接，或启用 VMware Tools、共享目录或 SSH 后，继续实际安装 LibreOffice DEB，查询 KARE app ID 与版本，并通过 S1-F1 完成真实无头重算验证。

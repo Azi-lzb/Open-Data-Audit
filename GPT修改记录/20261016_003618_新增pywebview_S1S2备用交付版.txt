@@ -1,0 +1,30 @@
+时间：2026-10-16 00:36:18（Asia/Shanghai）
+执行者：Codex
+修改前 commit：f695136c181f9cf99720f51559b84bcfc75ff58d
+修改后 commit：未提交，HEAD 未变化
+WIP：工作区已有多项未提交改动。本轮保留已有改动；仅在 `shell-pywebview/run.py` 调整一条与交付方案相关的注释，未覆盖其已有代码改动。
+
+目的：为 pywebview 增加独立的 S1/S2 备用 Windows 交付包。
+
+修改/新增文件：
+- 修改 `shell-pywebview/build_exe.py`：增加 `--profile`；复用 Flask 侧 `distribution-profiles.json` 与交付处理函数；对临时前端副本写入交付方案后，将同一份前端用于 EXE 和发行 `core/`；筛选发行副本中的 S3 配置并写入方案标记。未指定输出目录时，S1/S2 默认写入 `dist/S1-S2/`，完整版仍写入 `dist/`。
+- 修改 `shell-pywebview/打包pywebview.bat`：支持转发构建参数，并修正 `py -3` 回退启动方式。
+- 新增 `shell-pywebview/打包pywebview_S1-S2专用.bat`：调用 `--profile s1s2`，输出固定到独立目录。
+- 修改 `shell-pywebview/run.py`：将已有环境变量处理代码的注释改为准确说明，界面交付方案来自打包时嵌入的前端。
+- 新增本记录。
+
+配置及 VBA 影响：业务配置和 VBA 均不变；只在构建时筛选发行目录的配置副本，源 `config/` 与 `config-real/` 不由本次操作改写。
+
+验证：
+- `python -m py_compile shell-pywebview/build_exe.py`：通过。
+- `python shell-pywebview/build_exe.py --help`：通过，显示 `--profile` 参数。
+- `git diff --check`：通过。
+- 两个 pywebview 批处理均为 ASCII 内容和 CRLF 换行。
+- 未构建 EXE；WebView2 启动和实际 S1/S2 包验收未执行。
+- 未新增或运行 pytest；本次只调整打包入口和发行文件整理。
+
+【组件版本】
+不升级。只增加已有 S1/S2 交付方案在 pywebview 构建中的入口，不修改业务实现、配置内容或产品版本。
+
+删除清单：无。
+回滚：删除新增的 S1/S2 批处理；恢复 `build_exe.py`、通用批处理和 `run.py` 本轮改动，并保留此前已有 WIP；本记录按项目规则保留。

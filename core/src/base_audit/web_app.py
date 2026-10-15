@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import threading
 import sys
@@ -11,7 +12,10 @@ from pathlib import Path
 from typing import Any
 
 from .app_identity import app_title, icon_path, load_product_info, render_app_page
-from .developer_access import DeveloperAccessStore, DEVELOPER_SYSTEMS, developer_password_matches
+from .developer_access import (
+    DEVELOPER_SYSTEMS,
+    distribution_password_matches,
+)
 
 from .discovery import (
     classify_source_files,
@@ -117,7 +121,7 @@ def pywebview_file_types(file_types: tuple[tuple[str, str], ...]) -> tuple[str, 
 # 若未登记中文名，文本与导出按字段名兜底展示，不会报错。
 DIAGNOSTIC_ENV_GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ("程序", (("app", "产品"),)),
-    ("系统与硬件", (("os", "系统"), ("locale", "区域编码"), ("glibc", "glibc"), ("hardware", "硬件"))),
+    ("系统与硬件", (("os", "系统"), ("architecture", "CPU 架构"), ("locale", "区域编码"), ("glibc", "glibc"), ("hardware", "硬件"))),
     ("计算引擎", (("excel", "Excel"), ("wps", "WPS"), ("com", "COM 接管"), ("libreoffice", "LibreOffice"))),
     ("运行依赖", (("python", "Python"), ("pywin32", "pywin32"), ("webview2", "WebView2"), ("openpyxl", "openpyxl"))),
 )
@@ -196,16 +200,19 @@ class WebApi:
         self.project_root = project_root
         self._execution_start_lock = threading.RLock()
         self._file_picker_default = file_picker_default if file_picker_default in FILE_PICKER_MODES else "系统原生"
+        # The S1 engine reads optional, explicitly supplied KARE settings from
+        # this per-user data directory. The Linux installer targets host APT.
+        os.environ.setdefault("BASE_AUDIT_DATA_DIR", str(project_root / "data"))
         from .native.libreoffice_install import LibreOfficeInstaller
         self._libreoffice_installer = LibreOfficeInstaller(project_root / "data")
         self._libreoffice_install_refreshed = ""
+        self._libreoffice_inventory_signature = ""
         # 本机环境摘要（系统/引擎/COM 接管/外壳依赖）：高级设置展示与报障定位用。
         from .system_info import system_environment_summary, system_environment_text
         self._system_environment_text = system_environment_text()
         self._system_environment_info = system_environment_summary()
         hide_application_data_directory(project_root / "data")
-        self.developer_access_store = DeveloperAccessStore(project_root / "data" / "开发设置.json")
-        self._developer_unlocked: set[str] = set()
+        self._distribution_unlocked = False
         self.settings_store = SettingsStore(project_root / "data" / "用户设置.json")
         self.settings = self.settings_store.load(file_picker_default=self._file_picker_default)
         # 旧布局（如已取消的 unified/config/）被删除后，失效路径会在加载时清空；
@@ -452,22 +459,22 @@ class WebApi:
         # 即使用户已离开安装页，完成后也刷新全局环境信息。
         if self._libreoffice_installer.snapshot().get("phase") == "success":
             self.get_libreoffice_install()
-        # 每次状态刷新读取独立开关，允许开发人员手工修改 JSON 后直接生效。
-        configured = self.developer_access_store.load()
-        self.state["developerAccess"] = {
-            system: configured[system] or system in self._developer_unlocked
-            for system in DEVELOPER_SYSTEMS
-        }
-        self.state["developerAccessMessage"] = self.developer_access_store.message
+        # 系统导航不再受旧开发开关限制；交付范围只由打包方案控制。
+        self.state["developerAccess"] = {system: True for system in DEVELOPER_SYSTEMS}
+        self.state["developerAccessMessage"] = ""
+        self.state["distributionUnlocked"] = getattr(self, "_distribution_unlocked", False)
+        self.state["distributionProfile"] = (
+            "s1s2"
+            if os.environ.get("BASE_AUDIT_DISTRIBUTION_PROFILE", "").strip().lower() == "s1s2"
+            else "full"
+        )
         return self.state
 
-    def unlock_developer_system(self, system: str, password: str) -> dict[str, Any]:
-        """开发口令只在后端验证；本次运行解锁，不改写用户/开发设置或记录密码。"""
-        if system not in DEVELOPER_SYSTEMS:
-            return {"ok": False, "message": "该系统没有开发入口。"}
-        if not developer_password_matches(password):
+    def unlock_distribution_ui(self, password: str) -> dict[str, Any]:
+        """关于页入口：本次运行显示全部交付栏目并开放开发导航，不写配置或记录口令。"""
+        if not distribution_password_matches(password):
             return {"ok": False, "message": "密码不正确，请重新输入。"}
-        self._developer_unlocked.add(system)
+        self._distribution_unlocked = True
         return {"ok": True, "state": self.get_state()}
 
     def refresh_system_environment(self) -> dict[str, Any]:
@@ -1149,12 +1156,26 @@ class WebApi:
         result = self._libreoffice_installer.snapshot()
         result["auditBusy"] = bool(self.state["busy"])
         log_path = str(result.get("logPath") or "")
-        if result.get("phase") == "success" and log_path != self._libreoffice_install_refreshed:
+        inventory_signature = ""
+        if "installedVersions" in result:
+            inventory_signature = json.dumps(
+                [result.get("activeEngine") or {}, result.get("installedVersions") or []],
+                ensure_ascii=False, sort_keys=True,
+            )
+        operation_finished = result.get("phase") == "success" and log_path != getattr(self, "_libreoffice_install_refreshed", "")
+        inventory_changed = bool(inventory_signature and inventory_signature != getattr(self, "_libreoffice_inventory_signature", ""))
+        if operation_finished or inventory_changed:
             from .system_info import system_environment_summary, system_environment_text
             self._system_environment_info = system_environment_summary(probe_version=True)
             self._system_environment_text = system_environment_text()
             self.refresh_system_environment()
-            self._libreoffice_install_refreshed = log_path
+            if operation_finished:
+                self._libreoffice_install_refreshed = log_path
+            if inventory_signature:
+                self._libreoffice_inventory_signature = inventory_signature
+        active_engine = result.get("activeEngine")
+        if isinstance(active_engine, dict):
+            active_engine["summary"] = str(getattr(self, "_system_environment_info", {}).get("libreoffice", ""))
         return result
 
     def choose_libreoffice_source(self, folder: bool = False, path: str = "") -> dict[str, Any]:
@@ -1181,12 +1202,26 @@ class WebApi:
             return dict(self.get_libreoffice_install(), message="审核任务正在运行，请完成后再安装 LibreOffice。")
         return self._libreoffice_installer.start()
 
+    @serialize_execution_start
+    def start_libreoffice_uninstall(self, release: str) -> dict[str, Any]:
+        if self.state["busy"]:
+            return dict(self.get_libreoffice_install(), message="审核任务正在运行，请完成后再卸载 LibreOffice。")
+        return self._libreoffice_installer.start_uninstall(release)
+
+    @serialize_execution_start
+    def start_kylin_maintenance(self, action: str) -> dict[str, Any]:
+        if self.state["busy"] and action != "status":
+            return dict(self.get_libreoffice_install(), message="审核任务正在运行，请完成后再切换系统维护模式。")
+        return self._libreoffice_installer.start_kylin_maintenance(action)
+
     def _execution_busy(self) -> bool:
         """安装期间不能启动会使用或探测 Office 的新任务。"""
         if self.state["busy"]:
             return True
-        if self._libreoffice_installer.snapshot().get("phase") == "installing":
-            self.state["status"] = "正在安装 LibreOffice，请完成后再执行审核任务。"
+        phase_getter = getattr(self._libreoffice_installer, "operation_phase", None)
+        phase = phase_getter() if callable(phase_getter) else self._libreoffice_installer.snapshot().get("phase")
+        if phase in {"installing", "uninstalling", "changing_maintenance"}:
+            self.state["status"] = "正在管理 LibreOffice 或系统维护模式，请完成后再执行审核任务。"
             return True
         return False
 

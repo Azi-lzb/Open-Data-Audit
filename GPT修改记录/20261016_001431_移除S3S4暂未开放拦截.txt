@@ -1,0 +1,11 @@
+时间：2026-10-16 00:14:31（Asia/Shanghai）
+执行者：Codex
+目的：用户改用打包隐藏控制 S3/S4 交付，取消旧“功能暂未开放”拦截。
+修改文件：core/frontend/web/index.html、core/src/base_audit/web_app.py、core/src/base_audit/developer_access.py；docs/开发入口与本机开关.md、docs/S4_纯Python架构与伪数据验收设计.md；日志/开发日志.txt 与本记录。
+实现：删除旧提示弹框、五连击开放标题、开发导航检查和状态刷新自动跳转；关于口令框只验证交付显示口令。后端不读取或创建开发设置文件，兼容 developerAccess 均为 true、developerAccessMessage 为空。删除旧 unlock_developer_system API 与配置存储/旧口令代码，保留 unlock_distribution_ui 和 HZPBC790。S4 仍仅占位预览，不代表业务实现完成。
+现有产物：仅更新本机 Windows-Flask_V26.1.5.1 与 Windows-Flask_V26.1.5.1_S1-S2 的外置 HTML；不使用旧 EXE 返回的 developerAccess 限制导航。EXE 二进制与现有 Linux 安装包未重新生成。
+检查：Python AST 通过；Node --check 前端语法通过；相关 git diff --check 无错误（换行规范提示）。首次 Node 语法检查因 Windows 默认 GBK 无法编码箭头字符中止，显式 UTF8 后成功。未新增/运行测试、未实际点击验收；旧开发禁用相关测试契约现已过时，未在本轮改写。
+组件版本：本轮开发/交付导航管理调整保持产品 V26.1.5.1，业务算法及配置版本不变。
+Git/WIP：全部既有未提交修改保留，未提交或推送，dist 不入库。
+删除：仅移除上述旧开关源码与页面块，无原始配置和业务数据删除，旧 data/开发设置.json 保留但不再使用。
+回滚：仅恢复本轮相关补丁，勿重置仓库其他 WIP。

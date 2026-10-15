@@ -32,23 +32,27 @@ PYTHON_OVERRIDE=
 WITH_LOCAL_CONFIG=0
 SKIP_DEB=0
 SKIP_TGZ=0
+PROFILE_ID=full
 
 usage() {
     cat <<EOF
 用法：
-  ./Linux-2-打包DEB与TARGZ.sh [--with-local-config] [--python 解释器]
+  ./Linux-2-打包DEB与TARGZ.sh [--profile 方案] [--with-local-config] [--python 解释器]
                        [--skip-deb] [--skip-tgz]
 
 默认生成 DEB 与 tar.gz 两种发行包，均自带冻结 Python 运行时，目标机无需
 安装 Python。tar.gz 解压后运行 shell-flask/Linux-1-启动审核工具.sh
 （文件管理器右键"在终端中运行"，或终端里 ./Linux-1-启动审核工具.sh）。
 
---with-local-config  仅自测：把本机 config-real/（真实配置）原样带入包内，禁止外发；
-                      默认使用公开 config/ 空表头配置，构建时同样做隐私清理校验。
+默认配置选择      有 config-real/ 时打入真实配置；不存在时回退 config/。
+                      携带真实配置的产物仅供内部使用，请勿外发。
+--with-local-config 兼容旧参数：强制要求 config-real/；默认已自动优先使用它。
 --python 解释器      改用指定 Python（如系统 python3.12）构建。注意：系统
                       解释器按构建机 glibc 编译，产物可能无法在旧 UOS 运行；
                       脚本仍会做符号审计并在超标时报错。
 --skip-deb / --skip-tgz  只生成其中一种包。
+--profile 方案          读取 distribution-profiles.json 中的交付方案；默认 full，也可选 s1s2。
+--s1-s2-only            旧参数兼容写法，等同于 --profile s1s2。
 
 配套入口（推荐在每台打包机上按此流程）：
   Linux-3-测试发行包启动.sh  打包后在本机实测产物能否启动（解包→启动→HTTP 校验）
@@ -66,18 +70,23 @@ EOF
 for arg in "$@"; do
     case "$arg" in
         --with-local-config) WITH_LOCAL_CONFIG=1 ;;
+        --s1-s2-only) PROFILE_ID=s1s2 ;;
         --skip-deb) SKIP_DEB=1 ;;
         --skip-tgz) SKIP_TGZ=1 ;;
-        --python) : ;;
+        --python|--profile) : ;;
         *)
             case "${PREV_ARG:-}" in
                 --python) PYTHON_OVERRIDE=$arg ;;
+                --profile) PROFILE_ID=$arg ;;
                 *) echo "[错误] 未知参数：$arg" >&2; usage >&2; exit 2 ;;
             esac
             ;;
     esac
     PREV_ARG=$arg
 done
+case "${PREV_ARG:-}" in
+    --python|--profile) echo "[错误] $PREV_ARG 后缺少参数。" >&2; usage >&2; exit 2 ;;
+esac
 [ "$SKIP_DEB" -eq 0 ] || [ "$SKIP_TGZ" -eq 0 ] || { echo '[错误] --skip-deb 与 --skip-tgz 不能同时使用。' >&2; exit 2; }
 
 for tool in dpkg-deb dpkg mktemp sha256sum tar objdump; do
@@ -89,6 +98,8 @@ for tool in curl wget; do
 done
 [ -d "$ROOT/core/src/base_audit" ] || { echo "[错误] 缺少共享核心：$ROOT/core/src/base_audit" >&2; exit 1; }
 [ -f "$ROOT/core/frontend/web/index.html" ] || { echo '[错误] 缺少前端 index.html。' >&2; exit 1; }
+[ -f "$SCRIPT_DIR/distribution-profiles.json" ] || { echo '[错误] 缺少 shell-flask/distribution-profiles.json。' >&2; exit 1; }
+[ -f "$SCRIPT_DIR/distribution_profile.py" ] || { echo '[错误] 缺少交付方案读取器 distribution_profile.py。' >&2; exit 1; }
 [ -f "$ROOT/版本管理/VERSION_MANIFEST.json" ] || { echo '[错误] 缺少版本清单：版本管理/VERSION_MANIFEST.json。' >&2; exit 1; }
 [ -f "$ROOT/日志/更新日志.txt" ] || { echo '[错误] 缺少用户版更新日志：日志/更新日志.txt。' >&2; exit 1; }
 [ -f "$ROOT/docs/常见问题.json" ] || { echo '[错误] 缺少常见问题：docs/常见问题.json。' >&2; exit 1; }
@@ -97,11 +108,23 @@ done
 if [ ! -f "$ROOT/基础数据审核工具使用说明.docx" ] && [ ! -f "$ROOT/core/基础数据审核工具使用说明.docx" ]; then
     echo '[提示] 未提供使用说明 DOCX；继续构建，发行包不含该文档。'
 fi
-[ -d "$ROOT/config" ] || { echo '[错误] 缺少公开 config/。' >&2; exit 1; }
 if [ "$WITH_LOCAL_CONFIG" = 1 ] && [ ! -d "$ROOT/config-real" ]; then
     echo '[错误] --with-local-config 需要本机 config-real/。' >&2
     exit 1
 fi
+if [ -d "$ROOT/config-real" ]; then
+    CONFIG_SOURCE=$ROOT/config-real
+    CONFIG_PROFILE=internal-config
+elif [ -f "$ROOT/config-profile.txt" ] && grep -qx 'internal-config' "$ROOT/config-profile.txt"; then
+    # Linux-4 源码验收包会把选中的真实配置放在 config/，用标记保留其来源。
+    CONFIG_SOURCE=$ROOT/config
+    CONFIG_PROFILE=internal-config
+else
+    CONFIG_SOURCE=$ROOT/config
+    CONFIG_PROFILE=public-config
+fi
+[ -d "$CONFIG_SOURCE" ] || { echo "[错误] 缺少配置目录：$CONFIG_SOURCE" >&2; exit 1; }
+echo "[配置] 本次使用 $CONFIG_PROFILE（来源目录：${CONFIG_SOURCE##*/}）。"
 
 ARCH=$(dpkg --print-architecture)
 case "$ARCH" in
@@ -202,6 +225,17 @@ if [ ! -x "$BUILD_ENV/bin/python" ] || \
 fi
 BUILD_PY=$BUILD_ENV/bin/python
 
+profile_field() {
+    "$BUILD_PY" "$SCRIPT_DIR/distribution_profile.py" field "$PROFILE_ID" "$1"
+}
+PROFILE_NAME=$(profile_field name) || exit $?
+PROFILE_ENABLED_SYSTEMS=$(profile_field enabledSystems) || exit $?
+ARTIFACT_PREFIX=$(profile_field artifactPrefix) || exit $?
+DEB_PACKAGE=$(profile_field debPackage) || exit $?
+DEB_CONFLICTS=$(profile_field debConflicts) || exit $?
+PRODUCT_SCOPE=$(profile_field productScope) || exit $?
+printf '[交付范围] %s；开放系统：%s。\n' "$PROFILE_NAME" "$PROFILE_ENABLED_SYSTEMS"
+
 # 产品版本与程序名称都从共享身份模块读取；DEB 的日期版本仍只作构建批次元数据。
 IDENTITY_PYTHONPATH=$ROOT/core/src${PYTHONPATH:+:$PYTHONPATH}
 APP_VERSION=$(PYTHONPATH="$IDENTITY_PYTHONPATH" "$BUILD_PY" -m base_audit.app_identity --version) || {
@@ -243,10 +277,12 @@ fi
 # ---------------------------------------------------------------------------
 # PyInstaller 冻结（onedir，与 DEB 内布局一致）。
 # ---------------------------------------------------------------------------
-STAGE=$(mktemp -d "${TMPDIR:-/tmp}/base-audit-linux.XXXXXXXX")
-trap 'rm -rf -- "$STAGE"' EXIT HUP INT TERM
+BUILD_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/base-audit-linux.XXXXXXXX")
+trap 'rm -rf -- "$BUILD_STAGE"' EXIT HUP INT TERM
+# Only package/ becomes the filesystem of the DEB; build caches stay outside it.
+STAGE=$BUILD_STAGE/package
 PAYLOAD=$STAGE$RELEASE
-PYI_DIST=$STAGE/pyinstaller-dist
+PYI_DIST=$BUILD_STAGE/pyinstaller-dist
 mkdir -p "$PAYLOAD/app" "$PAYLOAD/shell-flask" "$PAYLOAD/core/frontend" \
     "$PAYLOAD/版本管理" \
     "$PAYLOAD/config/默认配置" "$STAGE/DEBIAN" "$STAGE/usr/bin" \
@@ -265,8 +301,8 @@ set -- --noconfirm --clean --onedir --name "$LINUX_NAME" \
     --collect-all xlrd \
     --collect-all lxml \
     --distpath "$PYI_DIST" \
-    --workpath "$STAGE/work" \
-    --specpath "$STAGE/spec"
+    --workpath "$BUILD_STAGE/work" \
+    --specpath "$BUILD_STAGE/spec"
 if "$BUILD_PY" -c 'import tkinter' >/dev/null 2>&1; then
     set -- "$@" --hidden-import tkinter --hidden-import tkinter.filedialog
     TK_STATUS='随包（含 Tcl/Tk）'
@@ -275,9 +311,9 @@ else
     TK_STATUS='缺失（浏览器内置模式）'
 fi
 set -- "$@" "$SCRIPT_DIR/run.py"
-"$BUILD_PY" -m PyInstaller "$@" >"$STAGE/pyinstaller.log" 2>&1 || {
+"$BUILD_PY" -m PyInstaller "$@" >"$BUILD_STAGE/pyinstaller.log" 2>&1 || {
     echo '[错误] PyInstaller 构建失败，最后 40 行日志：' >&2
-    tail -40 "$STAGE/pyinstaller.log" >&2 || true
+    tail -40 "$BUILD_STAGE/pyinstaller.log" >&2 || true
     exit 1
 }
 [ -x "$PYI_DIST/$LINUX_NAME/$LINUX_NAME" ] || { echo "[错误] PyInstaller 未生成 Linux 启动程序：$LINUX_NAME。" >&2; exit 1; }
@@ -313,7 +349,7 @@ if [ "$AUDIT_FAILED" -eq 1 ]; then
         { [ -n "$g" ] && version_gt "$g" "$GLIBC_TARGET"; } && bad=1
         { [ -n "$gx" ] && version_gt "$gx" "$GLIBCXX_TARGET"; } && bad=1
         if [ "$bad" -eq 1 ]; then
-            echo "       ${f#$STAGE/}  GLIBC<=$g GLIBCXX<=${gx:-无}" >&2
+            echo "       ${f#$BUILD_STAGE/}  GLIBC<=$g GLIBCXX<=${gx:-无}" >&2
         fi
     done
     echo "       可升级 GLIBC_TARGET/GLIBCXX_TARGET 放宽基线，或改用更低基线构建的依赖版本。" >&2
@@ -326,21 +362,33 @@ fi
 cp -R "$FROZEN_DIR/." "$PAYLOAD/app/"
 printf '%s\n' "$LINUX_NAME" > "$PAYLOAD/app/executable-name.txt"
 cp -R "$ROOT/core/frontend/." "$PAYLOAD/core/frontend/"
+printf '%s\n' "$PROFILE_ID" > "$PAYLOAD/distribution-profile.txt"
+"$BUILD_PY" "$SCRIPT_DIR/distribution_profile.py" embed-html "$PROFILE_ID" \
+    "$PAYLOAD/core/frontend/web/index.html" || exit $?
 cp "$ROOT/版本管理/VERSION_MANIFEST.json" "$PAYLOAD/版本管理/VERSION_MANIFEST.json"
 mkdir -p "$PAYLOAD/日志" "$PAYLOAD/docs"
 cp "$ROOT/日志/更新日志.txt" "$PAYLOAD/日志/更新日志.txt"
 cp "$ROOT/docs/常见问题.json" "$PAYLOAD/docs/常见问题.json"
-cp "$ROOT/core/frontend/assets/app-icon.png" "$STAGE/usr/share/pixmaps/base-audit-v3.png"
+cp "$ROOT/core/frontend/assets/app-icon.png" "$STAGE/usr/share/pixmaps/audit-tools.png"
 for doc in "$ROOT/基础数据审核工具使用说明.docx" "$ROOT/core/基础数据审核工具使用说明.docx"; do
     if [ -f "$doc" ]; then cp "$doc" "$PAYLOAD/core/"; break; fi
 done
 cp "$SCRIPT_DIR/Linux-1-启动审核工具.sh" "$PAYLOAD/shell-flask/"
 
-if [ "$WITH_LOCAL_CONFIG" = 1 ]; then
-    echo '[警告] 本包带有本机 config-real/，可能含机构资料和审核历史，仅供本人验证，禁止外发。'
-    cp -R "$ROOT/config-real/." "$PAYLOAD/config/"
+if [ "$CONFIG_PROFILE" = internal-config ]; then
+    echo "[警告] 本包带有真实配置（来源：${CONFIG_SOURCE##*/}），仅供内部使用，禁止外发。"
+    for source in "$CONFIG_SOURCE/"*.xlsx; do
+        [ -f "$source" ] || { echo '[错误] 真实配置目录缺少配置工作簿。' >&2; exit 1; }
+        cp "$source" "$PAYLOAD/config/"
+    done
+    if [ -d "$CONFIG_SOURCE/默认配置" ]; then
+        for source in "$CONFIG_SOURCE/默认配置/"*.xlsx; do
+            [ -f "$source" ] || { echo '[错误] 真实配置的默认配置目录缺少配置工作簿。' >&2; exit 1; }
+            cp "$source" "$PAYLOAD/config/默认配置/"
+        done
+    fi
 else
-    "$BUILD_PY" - "$ROOT/config" "$PAYLOAD/config" <<'PY'
+    "$BUILD_PY" - "$CONFIG_SOURCE" "$PAYLOAD/config" <<'PY'
 import shutil
 import sys
 from pathlib import Path
@@ -381,10 +429,13 @@ print("[配置] 六册配置已复制；本机审核历史和机构参照已从�
 PY
 fi
 
-DEB_VERSION=$(date +%Y.%m.%d.%H%M%S)
-ARTIFACT_BASE=审核工具_V${APP_VERSION}_${DEB_VERSION}_${BUILD_OS}_py${PY_FULL_VERSION}_glibc${MIN_GLIBC}_${ARCH}
+"$BUILD_PY" "$SCRIPT_DIR/distribution_profile.py" filter-config "$PROFILE_ID" \
+    "$PAYLOAD/config" || exit $?
 
-cat > "$STAGE/usr/bin/base-audit-v3" <<SH
+DEB_VERSION=$(date +%Y.%m.%d.%H%M%S)
+ARTIFACT_BASE=${ARTIFACT_PREFIX}_V${APP_VERSION}_${DEB_VERSION}_${BUILD_OS}_py${PY_FULL_VERSION}_glibc${MIN_GLIBC}_${ARCH}
+
+cat > "$STAGE/usr/bin/audit-tools" <<SH
 #!/bin/sh
 set -eu
 BASE_AUDIT_INSTALL_ROOT=$RELEASE
@@ -392,28 +443,119 @@ export BASE_AUDIT_INSTALL_ROOT
 exec "$RELEASE/shell-flask/Linux-1-启动审核工具.sh" "\$@"
 SH
 
-cat > "$STAGE/usr/share/applications/base-audit-v3.desktop" <<DESKTOP
+cat > "$STAGE/usr/bin/base-audit-v3" <<'SH'
+#!/bin/sh
+exec /usr/bin/audit-tools "$@"
+SH
+
+cat > "$STAGE/usr/share/applications/audit-tools.desktop" <<DESKTOP
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=$APP_TITLE
+Name=audit-tools V$APP_VERSION
+Name[zh_CN]=审核工具 V$APP_VERSION
 Comment=后台启动本机 Flask 审核工具
-Exec=base-audit-v3 --background
-Icon=/usr/share/pixmaps/base-audit-v3.png
+Exec=audit-tools --background
+Icon=/usr/share/pixmaps/audit-tools.png
 Terminal=false
 Categories=Office;
 DESKTOP
 
+cat > "$STAGE/DEBIAN/postinst" <<'POSTINST'
+#!/bin/sh
+set -e
+
+create_desktop_shortcut() {
+    username=$1
+    [ -n "$username" ] || return 0
+    [ "$username" != root ] || return 0
+    command -v runuser >/dev/null 2>&1 || return 0
+
+    passwd_entry=$(getent passwd "$username" 2>/dev/null || true)
+    [ -n "$passwd_entry" ] || return 0
+    user_uid=$(printf '%s\n' "$passwd_entry" | cut -d: -f3)
+    user_gid=$(printf '%s\n' "$passwd_entry" | cut -d: -f4)
+    user_home=$(printf '%s\n' "$passwd_entry" | cut -d: -f6)
+    [ -n "$user_uid" ] && [ -n "$user_gid" ] && [ -n "$user_home" ] || return 0
+    [ "$user_home" != /root ] || return 0
+
+    desktop_dir=
+    if command -v xdg-user-dir >/dev/null 2>&1; then
+        desktop_dir=$(runuser -u "$username" -- env HOME="$user_home" xdg-user-dir DESKTOP 2>/dev/null || true)
+    fi
+    if [ -z "$desktop_dir" ] || [ ! -d "$desktop_dir" ]; then
+        for candidate in "$user_home/Desktop" "$user_home/桌面"; do
+            if [ -d "$candidate" ]; then
+                desktop_dir=$candidate
+                break
+            fi
+        done
+    fi
+    [ -n "$desktop_dir" ] && [ -d "$desktop_dir" ] || return 0
+
+    shortcut="$desktop_dir/审核工具.desktop"
+    if runuser -u "$username" -- /usr/bin/install -m 755 \
+        /usr/share/applications/audit-tools.desktop "$shortcut" 2>/dev/null; then
+        if command -v gio >/dev/null 2>&1; then
+            runuser -u "$username" -- gio set "$shortcut" metadata::trusted true >/dev/null 2>&1 || true
+        fi
+        echo "[审核工具] 已为 $username 创建桌面快捷方式。"
+    fi
+    return 0
+}
+
+case "${1:-}" in
+    configure)
+        # Remove stale launcher/icon from installations predating the package rename.
+        rm -f /usr/share/applications/base-audit-v3.desktop \
+            /usr/share/pixmaps/base-audit-v3.png
+        # Refresh launcher caches after upgrades so the menu picks up the new localized title.
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database -q /usr/share/applications || true
+        fi
+        if command -v xdg-desktop-menu >/dev/null 2>&1; then
+            xdg-desktop-menu forceupdate --mode system >/dev/null 2>&1 || true
+        fi
+
+        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
+            create_desktop_shortcut "$SUDO_USER"
+        fi
+        if [ -n "${PKEXEC_UID:-}" ] && [ "$PKEXEC_UID" != 0 ]; then
+            pkexec_user=$(getent passwd "$PKEXEC_UID" 2>/dev/null | cut -d: -f1 || true)
+            create_desktop_shortcut "$pkexec_user"
+        fi
+        if command -v loginctl >/dev/null 2>&1; then
+            loginctl list-sessions --no-legend 2>/dev/null |
+                while read -r session_id _session_uid session_user _session_seat _session_tty; do
+                    [ -n "$session_id" ] || continue
+                    session_type=$(loginctl show-session "$session_id" -p Type --value 2>/dev/null || true)
+                    session_active=$(loginctl show-session "$session_id" -p Active --value 2>/dev/null || true)
+                    case "$session_type:$session_active" in
+                        x11:yes|wayland:yes) create_desktop_shortcut "$session_user" ;;
+                    esac
+                done || true
+        fi
+        ;;
+esac
+exit 0
+POSTINST
+chmod 755 "$STAGE/DEBIAN/postinst"
+
 cat > "$STAGE/DEBIAN/control" <<CONTROL
-Package: base-audit-v3
-Version: $DEB_VERSION
+Package: $DEB_PACKAGE
+Version: 1:$APP_VERSION
 Section: office
 Priority: optional
 Architecture: $ARCH
+X-Audit-Tools-Config-Profile: $CONFIG_PROFILE
+X-Audit-Tools-Distribution-Profile: $PROFILE_ID
+X-Audit-Tools-Artifact-Prefix: $ARTIFACT_PREFIX
 Depends: libc6 (>= $MIN_GLIBC), libstdc++6, xdg-utils, iproute2
+Conflicts: $DEB_CONFLICTS
+Replaces: $DEB_CONFLICTS
 Maintainer: V3 Project
-Description: V3 base audit Flask application for UOS
- Frozen Flask application with bundled Python runtime and clean configuration templates.
+Description: 审核工具 V$APP_VERSION
+ Chinese-language audit tool with an embedded Python runtime.
 CONTROL
 
 "$BUILD_PY" -m pip freeze > "$PAYLOAD/dependency-versions.txt"
@@ -421,8 +563,11 @@ GLIBC_VERSION=$(getconf GNU_LIBC_VERSION 2>/dev/null | sed 's/^glibc[[:space:]]*
 [ -n "$GLIBC_VERSION" ] || GLIBC_VERSION=unknown
 {
     printf 'Package base: %s\n' "$ARTIFACT_BASE"
+    printf 'Distribution profile: %s (%s)\nEnabled systems: %s\n' "$PROFILE_NAME" "$PROFILE_ID" "$PROFILE_ENABLED_SYSTEMS"
+    printf 'Product scope: %s\n' "$PRODUCT_SCOPE"
+    printf 'Configuration profile: %s\nConfiguration source: %s\n' "$CONFIG_PROFILE" "${CONFIG_SOURCE##*/}"
     printf 'Application: %s\n' "$APP_TITLE"
-    printf 'Application version (VERSION_MANIFEST.json): %s\nDEB package version (build timestamp): %s\n' "$APP_VERSION" "$DEB_VERSION"
+    printf 'Application version (VERSION_MANIFEST.json): V%s\nDEB package version (epoch:product version): 1:%s\nBuild timestamp: %s\n' "$APP_VERSION" "$APP_VERSION" "$DEB_VERSION"
     printf 'Bundled Python: %s (python-build-standalone, %s)\n' "$PY_FULL_VERSION" "$INTERPRETER_SOURCE"
     printf 'Architecture: %s\nTk: %s\n' "$ARCH" "$TK_STATUS"
     printf 'PyInstaller: %s\n' "$PYINSTALLER_PIN"
@@ -437,7 +582,8 @@ GLIBC_VERSION=$(getconf GNU_LIBC_VERSION 2>/dev/null | sed 's/^glibc[[:space:]]*
 # ZIP 源目录可能没有遍历权限；统一目录与文件权限，并保证非 root 能启动。
 find "$STAGE" -type d -exec chmod 755 {} +
 find "$STAGE" -type f -exec chmod 644 {} +
-chmod 755 "$STAGE/usr/bin/base-audit-v3" \
+chmod 755 "$STAGE/usr/bin/audit-tools" "$STAGE/usr/bin/base-audit-v3" \
+    "$STAGE/DEBIAN/postinst" \
     "$PAYLOAD/app/$LINUX_NAME" \
     "$PAYLOAD/shell-flask/Linux-1-启动审核工具.sh"
 
@@ -457,7 +603,7 @@ fi
 if [ "$SKIP_TGZ" -eq 0 ]; then
     echo '[TAR.GZ] 组装便携包 ...'
     TGZ_OUT=$DIST/${ARTIFACT_BASE}.tar.gz
-    # 只打包 /opt/base-audit-v3 payload，不带 DEBIAN/ 与 usr/；根目录带版本号。
+    # 只打包 /opt/base-audit-v3 payload，不带 DEBIAN/ 与 usr/；归档根目录带产品名、版本和时间。
     tar --numeric-owner --owner=0 --group=0 \
         --transform "s|^base-audit-v3|${ARTIFACT_BASE}|" \
         -C "$STAGE/opt" -czf "$TGZ_OUT" base-audit-v3
@@ -476,17 +622,15 @@ echo '[提示] 目标机仍需桌面会话、xdg-utils、iproute2 和 LibreOffic
 echo '[提示] 配置和运行数据保存在 ~/.local/share/base-audit-v3/，升级不覆盖已有用户数据。'
 for f in "$DIST/${ARTIFACT_BASE}".*; do echo "[留档] $f"; done
 
-# 收尾清理历史批次：默认只保留最新一批审核工具_V*_时间戳_* 产物，避免 dist/ 堆积
-# 旧包误发；需同时留档多批时设 FLASK_KEEP_BUILDS=N（不小于 1）。
+# 收尾清理历史批次：只清理本次发行形态的旧包，不触碰另一发行形态。
+# 需同时留档多批时设 FLASK_KEEP_BUILDS=N（不小于 1）。
 KEEP_BUILDS=${FLASK_KEEP_BUILDS:-1}
 case "$KEEP_BUILDS" in ''|*[!0-9]*) KEEP_BUILDS=1 ;; esac
 [ "$KEEP_BUILDS" -lt 1 ] && KEEP_BUILDS=1
 ls -- "$DIST" 2>/dev/null \
-    | sed -n -e 's/^审核工具_V[^_]*_\([0-9][0-9.]*\)_.*/\1/p' \
-             -e 's/^base-audit-v3_\([0-9][0-9.]*\)_.*/\1/p' \
+    | sed -n "s/^${ARTIFACT_PREFIX}_V[^_]*_\\([0-9][0-9.]*\\)_.*/\\1/p" \
     | sort -ru \
     | tail -n +"$((KEEP_BUILDS + 1))" | while IFS= read -r stamp; do
-        rm -f -- "$DIST/审核工具_V"*"_${stamp}_"*
-        rm -f -- "$DIST/base-audit-v3_${stamp}"_*
-        echo "[清理] 已删除旧时间戳批次产物：$stamp"
+        rm -f -- "$DIST/${ARTIFACT_PREFIX}_V"*"_${stamp}_"*
+        echo "[清理] 已删除旧 $PROFILE_NAME 批次产物：$stamp"
     done

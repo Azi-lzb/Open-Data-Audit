@@ -1,0 +1,23 @@
+时间：2026-10-16 01:00:29（Asia/Shanghai）
+执行者：Codex
+修改前 commit：f695136c181f9cf99720f51559b84bcfc75ff58d
+修改后 commit：未提交，HEAD 未变化
+
+目的：修正交付方案回归测试，使其验证当前的解锁语义，并避免 Windows 命令行长度限制。
+
+修改文件：
+- core/tests/test_distribution_profile.py：验证交付 UI 口令状态不持久化，断言开发导航状态保持现行默认值；修复前端行为脚本提取边界；将 Node 测试脚本写入临时文件后运行，避免 Windows 的命令行长度限制。
+- 新增本记录。
+
+验证：
+- python -m pytest core/tests/test_distribution_profile.py -q：5 passed。
+- python -m pytest core/tests：923 passed，13 skipped，0 failed，0 errors。
+- Windows pytest 的 .pytest-tmp-v3 受当前 ACL 限制；在获准的提升权限测试进程中运行全量测试。
+
+配置及 VBA 影响：无。
+
+【组件版本】
+不升级。仅修正测试断言与测试脚本启动方式，没有改变业务实现、配置、VBA 或产品版本。
+
+删除清单：无。
+回滚：恢复 core/tests/test_distribution_profile.py 本轮测试修订，并保留修改记录。

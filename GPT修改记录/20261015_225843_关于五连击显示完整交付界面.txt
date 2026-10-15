@@ -1,0 +1,31 @@
+时间：2026-10-15 22:58:43（Asia/Shanghai）
+执行者：Codex
+修改前/后 commit：f695136c181f9cf99720f51559b84bcfc75ff58d（未提交，HEAD 未变）
+WIP：保留工作区既有改动；本轮未委派子 Agent、未执行 Git 写操作。
+
+【目的】
+为 Flask 隐藏交付版提供“关于”五连击和密码显示入口，恢复被方案隐藏的系统及相关栏目。
+
+【修改文件与逻辑】
+core/frontend/web/index.html：关于弹框标题 2 秒内五连击，复用密码弹框；正确验证后覆盖本次运行的交付显示过滤、解除侧栏 CSS 隐藏并刷新当前设置页；错误密码留在弹框、关闭清空输入、提交期间避免关闭导致显示状态竞争。完整界面不触发此入口。
+core/src/base_audit/developer_access.py：新增独立交付显示口令校验，保留原有单系统口令。
+core/src/base_audit/web_app.py：新增 unlock_distribution_ui(password) 和 distributionUnlocked 状态。正确口令仅在本次后端运行中显示全部系统并临时开放开发导航，不保存到 JSON 或日志；重启恢复默认。
+core/tests/test_distribution_profile.py：新增后端错误/正确密码、状态刷新、重建实例恢复、原有入口兼容、设置文件不变，以及 Node 执行的五连击阈值、超时、错误密码、取消、提交期间关闭保护、完整界面不触发、嵌入 JSON 不改写、侧栏及设置恢复测试。
+core/tests/TEST_GROUPS.md：更新已登记公共测试模块的覆盖说明，无新模块。
+docs/开发入口与本机开关.md、shell-flask/README.md：记录具体操作和 Bridge API 契约。
+日志/开发日志.txt：新增开发条目；未修改用户更新日志。
+本修改记录。
+
+【验证】
+python -m pytest -q --tb=short core/tests/test_distribution_profile.py core/tests/test_web_app.py core/tests/test_libreoffice_install_api.py：69 passed / 6 skipped / 0 failed / 0 errors，42.86 秒。六个路由用例因当前 Python 没有 Flask 跳过。
+利用本机既有 .venv/Lib/site-packages 提供 Flask，执行 test_libreoffice_install_api.py -k flask_install_api：6 passed / 23 deselected / 0 skipped / 0 failed / 0 errors；未安装或修改依赖。
+提交期间关闭弹框保护补充后，复跑 test_distribution_profile.py：3 passed / 0 skipped / 0 failed / 0 errors。
+Python 编译与 git diff --check 通过；共用前端完整脚本的 Node 语法检查包含在交付显示定向测试内。
+未执行：完整 S1/S2/S3 业务分组、Office 真机、浏览器视觉验收、EXE/DEB/TAR.GZ 重建。未改审核算法，测试仅使用临时设置文件，不修改真实工作簿。
+
+【组件版本】
+产品 V26.1.5.1 保持不变，本轮交付显示治理不发布新整包。
+S1/S2/S3 功能和配置组件均不升级；S4 仍为现有开发预览页，未新增业务实现。
+
+【删除与回滚】
+无文件删除，无发行包覆盖。只撤销以上文件的本轮局部变更，保留此前 WIP。pywebview 和源码开发完整显示行为保持原样。

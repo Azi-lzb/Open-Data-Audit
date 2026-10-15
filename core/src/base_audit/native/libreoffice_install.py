@@ -1,10 +1,10 @@
 """Safe, Linux-only installation of LibreOffice Calc DEB release bundles.
 
-This module deliberately does not download packages, verify signatures, or try
-to repair package dependencies.  It accepts a user-selected LibreOffice DEB
-tar.gz or an already extracted ``DEBS`` directory, validates the package
-metadata, stages private copies, and asks the system package manager to install
-those exact copies.
+This module deliberately does not download packages or verify signatures. It
+accepts a user-selected LibreOffice DEB tar.gz or an already extracted
+``DEBS`` directory, validates the package metadata, stages private copies, and
+asks the system package manager to install those exact copies. APT is preferred
+so it can resolve dependencies using the machine's configured repositories.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import sys
 import tarfile
 import tempfile
 import threading
+import time
 import traceback
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -29,7 +30,10 @@ from pathlib import Path
 
 DPKG_EXECUTABLE = Path("/usr/bin/dpkg")
 DPKG_DEB_EXECUTABLE = Path("/usr/bin/dpkg-deb")
+DPKG_QUERY_EXECUTABLE = Path("/usr/bin/dpkg-query")
+APT_GET_EXECUTABLE = Path("/usr/bin/apt-get")
 PKEXEC_EXECUTABLE = Path("/usr/bin/pkexec")
+MM_CLI_EXECUTABLE = Path("/usr/bin/mm-cli")
 
 MAX_ARCHIVE_MEMBERS = 20000
 MAX_SOURCE_DIRECTORY_ENTRIES = 2000
@@ -47,6 +51,9 @@ _ARCHITECTURE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _VERSION_RE = re.compile(r"^[0-9][A-Za-z0-9.+:~_-]{0,127}$")
 _NUMERIC_VERSION_RE = re.compile(r"^([0-9]+(?:\.[0-9]+)*)")
 _SOFFICE_VERSION_RE = re.compile(r"LibreOffice\s+([0-9]+(?:\.[0-9]+)+)", re.IGNORECASE)
+_VERSIONED_PACKAGE_RE = re.compile(r"^(?:libreoffice|libobasis)([0-9]+\.[0-9]+)(?:-|$)")
+_VERSIONED_OPT_DIR_RE = re.compile(r"^(?:libreoffice|LibreOffice)([0-9]+\.[0-9]+)$")
+_DPKG_PACKAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9+.-]{0,254}(?::[a-z0-9][a-z0-9-]{0,63})?$")
 
 
 @dataclass(frozen=True)
@@ -97,6 +104,13 @@ def _is_executable(path: Path) -> bool:
         return False
 
 
+def _apt_get_path() -> Path | None:
+    located = shutil.which("apt-get")
+    if located:
+        return Path(located)
+    return APT_GET_EXECUTABLE if _is_executable(APT_GET_EXECUTABLE) else None
+
+
 def _tool_support() -> tuple[bool, str]:
     """Return whether safe DEB inspection and an authorized install are possible."""
     if not _is_linux():
@@ -111,6 +125,29 @@ def _tool_support() -> tuple[bool, str]:
     if not _is_root() and not _is_executable(PKEXEC_EXECUTABLE):
         return False, "当前系统没有可用的 pkexec 管理员授权程序。请使用系统软件管理器安装 LibreOffice。"
     return True, ""
+
+
+def _is_kylin_v11() -> bool:
+    """Identify Kylin V11 so installation guidance can mention maintenance mode."""
+    try:
+        release = Path("/etc/os-release").read_text(encoding="utf-8").casefold()
+    except OSError:
+        return False
+    return "kylin" in release and re.search(r"v?11(?![0-9])", release) is not None
+
+
+def _build_install_command(packages: list["_StagedPackage"]) -> tuple[list[str], bool]:
+    """Build an argument-safe host install command, preferring APT dependency resolution."""
+    paths = [str(package.path.resolve()) for package in packages]
+    apt_get = _apt_get_path()
+    if apt_get is not None:
+        command = [str(apt_get), "install", "--yes", "--no-install-recommends", *paths]
+    else:
+        command = [str(DPKG_EXECUTABLE), "--install", *paths]
+    authorized = not _is_root()
+    if authorized:
+        command = [str(PKEXEC_EXECUTABLE), "--disable-internal-agent", *command]
+    return command, authorized
 
 
 def _architecture_from_dpkg() -> str:
@@ -516,6 +553,162 @@ def _numeric_version(value: str) -> tuple[int, ...] | None:
         return None
 
 
+def _installed_libreoffice_inventory() -> tuple[list[dict[str, object]], dict[str, str]]:
+    """Discover versioned upstream DEB installs and distro packages on host."""
+    query = shutil.which("dpkg-query")
+    query_path = Path(query) if query else DPKG_QUERY_EXECUTABLE
+    packages_by_release: dict[str, list[dict[str, str]]] = {}
+    distro_packages: list[dict[str, str]] = []
+    if _is_executable(query_path):
+        output_format = "${db:Status-Abbrev}\\t${binary:Package}\\t${Version}\\t${Architecture}\\n"
+        try:
+            completed = subprocess.run(
+                [str(query_path), "-W", "-f", output_format],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                timeout=10, check=False, env=_system_command_env(),
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            completed = None
+        if completed is not None and completed.returncode == 0:
+            for line in (completed.stdout or "").splitlines():
+                fields = line.split("\t")
+                if len(fields) != 4 or fields[0][:2] != "ii":
+                    continue
+                package_id, version, architecture = fields[1:]
+                package_name = package_id.split(":", 1)[0]
+                release_match = _VERSIONED_PACKAGE_RE.match(package_name)
+                record = {"id": package_id, "name": package_name, "version": version, "architecture": architecture}
+                if release_match:
+                    packages_by_release.setdefault(release_match.group(1), []).append(record)
+                elif package_name == "libreoffice" or package_name.startswith("libreoffice-"):
+                    distro_packages.append(record)
+
+    paths_by_release: dict[str, str] = {}
+    opt = Path("/opt")
+    for pattern in ("libreoffice*/program/soffice", "LibreOffice*/program/soffice"):
+        try:
+            candidates = opt.glob(pattern)
+        except OSError:
+            continue
+        for candidate in candidates:
+            match = _VERSIONED_OPT_DIR_RE.fullmatch(candidate.parent.parent.name)
+            if match and _is_executable(candidate):
+                paths_by_release.setdefault(match.group(1), str(candidate))
+
+    releases = set(packages_by_release) | set(paths_by_release)
+    inventory: list[dict[str, object]] = []
+    for release in releases:
+        package_records = packages_by_release.get(release, [])
+        main_name = "libreoffice" + release
+        main_package = next((item for item in package_records if item["name"] == main_name), None)
+        versions = sorted({item["version"] for item in package_records})
+        version = main_package["version"] if main_package else (versions[-1] if versions else release)
+        path = paths_by_release.get(release, "")
+        package_ids = sorted({item["id"] for item in package_records})
+        inventory.append({
+            "release": release,
+            "version": version,
+            "path": path,
+            "packageCount": len(package_ids),
+            "managed": bool(main_package),
+            "canUninstall": bool(main_package and package_ids),
+            "source": "DEB 软件包" if package_ids else "手动安装目录",
+            "_packageIds": package_ids,
+        })
+
+    if distro_packages:
+        path = shutil.which("soffice") or ("/usr/bin/soffice" if _is_executable(Path("/usr/bin/soffice")) else "")
+        preferred = next((item for item in distro_packages if item["name"] == "libreoffice-calc"), None)
+        if preferred is None:
+            preferred = distro_packages[0]
+        inventory.append({
+            "release": "system",
+            "version": preferred["version"],
+            "path": path,
+            "packageCount": len(distro_packages),
+            "managed": True,
+            "canUninstall": False,
+            "source": "系统仓库软件包（本页不卸载）",
+            "_packageIds": [],
+        })
+
+    def sort_key(item: dict[str, object]) -> tuple[int, tuple[int, ...], str]:
+        numeric = _numeric_version(str(item.get("version") or item.get("release") or "")) or ()
+        return (0 if item.get("release") == "system" else 1, numeric, str(item.get("release") or ""))
+
+    inventory.sort(key=sort_key, reverse=True)
+    active_engine: dict[str, str] = {"display": "", "path": "", "source": ""}
+    try:
+        from base_audit.engines.libreoffice import find_calc_engine
+
+        engine = find_calc_engine()
+        if engine is not None:
+            active_engine.update(display=engine.display, source=engine.source)
+            if engine.command_prefix and engine.source not in ("玲珑商店版", "银河麒麟 KARE"):
+                try:
+                    active_engine["path"] = str(Path(engine.command_prefix[0]).resolve())
+                except OSError:
+                    active_engine["path"] = engine.command_prefix[0]
+    except Exception:
+        pass
+    active_path = active_engine["path"]
+    for item in inventory:
+        candidate = str(item.get("path") or "")
+        try:
+            item["active"] = bool(candidate and active_path and Path(candidate).resolve() == Path(active_path).resolve())
+        except OSError:
+            item["active"] = bool(candidate and candidate == active_path)
+    return inventory, active_engine
+
+
+def _read_kylin_maintenance_state(*, authorized: bool = False) -> tuple[str, str]:
+    """Read V11 mode; elevated reads are only used after an explicit UI action."""
+    if not _is_kylin_v11():
+        return "unsupported", "此功能仅适用于麒麟 V11。"
+    located = shutil.which("mm-cli")
+    executable = Path(located) if located else MM_CLI_EXECUTABLE
+    if not _is_executable(executable):
+        return "unknown", "未找到 mm-cli，无法读取维护模式。"
+    command = [str(executable), "-s"]
+    if authorized and not _is_root():
+        pkexec = shutil.which("pkexec")
+        pkexec_path = Path(pkexec) if pkexec else PKEXEC_EXECUTABLE
+        if not _is_executable(pkexec_path):
+            return "unknown", "系统没有可用的 pkexec 管理员授权程序。"
+        command = [str(pkexec_path), "--disable-internal-agent", *command]
+    try:
+        completed = subprocess.run(
+            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, timeout=15 if authorized else 5, check=False, env=_system_command_env(),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return "unknown", "读取麒麟 V11 模式失败：{}".format(exc)
+    output = (completed.stdout or "").strip()
+    normalized = output.casefold()
+    if completed.returncode == 0:
+        if any(token in normalized for token in ("maintain mode", "maintenance mode", "maintainmode", "maintain-mode")) or "维护模式" in output:
+            return "maintain", output or "维护模式"
+        if any(token in normalized for token in ("normal mode", "normalmode", "normal-mode")) or "正常模式" in output:
+            return "normal", output or "正常模式"
+    return "unknown", output[:500] or "mm-cli 未返回可识别的系统模式。"
+
+
+def _build_authorized_command(arguments: list[str]) -> tuple[list[str], bool]:
+    """Wrap one fixed, validated system command in pkexec when needed."""
+    command = list(arguments)
+    if _is_root():
+        return command, False
+    located = shutil.which("pkexec")
+    pkexec = Path(located) if located else PKEXEC_EXECUTABLE
+    if not _is_executable(pkexec):
+        raise _PreparationError("系统没有可用的 pkexec 管理员授权程序，无法执行此操作。")
+    return [str(pkexec), "--disable-internal-agent", *command], True
+
+
+def _maintenance_state_label(state: str) -> str:
+    return {"maintain": "维护模式", "normal": "正常模式", "unsupported": "非麒麟 V11"}.get(state, "无法识别")
+
+
 def _run_metadata(package_path: Path) -> tuple[str, str, str]:
     command = [str(DPKG_DEB_EXECUTABLE), "--field", str(package_path), "Package", "Version", "Architecture"]
     try:
@@ -684,11 +877,13 @@ def _verify_staged_package(package: _StagedPackage) -> bool:
 def _probe_engine_version(expected_version: tuple[int, ...] | None = None) -> tuple[str, str]:
     """Refresh engine discovery and safely query the expected installed target."""
     engine = None
+    direct_engine = None
     discovery_error = ""
     try:
-        from base_audit.engines.libreoffice import find_calc_engine
+        from base_audit.engines.libreoffice import _find_direct_engine, find_calc_engine
 
         engine = find_calc_engine()
+        direct_engine = _find_direct_engine()
     except Exception as exc:
         discovery_error = "find_calc_engine failed: {}".format(repr(exc))
     command_prefix = None
@@ -697,10 +892,14 @@ def _probe_engine_version(expected_version: tuple[int, ...] | None = None) -> tu
         if len(expected_version) < 2:
             return "", "expected LibreOffice version is invalid"
         target = Path("/opt/libreoffice{}.{}".format(expected_version[0], expected_version[1])) / "program" / "soffice"
-        if not _is_executable(target):
+        if _is_executable(target):
+            command_prefix = (str(target),)
+            display = str(target)
+        elif direct_engine is not None:
+            command_prefix = direct_engine.command_prefix
+            display = direct_engine.display
+        else:
             return "", "expected target soffice was not found: {}".format(target)
-        command_prefix = (str(target),)
-        display = str(target)
     if command_prefix is None:
         if engine is None:
             return "", discovery_error or "find_calc_engine did not find a Calc engine"
@@ -730,8 +929,17 @@ class LibreOfficeInstaller:
 
     def __init__(self, data_dir: Path) -> None:
         self.data_dir = Path(data_dir)
+        os.environ.setdefault("BASE_AUDIT_DATA_DIR", str(self.data_dir))
         self._lock = threading.RLock()
         self._log_lock = threading.Lock()
+        self._inventory_lock = threading.Lock()
+        self._inventory_cache: tuple[list[dict[str, object]], dict[str, str]] | None = None
+        self._inventory_cache_at = 0.0
+        self._maintenance_cache = ("unknown", "尚未读取")
+        self._maintenance_cache_at = 0.0
+        self._maintenance_cache_authorized = False
+        self._maintenance_pending_action = ""
+        self._uninstall_return_ready = False
         self._phase = "idle"
         self._busy = False
         self._message = "请选择 LibreOffice 官方 Linux DEB tar.gz 文件或已解压的 DEBS 文件夹。"
@@ -747,16 +955,22 @@ class LibreOfficeInstaller:
         self._thread = None
 
     def snapshot(self) -> dict[str, object]:
-        """Return the current state without probing or launching system tools."""
+        """Return installer, installed-version and Kylin V11 mode state."""
         available = _is_linux()
         supported, _ = _tool_support() if available else (False, "此安装方式仅适用于 Linux。")
+        versions, active_engine = self._installed_inventory() if available else ([], {"display": "", "path": "", "source": ""})
+        maintenance = self._maintenance_snapshot()
         with self._lock:
+            maintenance_ready = not _is_kylin_v11() or (
+                maintenance["state"] == "maintain" and not maintenance["pendingRestart"]
+            )
             can_install = bool(
                 self._phase == "ready"
                 and not self._busy
                 and self._packages
                 and self._staging_dir is not None
                 and supported
+                and maintenance_ready
             )
             return {
                 "available": available,
@@ -770,9 +984,63 @@ class LibreOfficeInstaller:
                 "architecture": self._architecture,
                 "packageCount": self._package_count,
                 "installed": self._installed,
+                "installedVersions": [
+                    {key: value for key, value in item.items() if not key.startswith("_")}
+                    for item in versions
+                ],
+                "activeEngine": active_engine,
+                "kylinMaintenance": maintenance,
                 "logPath": self._log_path,
                 "canInstall": can_install,
             }
+
+    def operation_phase(self) -> str:
+        """Return the current operation phase without probing system tools."""
+        with self._lock:
+            return self._phase
+
+    def _installed_inventory(self, *, force: bool = False) -> tuple[list[dict[str, object]], dict[str, str]]:
+        now = time.monotonic()
+        with self._inventory_lock:
+            if not force and self._inventory_cache is not None and now - self._inventory_cache_at < 5:
+                versions, engine = self._inventory_cache
+                return [dict(item) for item in versions], dict(engine)
+            inventory = _installed_libreoffice_inventory()
+            self._inventory_cache = inventory
+            self._inventory_cache_at = now
+            return [dict(item) for item in inventory[0]], dict(inventory[1])
+
+    def _invalidate_inventory(self) -> None:
+        with self._inventory_lock:
+            self._inventory_cache = None
+            self._inventory_cache_at = 0.0
+
+    def _maintenance_snapshot(self, *, force: bool = False) -> dict[str, object]:
+        if not _is_kylin_v11():
+            return {"supported": False, "state": "unsupported", "label": "非麒麟 V11", "detail": "此功能仅适用于麒麟 V11。", "pendingRestart": False, "pendingAction": ""}
+        now = time.monotonic()
+        with self._lock:
+            cache_age = now - self._maintenance_cache_at
+            if not force and cache_age < (60 if self._maintenance_cache_authorized else 5):
+                state, detail = self._maintenance_cache
+            else:
+                state, detail = "", ""
+        if not state:
+            state, detail = _read_kylin_maintenance_state()
+            with self._lock:
+                self._maintenance_cache = (state, detail)
+                self._maintenance_cache_at = time.monotonic()
+                self._maintenance_cache_authorized = False
+        with self._lock:
+            pending = self._maintenance_pending_action
+        return {
+            "supported": True,
+            "state": state,
+            "label": _maintenance_state_label(state),
+            "detail": detail,
+            "pendingRestart": bool(pending),
+            "pendingAction": pending,
+        }
 
     def prepare(self, path: str) -> dict[str, object]:
         """Begin asynchronous validation/staging for one selected path."""
@@ -787,53 +1055,284 @@ class LibreOfficeInstaller:
             return self.snapshot()
 
         with self._lock:
-            if self._busy:
-                return self.snapshot()
-            old_staging = self._staging_dir
-            self._staging_dir = None
-            self._packages = []
-            self._source = source_text
-            self._source_name = Path(source_text).name if source_text else ""
-            self._package_version = ""
-            self._architecture = ""
-            self._package_count = 0
-            self._phase = "checking"
-            self._busy = True
-            self._message = "正在检查 LibreOffice 安装包…"
-            worker = threading.Thread(
-                target=self._prepare_worker,
-                args=(source_text, old_staging),
-                name="libreoffice-deb-prepare",
-                daemon=True,
-            )
-            self._thread = worker
-            worker.start()
+            if not self._busy:
+                old_staging = self._staging_dir
+                self._staging_dir = None
+                self._packages = []
+                self._source = source_text
+                self._source_name = Path(source_text).name if source_text else ""
+                self._package_version = ""
+                self._architecture = ""
+                self._package_count = 0
+                self._phase = "checking"
+                self._busy = True
+                self._message = "正在检查 LibreOffice 安装包…"
+                worker = threading.Thread(
+                    target=self._prepare_worker,
+                    args=(source_text, old_staging),
+                    name="libreoffice-deb-prepare",
+                    daemon=True,
+                )
+                self._thread = worker
+                worker.start()
         return self.snapshot()
 
     def start(self) -> dict[str, object]:
         """Begin installation of the exact staged files that passed validation."""
+        maintenance = self._maintenance_snapshot() if _is_kylin_v11() else {}
+        maintenance_ready = not _is_kylin_v11() or (
+            maintenance.get("state") == "maintain" and not maintenance.get("pendingRestart")
+        )
+        supported, reason = _tool_support()
         with self._lock:
             if self._busy or self._phase != "ready" or not self._packages or self._staging_dir is None:
-                return self.snapshot()
-            supported, reason = _tool_support()
-            if not supported:
+                pass
+            elif not maintenance_ready:
+                self._phase = "ready"
+                self._message = "麒麟 V11 需要先切换到维护模式并重启，再安装 LibreOffice。请确认当前为维护模式后重试。"
+            elif not supported:
                 self._phase = "failed"
                 self._message = reason
-                return self.snapshot()
-            packages = list(self._packages)
-            staging_dir = self._staging_dir
-            self._busy = True
-            self._phase = "installing"
-            self._message = "正在安装 LibreOffice。请等待系统安装完成。"
-            worker = threading.Thread(
-                target=self._install_worker,
-                args=(packages, staging_dir),
-                name="libreoffice-deb-install",
-                daemon=True,
-            )
-            self._thread = worker
-            worker.start()
+            else:
+                packages = list(self._packages)
+                staging_dir = self._staging_dir
+                self._busy = True
+                self._phase = "installing"
+                self._message = "正在通过系统包管理器安装 LibreOffice。请等待系统安装完成。"
+                worker = threading.Thread(
+                    target=self._install_worker,
+                    args=(packages, staging_dir),
+                    name="libreoffice-deb-install",
+                    daemon=True,
+                )
+                self._thread = worker
+                worker.start()
         return self.snapshot()
+
+    def start_uninstall(self, release: str) -> dict[str, object]:
+        """Remove only the selected versioned TDF DEB package family."""
+        release = str(release or "").strip()
+        if not re.fullmatch(r"[0-9]+\.[0-9]+", release):
+            raise ValueError("所选 LibreOffice 版本无效，请刷新版本列表后重试。")
+        if not _is_linux():
+            raise ValueError("LibreOffice 版本管理仅适用于 Linux。")
+        mode = self._maintenance_snapshot()
+        if _is_kylin_v11() and (mode.get("state") != "maintain" or mode.get("pendingRestart")):
+            raise ValueError("麒麟 V11 需要先切换到维护模式并重启，再卸载 LibreOffice。")
+        versions, _active = self._installed_inventory(force=True)
+        selected = next((item for item in versions if item.get("release") == release and item.get("canUninstall")), None)
+        if selected is None:
+            raise ValueError("没有找到可由本页卸载的 LibreOffice {} DEB 软件包。请刷新版本列表；手动安装版和系统仓库版不能在本页卸载。".format(release))
+        package_ids = list(selected.get("_packageIds") or [])
+        if not package_ids or any(not isinstance(item, str) or not _DPKG_PACKAGE_ID_RE.fullmatch(item) for item in package_ids):
+            raise ValueError("无法安全确认该版本的软件包清单，已停止卸载。请联系维护人员。")
+        with self._lock:
+            if not self._busy:
+                self._uninstall_return_ready = bool(self._phase == "ready" and self._staging_dir is not None and self._packages)
+                self._busy = True
+                self._phase = "uninstalling"
+                self._message = "正在卸载 LibreOffice {} 的 {} 个版本专属软件包；共享依赖不会自动清理。".format(
+                    selected.get("version") or release, len(package_ids),
+                )
+                self._log_path = self._create_log("libreoffice-uninstall")
+                worker = threading.Thread(
+                    target=self._uninstall_worker,
+                    args=(release, str(selected.get("version") or release), package_ids),
+                    name="libreoffice-deb-uninstall",
+                    daemon=True,
+                )
+                self._thread = worker
+                worker.start()
+        return self.snapshot()
+
+    def start_kylin_maintenance(self, action: str) -> dict[str, object]:
+        """Check or change Kylin V11 maintenance mode using fixed mm-cli args."""
+        action = str(action or "").strip()
+        if action not in {"status", "enable", "exit"}:
+            raise ValueError("维护模式操作无效。")
+        if not _is_linux() or not _is_kylin_v11():
+            raise ValueError("维护模式管理仅适用于麒麟 V11。")
+        if not _is_executable(Path(shutil.which("mm-cli") or MM_CLI_EXECUTABLE)):
+            raise ValueError("当前麒麟 V11 未找到 mm-cli，无法管理维护模式。")
+        current = self._maintenance_snapshot()
+        if action != "status" and current.get("pendingRestart"):
+            raise ValueError("系统模式切换命令已提交。请先按提示重启，再检查模式或执行下一步。")
+        if action == "enable" and current.get("state") == "maintain":
+            return self.snapshot()
+        if action == "exit" and current.get("state") == "normal":
+            raise ValueError("当前已经是正常模式，无需退出维护模式。")
+        with self._lock:
+            if not self._busy:
+                self._busy = True
+                self._phase = "checking_maintenance" if action == "status" else "changing_maintenance"
+                self._message = "正在检查麒麟 V11 系统模式…" if action == "status" else "正在提交麒麟 V11 模式切换命令…"
+                self._log_path = self._create_log("kylin-maintenance")
+                worker = threading.Thread(
+                    target=self._maintenance_worker,
+                    args=(action,),
+                    name="kylin-maintenance-mode",
+                    daemon=True,
+                )
+                self._thread = worker
+                worker.start()
+        return self.snapshot()
+
+    def _uninstall_worker(self, release: str, version: str, package_ids: list[str]) -> None:
+        try:
+            current, _active = self._installed_inventory(force=True)
+            current_item = next((item for item in current if item.get("release") == release), None)
+            current_ids = set(current_item.get("_packageIds") or []) if current_item else set()
+            if not set(package_ids).issubset(current_ids):
+                raise _PreparationError("所选 LibreOffice 软件包清单已发生变化。请刷新版本列表并重新确认卸载。")
+            apt_get = _apt_get_path()
+            expected_names = {item.split(":", 1)[0] for item in package_ids}
+            if apt_get is not None:
+                simulation_env = _system_command_env()
+                simulation_env["LC_ALL"] = "C"
+                try:
+                    simulation = subprocess.run(
+                        [str(apt_get), "--simulate", "remove", "--no-install-recommends", *package_ids],
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                        timeout=120, check=False, env=simulation_env,
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    raise _PreparationError("无法检查 LibreOffice {} 的卸载方案，已停止卸载。请查看技术日志。".format(version), repr(exc))
+                simulation_output = simulation.stdout or ""
+                self._log("Uninstall simulation output:\n{}".format(simulation_output[-12000:]))
+                if simulation.returncode != 0:
+                    raise _PreparationError("系统无法安全计算 LibreOffice {} 的卸载方案。请查看技术日志并检查包管理器状态。".format(version))
+                planned_names = set()
+                for line in simulation_output.splitlines():
+                    match = re.match(r"^(?:Remv|Purg)\s+(\S+)", line.strip())
+                    if match:
+                        planned_names.add(match.group(1).split(":", 1)[0])
+                if "libreoffice" + release not in planned_names or planned_names != expected_names:
+                    extra = sorted(planned_names - expected_names)
+                    missing = sorted(expected_names - planned_names)
+                    raise _PreparationError(
+                        "系统包管理器计划与所选 LibreOffice 软件包清单不一致，已取消卸载。请查看技术日志并联系管理员。",
+                        "planned={!r} extra={!r} missing={!r}".format(sorted(planned_names), extra, missing),
+                    )
+                command, authorized = _build_authorized_command([
+                    str(apt_get), "remove", "--yes", "--no-install-recommends", *package_ids,
+                ])
+            else:
+                # dpkg never resolves dependencies or removes unrelated packages;
+                # reverse ordering removes application packages before libraries.
+                command, authorized = _build_authorized_command([
+                    str(DPKG_EXECUTABLE), "--remove", *sorted(package_ids, reverse=True),
+                ])
+            self._log("Uninstall target version={!r}, packages={!r}".format(version, package_ids))
+            self._log("Executing argv: {}".format(json.dumps(command, ensure_ascii=False)))
+            try:
+                completed = subprocess.run(
+                    command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, timeout=900, check=False, env=_system_command_env(),
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                self._log("Uninstall command failed to run: {!r}".format(exc))
+                raise _PreparationError("无法启动系统卸载程序。请查看技术日志，或使用系统软件管理器卸载指定版本。", repr(exc))
+            self._log("Uninstall output:\n{}".format((completed.stdout or "")[-12000:]))
+            self._log("Uninstall process exited with code {}".format(completed.returncode))
+            if authorized and completed.returncode == 126:
+                with self._lock:
+                    self._phase = "ready" if self._uninstall_return_ready else "cancelled"
+                    self._message = "你取消了管理员授权，LibreOffice 未卸载。"
+                return
+            if completed.returncode != 0:
+                raise _PreparationError(
+                    "LibreOffice {} 卸载失败。系统可能有程序依赖这些软件包，或当前处于不可写模式；请查看技术日志。".format(version),
+                    "dpkg --remove exit={}".format(completed.returncode),
+                )
+            self._invalidate_inventory()
+            with self._lock:
+                self._installed = ""
+                self._phase = "ready" if self._uninstall_return_ready else "success"
+                self._message = "LibreOffice {} 已卸载。其余版本和共享依赖保持不变。{}".format(
+                    version,
+                    " 已检查的待安装包仍可继续安装。" if self._uninstall_return_ready else "",
+                )
+        except _PreparationError as exc:
+            self._log("Uninstall did not succeed: {}".format(exc.detail or str(exc)))
+            with self._lock:
+                self._phase = "ready" if self._uninstall_return_ready else "failed"
+                self._message = exc.message
+        except Exception:
+            self._log("Uninstall exception:\n{}".format(traceback.format_exc()))
+            with self._lock:
+                self._phase = "ready" if self._uninstall_return_ready else "failed"
+                self._message = "LibreOffice 卸载过程出现错误。请查看技术日志。"
+        finally:
+            with self._lock:
+                self._uninstall_return_ready = False
+                self._busy = False
+
+    def _maintenance_worker(self, action: str) -> None:
+        success = False
+        try:
+            executable = shutil.which("mm-cli") or str(MM_CLI_EXECUTABLE)
+            if action == "status":
+                mode, detail = _read_kylin_maintenance_state(authorized=True)
+                self._log("Maintenance status: {} {!r}".format(mode, detail))
+                if mode not in {"maintain", "normal"}:
+                    raise _PreparationError("无法确认麒麟 V11 当前模式：{}。请查看技术日志，或在终端运行 `sudo mm-cli -s`。".format(detail))
+                with self._lock:
+                    self._maintenance_cache = (mode, detail)
+                    self._maintenance_cache_at = time.monotonic()
+                    self._maintenance_cache_authorized = True
+                    self._phase = "success"
+                    self._message = "麒麟 V11 当前为{}。".format(_maintenance_state_label(mode))
+                success = True
+                return
+
+            option = "-o" if action == "enable" else "-c"
+            command, authorized = _build_authorized_command([executable, option])
+            self._log("Maintenance action={} argv={}".format(action, json.dumps(command, ensure_ascii=False)))
+            try:
+                completed = subprocess.run(
+                    command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, timeout=120, check=False, env=_system_command_env(),
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                self._log("Maintenance command failed to run: {!r}".format(exc))
+                raise _PreparationError("无法执行麒麟维护模式命令。请查看技术日志，或在终端按说明手动操作。", repr(exc))
+            self._log("Maintenance output:\n{}".format((completed.stdout or "")[-12000:]))
+            self._log("Maintenance command exited with code {}".format(completed.returncode))
+            if authorized and completed.returncode == 126:
+                with self._lock:
+                    self._phase = "cancelled"
+                    self._message = "你取消了管理员授权，系统模式未更改。"
+                return
+            if completed.returncode != 0:
+                raise _PreparationError("麒麟 V11 模式切换失败，系统返回错误码 {}。请查看技术日志。".format(completed.returncode))
+            with self._lock:
+                self._maintenance_pending_action = action
+                self._maintenance_cache = ("unknown", "模式设置已提交，重启后请重新检查。")
+                self._maintenance_cache_at = time.monotonic()
+                self._maintenance_cache_authorized = False
+                self._phase = "success"
+                self._message = (
+                    "已提交切换到维护模式。请保存工作并重启电脑，重启后再安装 LibreOffice。"
+                    if action == "enable"
+                    else "已提交退出维护模式并保存更改。请重启电脑使正常模式生效；不要使用 `mm-cli -c -n reboot`。"
+                )
+            success = True
+        except _PreparationError as exc:
+            self._log("Maintenance action did not succeed: {}".format(exc.detail or str(exc)))
+            with self._lock:
+                if self._phase != "cancelled":
+                    self._phase = "failed"
+                    self._message = exc.message
+        except Exception:
+            self._log("Maintenance exception:\n{}".format(traceback.format_exc()))
+            with self._lock:
+                self._phase = "failed"
+                self._message = "麒麟维护模式操作出现错误。请查看技术日志。"
+        finally:
+            with self._lock:
+                self._busy = False
+            if success:
+                self._invalidate_inventory()
 
     def _prepare_worker(self, source_text: str, old_staging) -> None:
         staging = None
@@ -884,8 +1383,9 @@ class LibreOfficeInstaller:
                 self._phase = "ready"
                 self._busy = False
                 self._message = (
-                    "已检查 {} 个 LibreOffice Calc 安装包，版本 {}，架构 {}。请仅安装来自可信来源的文件。".format(
-                        len(packages), package_version, host_architecture
+                    "已检查 {} 个 LibreOffice Calc 安装包，版本 {}，架构 {}，目标环境 Linux 主系统。请仅安装来自可信来源的文件。{}".format(
+                        len(packages), package_version, host_architecture,
+                        "麒麟 V11 请确认已切换到维护模式并重启后再安装。" if _is_kylin_v11() else "",
                     )
                 )
                 ready = True
@@ -918,13 +1418,8 @@ class LibreOfficeInstaller:
             for package in packages:
                 if not _verify_staged_package(package):
                     raise _PreparationError("暂存的 LibreOffice 安装包在安装前发生变化。请重新选择来源并重新检查。", str(package.path))
-            if _is_root():
-                command = [str(DPKG_EXECUTABLE), "--install"] + [str(package.path.resolve()) for package in packages]
-                authorized = False
-            else:
-                command = [str(PKEXEC_EXECUTABLE), "--disable-internal-agent", str(DPKG_EXECUTABLE), "--install"]
-                command.extend(str(package.path.resolve()) for package in packages)
-                authorized = True
+            command, authorized = _build_install_command(packages)
+            self._log("Install target: host package manager ({})".format("apt-get" if _apt_get_path() is not None else "dpkg"))
             self._log("Executing argv: {}".format(json.dumps(command, ensure_ascii=False)))
             try:
                 with open(self._log_path, "a", encoding="utf-8") as log_file:
@@ -947,11 +1442,15 @@ class LibreOfficeInstaller:
                     self._message = "你取消了 LibreOffice 管理员授权，安装未开始。需要安装时请重新选择安装包并授权。"
                 return
             if authorized and return_code == 127:
-                raise _PreparationError("无法启动管理员授权或 dpkg。请使用系统软件管理器安装 LibreOffice，并查看技术日志。", "pkexec exited 127")
+                raise _PreparationError("无法启动管理员授权或系统包管理器。请查看技术日志，或使用系统软件管理器安装 LibreOffice。", "pkexec exited 127")
             if return_code != 0:
+                maintenance_hint = (
+                    "麒麟 V11 请先在终端运行 `sudo mm-cli -s` 查看模式，再运行 `sudo mm-cli -o` 切换到维护模式并按提示重启，然后重新安装。"
+                    if _is_kylin_v11() else ""
+                )
                 raise _PreparationError(
-                    "LibreOffice 软件包安装失败，系统返回错误码 {}。请查看技术日志，或在系统软件管理器中处理依赖后重试。".format(return_code),
-                    "dpkg/pkexec exit={}".format(return_code),
+                    "LibreOffice 软件包安装失败，系统返回错误码 {}。请查看技术日志，检查系统依赖后重试。{}".format(return_code, maintenance_hint),
+                    "package manager exit={}".format(return_code),
                 )
 
             expected_version = _numeric_version(self._package_version)
@@ -968,6 +1467,7 @@ class LibreOfficeInstaller:
                 self._phase = "success"
                 self._message = "LibreOffice Calc {} 已安装并通过版本检查。".format(actual_version)
                 success = True
+            self._invalidate_inventory()
         except _PreparationError as exc:
             self._log("Installation did not succeed: {}".format(exc.detail or str(exc)))
             with self._lock:
@@ -987,11 +1487,12 @@ class LibreOfficeInstaller:
                 if self._phase in ("success", "failed", "cancelled"):
                     self._busy = False
 
-    def _create_log(self) -> str:
+    def _create_log(self, prefix: str = "libreoffice-install") -> str:
         logs_dir = self.data_dir / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        path = logs_dir / "libreoffice-install_{}.log".format(timestamp)
+        safe_prefix = prefix if re.fullmatch(r"[a-z0-9-]{1,48}", prefix or "") else "libreoffice-install"
+        path = logs_dir / "{}_{}.log".format(safe_prefix, timestamp)
         with open(path, "x", encoding="utf-8") as log_file:
             try:
                 os.chmod(str(path), 0o600)

@@ -1,0 +1,11 @@
+# Linux-7 的 amd64 / arm64 通用构建环境；由 Docker Buildx 的 --platform 选择架构。
+# ARM64 可在 x86-64 WSL2 上通过 Docker Desktop 的 QEMU 模拟构建。
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       binutils ca-certificates curl dpkg tar xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work

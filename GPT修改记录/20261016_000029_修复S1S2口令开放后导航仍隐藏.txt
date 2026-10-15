@@ -1,0 +1,9 @@
+时间：2026-10-16 00:00:29（Asia/Shanghai）
+执行者：Codex
+目的：修复用户反馈 Windows S1/S2 关于隐藏入口输入口令后仍不显示 S3/S4。
+原因：data-enabled-systems 隐藏规则与开放显示规则均为 !important，但前者选择器优先级更高，JS 已解除 hidden 仍被 CSS 隐藏。
+修改：core/frontend/web/index.html 的六个交付隐藏选择器增加 :not(.distribution-ui-unlocked)，未开放时行为不变。同步应用于本机 shell-flask/dist/Windows-Flask_V26.1.5.1 与 Windows-Flask_V26.1.5.1_S1-S2 的 core/frontend/web/index.html；未修改交付 profile、配置工作簿或后端。
+检查：相关 git diff --check 通过；未运行测试、实际浏览器点击或重新构建 EXE。Linux 共用源码已修复，既有 Linux DEB/TAR.GZ 未改动。
+版本：产品仍 V26.1.5.1，业务/配置组件不变；仅开发日志留痕。
+Git：保留原有 WIP，未 commit/push；dist 产物不入库。
+删除：无；回滚仅撤回本轮六个选择器的条件，保留其他修改。

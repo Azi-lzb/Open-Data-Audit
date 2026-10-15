@@ -41,6 +41,11 @@ fi
 
 if [ -n "${BASE_AUDIT_INSTALL_ROOT:-}" ]; then
     RELEASE=$(CDPATH= cd -- "$BASE_AUDIT_INSTALL_ROOT" && pwd)
+    if [ -f "$RELEASE/distribution-profile.txt" ] && grep -qx 's1s2' "$RELEASE/distribution-profile.txt"; then
+        export BASE_AUDIT_DISTRIBUTION_PROFILE=s1s2
+    else
+        unset BASE_AUDIT_DISTRIBUTION_PROFILE
+    fi
     DATA_HOME=${XDG_DATA_HOME:-"$HOME/.local/share"}/base-audit-v3
     PROJECT_ROOT=$DATA_HOME/core
     APP_DIR=$DATA_HOME/shell-flask
@@ -75,6 +80,8 @@ if [ -n "${BASE_AUDIT_INSTALL_ROOT:-}" ]; then
     FROZEN=1
     PID_FILE=$PROJECT_ROOT/data/app.pid
 else
+    # Development source always shows the full UI, even with an inherited profile.
+    unset BASE_AUDIT_DISTRIBUTION_PROFILE
     APP_DIR=$SCRIPT_DIR
     if [ -d "$SCRIPT_DIR/core/src/base_audit" ]; then
         # Linux-4 的源码验收包把启动器放在项目根目录，而开发布局放在 shell-flask/。

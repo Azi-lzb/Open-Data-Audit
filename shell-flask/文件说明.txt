@@ -3,29 +3,46 @@ shell-flask 目录文件说明
 
 本目录是「审核工具」（项目代号 V3）的 Flask 外壳，Windows 和 Linux/UOS 共用。
 名称、图标与整包版本以仓库根目录 版本管理/VERSION_MANIFEST.json 为准。
-版本格式为 V年份.大版本.中版本.小版本，当前 V26.1.0.0。
+版本格式为 V年份.大版本.中版本.小版本，当前以版本管理/VERSION_MANIFEST.json 为准。
 业务核心在 ../core/，这里只放启动和打包入口。
 
 命名规则：平台前缀 + 序号，Windows 为 1 启动 → 2 双版本打包；
-Linux 为 1 启动 → 2 打包 → 3 冒烟 → 4 源码包。
+Linux 为 1 启动 → 2 打包 → 3 冒烟 → 4 源码包；5/6 用于 amd64/arm64 离线交付。
 完整开发文档见 README.md，本文件是速查卡。
 
 【Linux/UOS 侧】
 Linux-1-启动审核工具.sh        启动审核服务（前台运行，Ctrl+C 停止；--background 后台启动）
 Linux-2-打包DEB与TARGZ.sh      统一构建引擎：一次构建 DEB + tar.gz 两种产物。
                                DEB = 安装包（装到 /opt、加开始菜单）；tar.gz = 免安装便携包。
+distribution-profiles.json   S1-S4 菜单、操作指引、问答、设置分类与交付方案的统一清单；
+distribution_profile.py      Linux-2/Linux-7/Windows-2 共用的 JSON 读取器，将方案写入发行版前端。
+                               Linux-2 用 --profile full 或 --profile s1s2；旧 S1/S2 脚本入口仍兼容。
                                只想出一种时加参数：--skip-deb 或 --skip-tgz；
-                               构建前自动清理旧批次，dist/ 只留最新（FLASK_KEEP_BUILDS=N 可留 N 批）
+                               构建前自动清理同一方案的旧批次，dist/ 默认只留最新批。
 Linux-3-测试发行包启动.sh       打包后冒烟：校验 SHA-256 → 解包 → 启动 → 检查网页 → 关服务，
                                自动测 dist/ 下最新的 .deb 和 .tar.gz，全部通过才退出 0；
                                也可指定产物路径测试。分发前建议必跑
 Linux-4-打包UOS源码验收包.sh    生成可外发的源码验收包（ZIP/TAR，源码+脚本+空表头配置，
                                不含冻结程序和业务数据；目标机需 python3 + LibreOffice Calc）
+Linux-5-通用离线安装.sh         交付包中的 install.sh 源码；用主系统 APT 离线安装
+                               审核工具与 LibreOffice 25.8.7，V11 另需维护模式。
+Linux-6-组装通用离线交付.sh     组装审核工具 DEB、官方 LibreOffice DEB、校验清单和安装脚本；
+                               支持同架构 amd64/arm64，可标记仅供内部测试的真实配置包。
+Linux-7-Docker双架构打包.bat/.sh  Windows 双击 BAT 自动启动 Docker Desktop/Ubuntu WSL，
+                               在 Docker 中调用 Linux-2/6，构建 amd64、arm64 完整版三件套。
+Linux-7-Docker双架构打包_S1-S2专用.bat/.sh  兼容快捷入口，内部调用 Linux-7 的 --profile s1s2。
+                               新用法优先使用通用入口并传 --profile s1s2。
+Dockerfile.arm64-builder         x86-64 机器上以 Docker/QEMU 构建 arm64 审核工具的环境。
 
 【Windows 侧】（在 Windows 机器上运行）
 Windows-1-启动审核工具.bat     源码模式启动；加 --packed 参数用打包版 EXE 启动
 Windows-2-打包双版本.bat       一次构建 Win10/11 64 位和 Win7 兼容 32 位两个 EXE，
-                               放进同一发布文件夹
+                               放进同一发布文件夹；默认 full，加 --profile s1s2 隐藏 S3/S4 相关界面。
+Windows-2-打包双版本_S1-S2专用.bat 双击使用共用的 s1s2 方案构建两个 Windows EXE，
+                               S1/S2 导航与 Linux 专用版一致；系统设置按平台能力显示。
+                               两个版本共用 JSON 方案；Windows-1/Linux-1 源码开发和 pywebview 显示完整界面。
+                               默认入口输出 Windows-Flask_V版本，专用入口输出 Windows-Flask_V版本_S1-S2。
+                               版本从清单读取；新包完整生成后才替换，同名旧包移入 dist 的归档目录。
 
 【内部文件 —— 请勿直接运行或删除】
 app.py / run.py                Flask 应用与启动器（源码/冻结双模式识别）

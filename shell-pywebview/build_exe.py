@@ -1,9 +1,9 @@
 """pywebview 外壳打包入口（unified 统一核心）。
 
-用法：python build_exe.py [--win7]
-由 打包pywebview.bat / 打包pywebview-Win7.bat 调用；bat 负责选择解释器。
+用法：python build_exe.py [--win7] [--profile full|s1s2]
+由 pywebview 打包 bat 调用；bat 负责选择解释器。
 
-产物布局（由 PYWEBVIEW_DIST_DIR 指定，默认 dist/）：
+产物布局（可由 PYWEBVIEW_DIST_DIR 指定；默认完整版为 dist/，S1/S2 版为 dist/S1-S2/）：
   产品名[_Win7兼容]_V产品版本.exe ← PyInstaller onefile，内嵌前端页面
   core/                         ← 统一业务核心（src + frontend + 空 data）
   config/                       ← 配置副本（优先 config-real，回退公开空表头）
@@ -16,6 +16,7 @@ import argparse
 import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -29,7 +30,7 @@ if not (_REPO_CORE / "src" / "base_audit").is_dir():
         f"[错误] 未找到仓库根目录统一核心：{_REPO_CORE}\\src\\base_audit\n"
         "       打包脚本必须与 core\\ 处于同一仓库根目录下。")
 CORE = _REPO_CORE
-DIST = Path(os.environ.get("PYWEBVIEW_DIST_DIR") or ROOT / "dist")
+DEFAULT_DIST_ROOT = ROOT / "dist"
 # 打包优先携带本机私有正式配置；无 config-real（如公开快照构建）时回退公开空表头。
 CONFIG_TEMPLATE = next(
     (d for d in (ROOT.parent / "config-real", ROOT.parent / "config") if d.is_dir()),
@@ -38,7 +39,31 @@ CONFIG_TEMPLATE = next(
 if str(CORE / "src") not in sys.path:
     sys.path.insert(0, str(CORE / "src"))
 
-from base_audit.app_identity import app_title, executable_stem, faq_path, icon_path, load_product_info, manifest_path, update_log_path
+# Flask and pywebview ship the same UI delivery profiles. Reuse the profile
+# manifest and its validation/filtering implementation rather than maintaining
+# a second S1/S2 definition in this shell.
+PROFILE_TOOLS = ROOT.parent / "shell-flask"
+if not (PROFILE_TOOLS / "distribution_profile.py").is_file():
+    raise SystemExit(f"[错误] 未找到共享交付方案工具：{PROFILE_TOOLS / 'distribution_profile.py'}")
+if str(PROFILE_TOOLS) not in sys.path:
+    sys.path.insert(0, str(PROFILE_TOOLS))
+
+from base_audit.app_identity import (
+    app_title,
+    executable_stem,
+    faq_path,
+    icon_path,
+    load_product_info,
+    manifest_path,
+    update_log_path,
+)
+from distribution_profile import (
+    DEFAULT_CONFIG,
+    embed_profile,
+    filter_release_config,
+    get_profile,
+    load_config,
+)
 
 COMMON_HIDDEN = [
     "base_audit.excel_com",
@@ -65,11 +90,22 @@ COMMON_EXCLUDES = [
 ]
 
 
-def build(win7: bool) -> int:
+def build(win7: bool, profile_id: str = "full") -> int:
     if not (CORE / "src" / "base_audit").is_dir():
         raise SystemExit(f"[错误] 未找到统一核心：{CORE}")
     if not (CORE / "frontend" / "web" / "index.html").is_file():
         raise SystemExit("[错误] 未找到前端 index.html")
+
+    try:
+        profile_config = load_config(DEFAULT_CONFIG)
+        profile = get_profile(profile_config, profile_id)
+    except ValueError as exc:
+        raise SystemExit(f"[错误] {exc}") from exc
+    print(f"[profile] {profile_id}: {', '.join(profile['enabledSystems'])}")
+    profile_suffix = profile["outputSuffix"].strip("_")
+    dist_dir = Path(os.environ["PYWEBVIEW_DIST_DIR"]) if os.environ.get("PYWEBVIEW_DIST_DIR") else (
+        DEFAULT_DIST_ROOT / profile_suffix if profile_suffix else DEFAULT_DIST_ROOT
+    )
 
     product = load_product_info()
     name = executable_stem("pywebview", win7=win7)
@@ -85,43 +121,59 @@ def build(win7: bool) -> int:
     faq = faq_path()
     if faq is None:
         raise SystemExit("[错误] 未找到常见问题：docs/常见问题.json（仓库根）。")
-    DIST.mkdir(parents=True, exist_ok=True)
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    build_root = ROOT / "build"
+    build_root.mkdir(parents=True, exist_ok=True)
 
-    args = [
-        "--onefile", "--noconsole", "--clean",
-        "--name", name,
-        "--paths", str(CORE / "src"),
-        # 冻结态 launch_web 从 _MEIPASS/web 读前端页面。
-        "--add-data", f"{CORE / 'frontend' / 'web'}{os_pathSep()}web",
-        "--add-data", f"{manifest}{os_pathSep()}版本管理",
-        "--add-data", f"{assets}{os_pathSep()}assets",
-        # 用户版更新日志随包分发（运行期 update_log_path 从 _MEIPASS/日志 定位）。
-        "--add-data", f"{update_log}{os_pathSep()}日志",
-        # 常见问题随包分发（运行期 faq_path 从 _MEIPASS/docs 定位）。
-        "--add-data", f"{faq}{os_pathSep()}docs",
-        "--icon", str(icon),
-        "--distpath", str(DIST),
-        "--workpath", str(ROOT / "build"),
-        "--specpath", str(ROOT / "build"),
-    ]
-    if sys.platform == "win32":
-        version_file = write_version_file(name, product)
-        args += ["--version-file", str(version_file)]
-    # Tk 是高级设置中可选的文件选择器，不能因为默认使用系统对话框而被漏打包。
-    for mod in COMMON_HIDDEN + ["webview", "webview.platforms.edgechromium", "tkinter", "tkinter.filedialog"]:
-        args += ["--hidden-import", mod]
-    for mod in COMMON_EXCLUDES:
-        args += ["--exclude-module", mod]
-    args.append(str(ROOT / "run.py"))
+    try:
+        # Work on a release copy so profile metadata is embedded into the EXE
+        # and the external core without changing the shared source frontend.
+        with tempfile.TemporaryDirectory(prefix="pywebview-profile-", dir=build_root) as temp_dir:
+            profile_web = Path(temp_dir) / "web"
+            shutil.copytree(CORE / "frontend" / "web", profile_web)
+            embed_profile(profile_web / "index.html", profile_config, profile_id)
 
-    import PyInstaller.__main__
+            args = [
+                "--onefile", "--noconsole", "--clean",
+                "--name", name,
+                "--paths", str(CORE / "src"),
+                # Frozen launch_web reads the profile-specific page from _MEIPASS/web.
+                "--add-data", f"{profile_web}{os_pathSep()}web",
+                "--add-data", f"{manifest}{os_pathSep()}版本管理",
+                "--add-data", f"{assets}{os_pathSep()}assets",
+                # 用户版更新日志随包分发（运行期 update_log_path 从 _MEIPASS/日志 定位）。
+                "--add-data", f"{update_log}{os_pathSep()}日志",
+                # 常见问题随包分发（运行期 faq_path 从 _MEIPASS/docs 定位）。
+                "--add-data", f"{faq}{os_pathSep()}docs",
+                "--icon", str(icon),
+                "--distpath", str(dist_dir),
+                "--workpath", str(build_root),
+                "--specpath", str(build_root),
+            ]
+            if sys.platform == "win32":
+                version_file = write_version_file(name, product)
+                args += ["--version-file", str(version_file)]
+            # Tk is an optional file picker in advanced settings; keep it bundled.
+            for mod in COMMON_HIDDEN + ["webview", "webview.platforms.edgechromium", "tkinter", "tkinter.filedialog"]:
+                args += ["--hidden-import", mod]
+            for mod in COMMON_EXCLUDES:
+                args += ["--exclude-module", mod]
+            args.append(str(ROOT / "run.py"))
 
-    PyInstaller.__main__.run(args)
+            import PyInstaller.__main__
 
-    assemble_core()
-    assemble_config_template()
-    print(f"\n打包完成：{DIST / (name + '.exe')}")
-    print("发布时将 dist/ 整个目录发给用户（exe 必须与 core/ 同级）。")
+            PyInstaller.__main__.run(args)
+
+            assemble_core(dist_dir, profile_web)
+            assemble_config_template(dist_dir)
+            filter_release_config(dist_dir / "config", profile_config, profile_id)
+            (dist_dir / "distribution-profile.txt").write_text(profile_id + "\n", encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        print(f"[错误] 无法生成 {profile_id} 交付包：{exc}")
+        return 1
+
+    print(f"\n打包完成：{dist_dir / (name + '.exe')}")
+    print(f"发布时将 {dist_dir} 整个目录发给用户（exe 必须与 core/ 同级）。")
     return 0
 
 
@@ -129,9 +181,9 @@ def os_pathSep() -> str:
     return ";" if sys.platform == "win32" else ":"
 
 
-def assemble_core() -> None:
+def assemble_core(dist_dir: Path, profile_web: Path | None = None) -> None:
     """更新发行核心代码，同时保留已有的外部用户数据。"""
-    target = DIST / "core"
+    target = dist_dir / "core"
     target.mkdir(parents=True, exist_ok=True)
     for item in ("src", "frontend"):
         src = CORE / item
@@ -140,6 +192,11 @@ def assemble_core() -> None:
             if existing.exists():
                 shutil.rmtree(existing)
             shutil.copytree(src, target / item, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    if profile_web is not None:
+        target_web = target / "frontend" / "web"
+        if target_web.exists():
+            shutil.rmtree(target_web)
+        shutil.copytree(profile_web, target_web)
     # New release folders receive an empty data directory; existing data is never copied or removed.
     (target / "data").mkdir(exist_ok=True)
     history = CORE / "历史审核配置.xlsx"
@@ -151,12 +208,12 @@ def assemble_core() -> None:
     # tests 属于开发基线，不进发行包。
 
 
-def assemble_config_template() -> None:
+def assemble_config_template(dist_dir: Path) -> None:
     """把 config 的节点配置模板复制到发行包同级 config/。"""
     if not CONFIG_TEMPLATE.is_dir():
         print(f"[提示] 未找到节点配置目录，跳过：{CONFIG_TEMPLATE}")
         return
-    target = DIST / "config"
+    target = dist_dir / "config"
     if target.exists():
         shutil.rmtree(target)
     shutil.copytree(
@@ -215,4 +272,6 @@ def write_version_file(name: str, product: dict) -> Path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--win7", action="store_true", help="Win7 兼容版命名")
-    raise SystemExit(build(parser.parse_args().win7))
+    parser.add_argument("--profile", default="full", help="distribution-profiles.json profile (default: full)")
+    options = parser.parse_args()
+    raise SystemExit(build(options.win7, options.profile))

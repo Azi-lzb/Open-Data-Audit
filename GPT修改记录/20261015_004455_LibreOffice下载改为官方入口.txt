@@ -1,0 +1,32 @@
+【时间、执行者与 WIP】
+2026-10-15（Asia/Shanghai）；执行者 Codex。
+修改前/后 commit 均为 f695136c181f9cf99720f51559b84bcfc75ff58d（desktop），本轮未提交或推送。
+保留已有 V26.1.2.1 打包修复、修改记录、external/、地金工具/及全部内部发行包；按当前文件最小增量修改，不覆盖已有 WIP。
+
+【目的】
+用户要求“获取 LibreOffice”不向用户展示个人 GitHub 仓库，改为官方渠道，并建议使用 25.8.7，由用户自行选择下载。
+
+【修改/新增文件】
+- core/frontend/web/index.html：终端及辅助安装两处下载链接改为 https://www.libreoffice.org/download/；补充 https://downloadarchive.documentfoundation.org/libreoffice/old/，提示开发人员推荐 25.8.7，自选系统/CPU 架构/Linux DEB 包；去掉“项目提供”的来源文案。
+- docs/LibreOffice安装说明.md、README.md：同步官方入口、历史版本目录和 25.8.7 推荐说明，移除项目依赖 Release 地址；历史 ABI 信息保留为对应 x86-64 包的参考，不作全架构兼容承诺。
+- core/tests/test_libreoffice_install_api.py：新增下载来源守护，核对两种界面均用官方入口和 25.8.7 提示，文档无旧 Release 下载链接、界面无个人仓库地址。沿用现有公共测试模块，无新增分组。
+- 版本管理/VERSION_MANIFEST.json、rules/11_版本管理与组件编号.md、shell-flask/README.md：当前整包版本和当前文件名示例同步至 V26.1.2.2。
+- 版本管理/产品发布/CHANGELOG.md、日志/更新日志.txt、日志/开发日志.txt：新增本轮变更，不覆盖已有 V26.1.2.1 打包记录。
+- 本记录。测试日志置于忽略目录 core/data/lo-official-20261015_004455/。
+
+【组件版本、配置与业务影响】
+整包 V26.1.2.1 → V26.1.2.2，PATCH：帮助入口隐私修复与版本推荐文案。
+S1/S2/S3 业务功能与配置组件版本未变，无工作簿、VBA、安装执行或管理员授权逻辑变化。
+25.8.7 仅为开发人员推荐，不是官方当前维护版本或所有目标机兼容承诺；官网未列出该版本时，用户从官方历史目录选择。
+
+【查证与验证】
+实际访问官方 https://www.libreoffice.org/download/，可选择版本、操作系统、CPU 架构和 Linux 包格式；官方历史目录可访问并列出 25.8.7.1/.2/.3。
+直接访问某个版本子目录曾出现 web 工具不可访问，因此产品链接采用已确认可访问的官方历史目录，不构造或固定未经确认的二进制下载 URL。
+定向测试：test_libreoffice_install_api.py、test_app_identity.py、test_version_manifest.py：50 passed / 0 skipped / 0 failed / 0 errors，2.25 秒。
+初次运行因自定义 basetemp 的父目录尚不存在出现 15 项 fixture 错误（35 passed）；创建证据目录后原命令重跑全部通过，未修改产品代码规避测试。
+Node 编译完整页面内嵌 JS 并复查现有会话解锁逻辑，通过；git diff --check 通过。
+本轮仅更换帮助链接和文案，不修改审核/API/安装执行逻辑，未运行系统业务回归或安装 LibreOffice。未执行浏览器端到端点击、目标 Linux 真机验收或重打包。
+
+【删除与回滚】
+未删除文件、旧安装包或真实配置。可逐块撤销本记录列出的下载入口、文档及 26.1.2.2 版本增量，保留此前 V26.1.2.1 WIP。
+此前 EXE/DEB/tar.gz 仍为旧发行内容，不能把源码修复当作已经更新安装包；若使用安装包交付，需重新构建。

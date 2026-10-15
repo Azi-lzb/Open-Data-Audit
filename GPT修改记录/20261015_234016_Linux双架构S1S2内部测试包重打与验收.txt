@@ -1,0 +1,60 @@
+时间：2026-10-15 23:40:16（Asia/Shanghai）
+执行者：Codex
+修改前/后 commit：f695136c181f9cf99720f51559b84bcfc75ff58d（未提交，HEAD 未变）
+WIP：保留全部既有未提交修改。本轮未创建子 Agent、未提交或推送。
+
+【目的】
+使用现有 S1/S2 专用入口重新生成 Linux AMD64 与 ARM64 交付包，优先携带 config-real，包含最新的关于五连击显示入口。每架构仅交付一个 DEB、两个 TAR.GZ。
+
+【执行与修复】
+执行 WSL Ubuntu 下 shell-flask/Linux-7-Docker双架构打包_S1-S2专用.sh：实际在对应架构 Ubuntu 22.04 Docker 环境冻结 CPython 3.12.14 运行时，ARM64 通过 QEMU。两架构冻结产物最低 glibc 均为 2.25，目标基线为 2.28。
+包内验收发现 Linux-2 将 pyinstaller-dist、work、spec、pyinstaller.log 同时打入 DEB，造成额外系统根目录和体积浪费。
+shell-flask/Linux-2-打包DEB与TARGZ.sh：构建临时根改为 BUILD_STAGE，安装文件单独放其 package/；PyInstaller 输出、work、spec、日志全部位于 package/ 之外，DEB 只组装 package/。
+本次已冻结程序保持原样，临时解包后剥离构建缓存，使用宿主 dpkg-deb -Zxz -z6 --build --root-owner-group 重新组装两架构 DEB，再替换离线包中的对应 DEB 并重算内部清单、重压缩离线包。归档工作不依赖目标 CPU，ARM64 的程序仍为实际 ARM64 冻结产物。便携包未改写。
+shell-flask/Linux-3-测试发行包启动.sh：默认仍等待 30 秒；新增 FLASK_SMOKE_START_TIMEOUT 正整数秒配置，ARM64 QEMU 验收用 180 秒。
+shell-flask/README.md：补充模拟环境启动等待配置说明。
+日志/开发日志.txt、本修改记录：记录本轮构建修复和实际验收，未修改用户更新日志。
+
+【交付目录】
+shell-flask/dist/Linux-amd64_V26.1.5.1_S1-S2/
+shell-flask/dist/Linux-arm64_V26.1.5.1_S1-S2/
+各目录只有 3 个文件，无外部 SHA256/TXT。两个离线包内部保留安装脚本依赖的 SHA256SUMS。
+配置身份均为 internal-config；当前配置 6 册、默认配置 6 册。内部测试使用，不上传公开仓库。
+
+【最终文件：字节数及 SHA-256】
+AMD64：
+Audit-Tools-S1-S2_V26.1.5.1_2026.10.15.150325_ubuntu-22.04_py3.12.14_glibc2.25_amd64.deb
+33786924 字节；0264d9ae6f317741c0f78b906177defbcd5aed1da4f5a6395a123c5f9799435e
+Audit-Tools-S1-S2_V26.1.5.1_2026.10.15.150325_ubuntu-22.04_py3.12.14_glibc2.25_amd64.tar.gz
+50232748 字节；61bc622987e3ebec0336dbafabdfbb53276c040a972e794c14a50955199d9680
+Audit-Tools-S1-S2_V26.1.5.1_Linux-amd64_LO25.8.7_internal-config_offline_20261015_150614.tar.gz
+246653367 字节；6913659f55710863774e870d74f1551c151b2828a8e5d0eac47f994d7d393661
+ARM64：
+Audit-Tools-S1-S2_V26.1.5.1_2026.10.15.151116_ubuntu-22.04_py3.12.14_glibc2.25_arm64.deb
+27544996 字节；a6b1771036263f2d2ad017838f60e1190d022b55783fd6f17e0a9cab98d78fb3
+Audit-Tools-S1-S2_V26.1.5.1_2026.10.15.151116_ubuntu-22.04_py3.12.14_glibc2.25_arm64.tar.gz
+39052563 字节；cb777354fc3527c316d016bc86ea35e3ba039c143c8da70acf556c1ee56d9adf
+Audit-Tools-S1-S2_V26.1.5.1_Linux-arm64_LO25.8.7_internal-config_offline_20261015_151713.tar.gz
+228893322 字节；267d3a6fb2c8939ad7248fa06fa30aca69ef9654eb55dc9b152d489758f7b4e1
+文件名时间沿用构建容器时钟；本记录时间采用 Asia/Shanghai。
+
+【实际验收】
+临时验收脚本位于系统 Temp，未放入交付目录或源代码：audit-s1s2-20261015-verify.py；最终结果 audit-s1s2-20261015-verify.json 含两个架构 PASS。
+1. 两个 DEB 均为 audit-tools-s1-s2，Version 1:26.1.5.1，Architecture 分别 amd64/arm64；配置及交付元数据为 internal-config/s1s2；ELF 机器码分别 62/183。DEB 文件系统顶层仅 opt/usr，无构建缓存。
+2. DEB 与便携包的全部普通文件 SHA-256、软链接目标逐项一致。12 册工作簿各自与 config-real 相对路径文件 SHA-256 一致；原工作簿只读。
+3. 包内前端嵌入 s1s2、enabledSystems=[S1,S2]，包含关于五连击与新后端接口调用，前端不包含密码字面量。
+4. 两个离线包逐文件核对内部 SHA256SUMS，均含 42 个 LO DEB，内层审核工具 DEB 与目录中最终 DEB 完全一致；在对应架构容器运行 install.sh --check 各通过。未执行 APT 安装。
+5. 真实冻结程序启动：Linux-3 在每架构分别对 DEB 与便携 TAR.GZ 解包启动，共 4 passed / 0 failed；首页 HTTP 200、正确标题、图标及 favicon、退出后端口释放通过。按用户要求未附外部 .sha256，Linux-3 该步明确跳过；完整性由前述独立哈希及内部清单核对完成。
+6. 两个架构都对冻结后端实际发 HTTP 请求：初始交付隐藏、错误密码拒绝、正确密码恢复全部开发导航、再次读取状态保持开放、重启同一容器后恢复隐藏均通过。
+7. 六个最终文件均被 Git 忽略，各架构目录仅三个文件；shell 语法和 git diff --check 通过。
+
+【验收过程中的环境限制】
+ARM64 首次运行遇到 exec format error；同一 WSL 会话内执行 docker run --privileged --userns=host --pid=host --rm tonistiigi/binfmt --install arm64，确认 uname -m=aarch64，再持续执行验收后解决。独立会话间未保留模拟注册，不能把此前格式错误当作程序已通过。
+ARM64 最初按默认 30 秒检查启动超时；冻结服务进程仍持续运算。将模拟验收等待设为 180 秒后，两个包及接口、重启检查均成功。该等待只用于 QEMU 检查，不代表原生 ARM64 机器的启动耗时。
+未执行：ARM64 原生设备、UOS/麒麟目标系统安装、浏览器真实点击视觉验收、S1/S2/S3 业务全量及 LO 实际工作簿计算。此次是构建与启动/接口验收，不将其写成业务全流程回归。
+
+【组件版本】
+产品仍为 V26.1.5.1；S1/S2/S3 功能和配置组件版本全部不变。构建布局和验收等待调整不涉及审核算法、配置结构或 VBA 语义。S4 仍为现有预览占位。
+
+【删除与回滚】
+只在临时解包根删除了 PyInstaller 构建缓存，并替换本轮新生成目录内的 DEB/离线包；原有完整版及 Windows 文件夹未修改。回滚仅针对本轮打包脚本补丁和新目录，保留此前 WIP，禁止整仓重置。

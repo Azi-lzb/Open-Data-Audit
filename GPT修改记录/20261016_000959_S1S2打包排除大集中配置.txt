@@ -1,0 +1,10 @@
+时间：2026-10-16 00:09:59（Asia/Shanghai）
+执行者：Codex
+目的：用户要求 S1/S2 交付不携带 3.0—3.3 配置，代码保持完整。
+修改文件：shell-flask/distribution-profiles.json、distribution_profile.py、build_windows_all.py、Linux-2-打包DEB与TARGZ.sh、README.md；日志/开发日志.txt 及本记录。
+实现：s1s2 的 excludedConfigPatterns 文件名模式统一配置，递归筛选发行 config 副本。Windows 两阶段都结束后筛选；Linux 复制内部或公开配置后，在生成 DEB 与 TAR.GZ 前筛选。Linux-7 与 Windows 专用入口共用这些构建路径。完整版默认无排除规则。筛选器拒绝仓库原配置路径，并核对待删文件无越界链接。
+实际产物修改：仅 shell-flask/dist/Windows-Flask_V26.1.5.1_S1-S2/config 内 13 个 3.0—3.3 工作簿副本（顶层4、默认配置4、备份5）被排除；S1/S2 配置及其默认配置保留，代码未修改。现有 Linux DEB/TAR.GZ 未更新。
+检查：Python AST 解析通过；相关 git diff --check 无错误；对源 config/config-real 与现有完整 Windows 包 config 的逐文件 SHA256 前后比对一致。未新增/运行自动测试，未重新构建 EXE 或 Linux 包。
+组件版本：产品 V26.1.5.1 不变，业务与配置版本不变。仅交付配置范围调整，无配置内容或业务算法修改。
+Git：保留既有 WIP，未提交或推送；dist 禁止入库。
+回滚：仅撤回本轮构建补丁；被排除的发行副本可从原 config-real 对应相对路径恢复；源文件未改动。

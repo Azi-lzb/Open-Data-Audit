@@ -1,0 +1,31 @@
+时间：2026-10-15 22:51:56（Asia/Shanghai）
+执行者：Codex
+修改前/后 commit：f695136c181f9cf99720f51559b84bcfc75ff58d（未提交，HEAD 未变）
+WIP：保留工作区全部既有修改，未创建子 Agent，未执行 Git 写操作。
+
+【目的】
+Windows-2 Flask 双版本打包共用 Linux 已有的交付 JSON，支持隐藏系统相关界面；Windows-1/Linux-1 源码开发和 pywebview 保留完整显示。
+
+【修改文件与逻辑】
+shell-flask/Windows-2-打包双版本.bat：将参数传给 Python 协调入口，保留 ASCII 与 CRLF。
+shell-flask/build_windows_all.py：新增 --profile，构建前校验 JSON；输出目录采用方案 outputSuffix；两个内部构建完成并检查必需文件后，才对发行副本嵌入方案并写 distribution-profile.txt。嵌入失败保留 BUILD_INCOMPLETE.txt，原始前端不修改。
+shell-flask/distribution_profile.py：说明文字改为 Flask 共用配置读取器。
+shell-flask/Windows-1-启动审核工具.bat：仅源码分支清除旧交付范围环境变量，--packed 仍展示所选包的实际范围。
+shell-flask/Linux-1-启动审核工具.sh：仅源码开发分支清除旧交付范围环境变量，冻结发行包逻辑保留。
+shell-flask/distribution-profiles.json、core/frontend/web/index.html：补齐“大集中指标查询”的更新/问答过滤关键字及旧包兼容分支。
+shell-flask/README.md、shell-flask/文件说明.txt：说明 Windows 双版本的方案参数、输出目录与开发启动边界。
+日志/开发日志.txt：新增开发记录，未追加用户更新日志。
+本修改记录。
+
+【验证与结果】
+1. python -m pytest -q core/tests/test_distribution_profile.py：首次发现“大集中指标查询”漏过滤，修复后 1 passed / 0 failed / 0 skipped / 0 errors。验证完整版及 S1/S2 界面、指引、问答和更新内容过滤。
+2. 临时目录使用构建替身运行真实 build_windows_all.main：full、s1s2、非法方案、构建返回失败四种情况通过；两个构建均复制原页面以模拟覆盖，确认最终嵌入在第二个构建完成后发生、输出后缀与标记正确、源 HTML 字节不变。未创建真实 EXE，不冒充实际打包验收。
+3. CMD 实际调用 Windows-2 --help，确认参数透传且未触发构建；两个启动 BAT 的 ASCII/CRLF 检查通过。
+4. Python 编译检查、Linux-1 的 Git sh.exe -n、git diff --check 通过。
+未执行：真实 Win7/Win10 EXE 构建、目标机器运行、业务回归。没有新增测试文件；使用已有相关定向测试和临时构建编排核对。
+
+【组件版本】
+产品仍为 V26.1.5.1；S1/S2/S3 功能和配置组件均不升级。此次仅交付范围与打包编排调整，审核算法、配置工作簿和 VBA 语义不变。S4 未新增业务实现。
+
+【删除与回滚】
+无删除，无 dist 产物替换。回滚仅撤销上述局部补丁，保留既有 WIP；pywebview 未修改。

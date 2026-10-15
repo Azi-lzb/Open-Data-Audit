@@ -1,0 +1,75 @@
+【时间与执行者】
+任务开始：2026-10-14 23:26:44（Asia/Shanghai）；交付整理：2026-10-15。
+执行者：Codex 主 Agent；Windows 与 Linux 独立构建由 gpt-6-luna（max）子 Agent 执行，主 Agent 复核 diff、产物哈希、源码保护与交付副本。
+修改前 commit：2995e7e11eab4a053a73ae91a1237238080b0185（desktop）。
+修改后 commit：同上；本轮修改未提交，未 push、merge 或上传 GitHub。
+WIP：保留原有未跟踪 external/、地金工具/；保留旧 dist 产物。真实配置和所有构建、测试产物仅在忽略目录保存。
+
+【目的与授权】
+用户要求构建 DEB 与 Windows EXE，标明架构；明确选择 config-real 正式配置，仅供内部测试，不上传 GitHub。
+amd64、x86_64、x86-64、x64 同指 64 位 x86 架构，不能用于 ARM64 或 32 位 x86 Linux。
+
+【修改/新增文件】
+1. shell-flask/Linux-2-打包DEB与TARGZ.sh：补齐更新日志 add-data 参数行末续行符，使后续 FAQ/模块参数正确参与 PyInstaller 调用。
+2. shell-flask/build_exe.py：更新日志资源目的目录由根改为 日志，与共享身份模块一致；补充已计算但漏传的 FAQ 资源。
+3. 版本管理/VERSION_MANIFEST.json：整包版本 26.1.2.0 → 26.1.2.1。
+4. rules/11_版本管理与组件编号.md、shell-flask/README.md：同步当前版本及命名示例。
+5. 日志/更新日志.txt、日志/开发日志.txt、版本管理/产品发布/CHANGELOG.md：记录本轮打包修复、版本和内部交付。
+6. 本修改记录。
+7. 忽略目录 core/data/package-20261014_232644/：保存构建、验证、保护文件哈希与交付整理脚本。
+8. 忽略目录 shell-flask/dist/交付-V26.1.2.1-20261014_232644/：交付目录、交付说明.md、交付清单.json、SHA256SUMS.txt；各平台原构建目录亦保留。
+交付 DEB 的外附 build-info.txt 对兼容性文案补充“仅符号审计，目标机器仍需验收”，并明确 19 个正式配置与内部使用限制；未改 DEB 二进制。
+
+【逻辑、配置与 VBA 影响】
+仅修复构建和资源分发；未修改 S1/S2/S3/S4 业务逻辑、配置语义、导航开关或 VBA 迁移规则。
+真实 config-real、公开 config、external、地金工具共 147 个受保护文件最终 SHA-256 均未变化。
+Windows 两套目录和 DEB 均包含 19 个 config-real 文件（含其备份）；包内配置与源文件逐一比对一致。
+Windows 程序必须连同对应目录的 core/config 等资源整体交付。
+
+【组件版本】
+整包产品：V26.1.2.0 → V26.1.2.1（PATCH：打包错误及发行资源缺失）。
+业务功能：S1/S2/S3 各 Sx-Fxx 未修改，不升级；S4 未实现。
+配置组件：所有 Sx-CFG-xx 未修改，不升级。
+已同步 MANIFEST、产品发布 CHANGELOG、用户更新日志、开发日志和版本示例。
+
+【构建方式与产物】
+Windows pywebview：Python 3.12.10 x64 / PyInstaller 6.22.3。
+Windows Flask 现代版：Python 3.12.10 x64 / PyInstaller 6.22.3。
+Windows Flask Win7 兼容版：Python 3.8.10 x86 / PyInstaller 4.10；附 x86 VC++ 运行库修复程序。
+Linux：Ubuntu 24.04 WSL + python-build-standalone CPython 3.12.14 + PyInstaller 6.22.3；构建 DEB，未要求生成新的 tar.gz。
+Docker Desktop 曾出现 WSL 创建实例超时，重启失败；确认 Ubuntu/docker-desktop 均停止后执行 wsl --shutdown，恢复 Ubuntu WSL，改用 WSL 构建。未重置 VHD、安装宿主系统软件或放宽 ABI 验收门槛。
+
+pywebview EXE：审核工具_V26.1.2.1.exe，x64，23,933,538 字节。
+SHA256：99ade4b610ea161548e8d32967fd21f22c34a5d8bac179f064b4895b12368317
+Flask EXE：审核工具_Flask_V26.1.2.1.exe，x64，27,962,238 字节。
+SHA256：32669fdf2e6337bab670627696ca832e97d10ee89f3d27fb04a0e0ccdbba63ec
+Win7 EXE：审核工具_Flask_Win7兼容_V26.1.2.1.exe，x86，13,781,978 字节。
+SHA256：7a987fa788f20f95c9abc973e0073416eb608af1be49096f89064a39a5fe2d5a
+Linux DEB：审核工具_V26.1.2.1_2026.10.14.235510_ubuntu-24.04_py3.12.14_glibc2.25_amd64.deb，81,519,254 字节。
+SHA256：4a23c682a18666a8324ee1602ee69ffe431c66a11d7f85e35d31c8edd12c22b5
+DEB 包名 base-audit-v3；包管理版本为构建时间戳 2026.10.14.235510，产品版本仍为 V26.1.2.1。
+
+【实际验证】
+- test_app_identity.py、test_version_manifest.py：27 通过，0 失败，0 跳过。
+- 两个 Windows build_exe.py compileall 通过；git diff --check 通过（仅换行提示）。
+- 三个 EXE PE 架构和版本正确，冻结资源含 V26.1.2.1 更新日志与 23 项 FAQ，核心模块可用。
+- 两个 Flask EXE 在隔离目录启动：HTTP 200，状态/FAQ/更新日志/流程模板/功能开关/Windows 上 Linux 安装不可用等接口符合预期；配置哈希未变，进程和测试端口已释放。
+- pywebview 冻结模块与资源检查通过，隔离 --help 返回 0；未启动原生 GUI。
+- DEB 元信息 amd64，严格 ELF 符号审计最低 GLIBC 2.25，GLIBCXX 无高版本要求，满足原门槛 GLIBC≤2.28、GLIBCXX≤3.4.25。
+- Linux-3-测试发行包启动.sh 在 Ubuntu 24.04 WSL 解包检查：1 通过，0 失败；首页/图标正常、测试端口释放。
+- Linux get_libreoffice_install 返回 HTTP 200，available=true、supported=true、phase=idle、canInstall=false（未选择包）。
+- DEB 清单 1515 项，未发现运行数据、PID 锁、数据库、用户运行日志或 settings.json 污染。
+- 最终交付 Windows 目录逐文件与已验证构建目录一致；四个主程序 SHA256 与构建报告一致；交付校验清单覆盖 272 个文件（自身除外）。
+- protected-final.json：147 个受保护源文件哈希无变化。
+
+【未执行/已知限制】
+未执行本轮全量业务回归、Excel/WPS/LibreOffice 业务审核；未在真实 Windows 7、麒麟 V10 或 UOS 机器测试；未做 Linux 系统级安装及真实桌面权限弹窗验收。
+Docker 不可用，因此未在 Debian 10/glibc 2.28 环境直接启动；GLIBC 2.25 仅符号审计结果，仍需目标系统及其依赖实际验证。
+本包仅支持 amd64 Linux，目标麒麟 CPU 尚不明确；ARM64 需独立构建。
+可选用户指南 DOCX 源文件缺失，本包未含该文档。DEB 未捆绑 LibreOffice，需要目标机器另行安装 Calc。
+构建及配置产物均含内部信息，禁止提交 Open 或公开分发。
+
+【删除与回滚】
+未删除项目源文件、旧产物或用户 WIP。仅清理本次隔离测试自建临时目录及交付自建 BUILD_INCOMPLETE.txt。
+回滚时逐项撤销上述 8 个已有跟踪文件的本轮 diff 并保留其他 WIP；若不需要产物，可在核实绝对路径后删除本批独立 dist/evidence 目录。真实 config-real 和历史构建不在删除范围。
+Git 状态：未提交；公开快照检查不适用本轮（没有暂存或提交）。

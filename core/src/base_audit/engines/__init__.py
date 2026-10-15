@@ -158,7 +158,9 @@ def calculation_engine_preflight(engine_preference: str = ENGINE_AUTO) -> tuple[
             "未找到 LibreOffice Calc。汇总核查表校验（S1F1）的公式计算必须使用 "
             "LibreOffice：请安装后重试（离线机通过安装包分发，版本须与系统匹配，"
             "详见仓库 README「运行依赖」一节），或设置 BASE_AUDIT_SOFFICE 指向 "
-            "soffice、BASE_AUDIT_LIBREOFFICE_DIR 指向安装目录。"
+            "soffice、BASE_AUDIT_LIBREOFFICE_DIR 指向安装目录。麒麟 KARE 兼容层需配置 "
+            "BASE_AUDIT_ENGINE=kare、BASE_AUDIT_KARE_APP_ID，并在多个 KARE 环境时设置 "
+            "BASE_AUDIT_KARE_UPPER_ROOT。"
         )
     try:
         completed = subprocess.run(

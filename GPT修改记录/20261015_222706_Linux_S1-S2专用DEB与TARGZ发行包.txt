@@ -1,0 +1,42 @@
+【时间】2026-10-15 22:27（Asia/Shanghai）
+【执行者】Codex
+【修改前 commit】f695136c181f9cf99720f51559b84bcfc75ff58d
+【修改后 commit】f695136c181f9cf99720f51559b84bcfc75ff58d（未提交）
+【WIP】开始前工作区已有大量未提交修改；本次在已有 Linux-2、Linux-1、Linux-3、共享前端、WebApi 和说明文档改动上追加最小修改，未重置或覆盖既有内容。
+
+【修改目的】
+增加 S1/S2 专用 Linux DEB 与 TAR.GZ 打包入口。该发行形态默认隐藏 S3/S4 导航和 S3 专属帮助/设置，避免普通用户接触未开放系统；完整发行形态不设置该标记，行为保持完整入口。
+
+【修改文件】
+- shell-flask/Linux-2-打包DEB与TARGZ.sh：增加 `--s1-s2-only` 打包形态、发行标记、包名与产物名前缀，并按发行形态分别清理旧构建。
+- shell-flask/Linux-2-打包DEB与TARGZ_S1-S2专用.sh：新增专用 DEB/TAR.GZ 构建入口。
+- shell-flask/Linux-1-启动审核工具.sh：读取发行标记并提供 S1/S2 发行配置给后端。
+- shell-flask/Linux-3-测试发行包启动.sh：识别并可自动选择 S1/S2 专用产物。
+- core/src/base_audit/web_app.py：向前端状态提供发行形态。
+- core/frontend/web/index.html：S1/S2 发行形态隐藏 S3/S4 导航、S3 操作指引、S3 FAQ 分类和高级设置中的 S3 栏目；保留 S2 的“大集中系统数据”外部核对入口。
+- shell-flask/README.md、shell-flask/文件说明.txt：补充专用打包入口和 DEB 包说明。
+
+【逻辑与兼容性】
+- 专用产物以 `Audit-Tools-S1-S2_V...` 命名，DEB 包名为 `audit-tools-s1-s2`，与完整包 `audit-tools` 互斥，避免相同版本无法区分及两份包覆盖同一路径。
+- 专用包在打包副本中写入发行标记；不改源前端、不影响完整版及 Windows 包。
+- S3 后端仍随共享核心一同冻结，本次通过发行标记隐藏用户界面，不从共享代码中物理删除 S3 模块。
+- 专用版采用默认隐藏，不添加关于页密码解锁；开发人员需构建/使用完整发行版访问 S3/S4。
+- 默认配置选择沿用 Linux-2 现有规则（优先 config-real）；本次没有运行打包流程，也没有生成或提交内部配置包。
+
+【版本与配置】
+- 产品版本保持 V26.1.5.1；S1/S2/S3 功能组件版本及配置组件版本均未升级。此次增加的是 Linux 发行形态，未改工作簿或业务规则。
+
+【验证】
+- Git Bash `bash -n`：Linux-1、Linux-2、S1/S2 专用包装脚本、Linux-3 均通过。
+- Python `compile()`：`core/src/base_audit/web_app.py` 语法通过。
+- Node.js：前端 1 个内联脚本通过解析。
+- `git diff --check`：通过。
+- 未执行完整打包、Linux 实机安装/启动、DEB 与 TAR.GZ 冒烟或 pytest；本次只实现专用打包能力。
+
+【回滚提示】
+删除新增专用包装脚本并撤销本记录；在上述已有修改文件中仅回退本次增加的发行标记/筛选逻辑及 Linux-3 专用文件名识别，不要整体还原这些文件，以免覆盖开始前已有 WIP。
+
+【组件版本】
+系统：S1/S2/S3 功能组件与配置组件均未变。
+影响功能：无业务功能实现或配置规则变化；新增 Linux S1/S2 发行形态。
+影响配置：无。

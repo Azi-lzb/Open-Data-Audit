@@ -138,6 +138,8 @@ input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offse
 .btn.danger:hover{background:#fbe0de;border-color:#eab2ae;color:var(--danger)}
 .btn.tiny{padding:5px 10px;font-size:12px;border-radius:8px}
 .btn.tiny svg{width:14px;height:14px}
+.btn.lo-install-running{animation:lo-install-pulse 1s ease-in-out infinite}
+@keyframes lo-install-pulse{0%,100%{opacity:1}50%{opacity:.58}}
 .btn.sm{padding:6px 11px;font-size:12.5px;border-radius:9px}
 .btn.micro{padding:3px 9px;font-size:11px;border-radius:7px}
 .spin{display:inline-block;width:13px;height:13px;flex:none;border:2px solid rgba(128,128,128,.35);border-top-color:currentColor;border-radius:50%;animation:spin .8s linear infinite}
@@ -301,6 +303,13 @@ select:disabled{opacity:.6;cursor:not-allowed}
 .app-page{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
 .page{flex:1;min-height:0;display:none;flex-direction:column}
 .page.active{display:flex}
+body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S1"]) .sidenav-item[data-system="S1"],
+body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S2"]) .sidenav-item[data-system="S2"],
+body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S3"]) .sidenav-item[data-system="S3"],
+body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S4"]) .sidenav-item[data-system="S4"],
+body.distribution-s1s2-only:not(.distribution-ui-unlocked) .sidenav-item[data-system="S3"],
+body.distribution-s1s2-only:not(.distribution-ui-unlocked) .sidenav-item[data-system="S4"]{display:none!important}
+body.distribution-ui-unlocked .sidenav-item[data-system]{display:flex!important}
 /* 报表采集系统页 */
 .collect-page{flex:1;min-height:0;overflow:auto;padding:22px 26px;display:flex;flex-direction:column;gap:16px}
 .collect-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
@@ -619,6 +628,11 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 .changelog-items li{font-size:12.5px;color:var(--text);line-height:1.7;padding:2px 0;word-break:break-word}
 .changelog-items li+li{border-top:1px dashed var(--border)}
 .updates-subtabs{display:flex;gap:8px;margin-bottom:12px}
+.updates-host-info{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:10px 14px;margin:0 0 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-size:12px;color:var(--text-2)}
+.updates-host-info strong{color:var(--text);margin-right:5px}
+.updates-host-info .updates-host-versions{flex-basis:100%;line-height:1.6;color:var(--text-3)}
+.updates-lo-required{display:flex;flex-wrap:wrap;gap:4px 8px;padding:10px 14px;margin:0 0 10px;border:1px solid var(--accent-border);border-radius:10px;background:var(--accent-soft);font-size:12px;line-height:1.6;color:var(--text)}
+.updates-lo-required strong{color:var(--accent)}
 .faq-answer{font-size:12.5px;color:var(--text);line-height:1.8;word-break:break-word}
 .faq-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 .faq-searchbar{margin-bottom:6px}
@@ -701,19 +715,19 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 
 <div class="app-shell">
 <nav class="sidenav" id="sidenav">
-  <button type="button" class="sidenav-item active" data-page="audit" onclick="openAuditWorkbench()" title="DAG 执行器：使用已验收主流程">
+  <button type="button" class="sidenav-item active" data-page="audit" data-system="S1" onclick="openAuditWorkbench()" title="DAG 执行器：使用已验收主流程">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="m7 11 10-5M7 13l10 5"/></svg>
     逐笔统计系统
   </button>
-  <button type="button" class="sidenav-item" data-page="collect" onclick="openCollectWorkbench()" title="报表采集系统：季报跨期比较与大集中核对">
+  <button type="button" class="sidenav-item" data-page="collect" data-system="S2" onclick="openCollectWorkbench()" title="报表采集系统：季报跨期比较与大集中核对">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="16" x2="8" y2="12"/><line x1="13" y1="16" x2="13" y2="8"/><line x1="18" y1="16" x2="18" y2="13"/></svg>
     报表采集系统
   </button>
-  <button type="button" class="sidenav-item" data-page="central" onclick="openCentralWorkbench()" title="大集中统计系统：执行比较、本期数值核对与指标比较拆分">
+  <button type="button" class="sidenav-item" data-page="central" data-system="S3" onclick="openCentralWorkbench()" title="大集中统计系统：执行比较、本期数值核对与指标比较拆分">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
     大集中统计系统
   </button>
-  <button type="button" class="sidenav-item" data-page="dijin" onclick="openDijinWorkbench()" title="地金系统">
+  <button type="button" class="sidenav-item" data-page="dijin" data-system="S4" onclick="openDijinWorkbench()" title="地金系统">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 10h1M14 10h1M9 14h1M14 14h1M10 21v-3h4v3"/></svg>
     地金系统
   </button>
@@ -983,7 +997,7 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
   <main class="layout">
     <section class="card">
       <h3>地金系统</h3>
-      <p class="about-body">开发预览：功能正在准备中，业务功能暂未开放。</p>
+      <p class="about-body">地金工具的功能与操作流程正在整理中。</p>
     </section>
   </main>
 </section>
@@ -1062,7 +1076,7 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 <div class="about-mask" id="aboutMask" onclick="closeAbout()">
   <div class="about-card" onclick="event.stopPropagation()">
     <div class="about-body">
-      <p class="about-title">关于审核工具</p>
+      <p class="about-title" style="user-select:none" onclick="registerDistributionUnlockClick()">关于审核工具</p>
       <p>本工具结果仅供审核参考，一切以人工复核结论为准。</p>
       <p>如对审核流程有优化建议，欢迎提出。</p>
       <p>如对界面操作有改进意见，欢迎反馈。</p>
@@ -1074,29 +1088,17 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
   </div>
 </div>
 
-<div class="about-mask" id="unavailableMask" onclick="closeUnavailableFeature()">
-  <div class="about-card" role="dialog" aria-modal="true" aria-labelledby="unavailableTitle" aria-describedby="unavailableMessage" onclick="event.stopPropagation()">
-    <p class="about-title" id="unavailableTitle">功能暂未<span id="unavailableUnlockTrigger" style="user-select:none" onclick="registerUnavailableUnlockClick()">开放</span></p>
-    <div class="about-body">
-      <p id="unavailableMessage">该功能暂未开放，敬请期待。如需使用，请联系开发人员。</p>
-    </div>
-    <div class="about-actions">
-      <button type="button" class="btn primary" id="unavailableOk" onclick="closeUnavailableFeature()">知道了</button>
-    </div>
-  </div>
-</div>
-
 <div class="about-mask" id="developerUnlockMask" onclick="closeDeveloperUnlock()">
   <div class="about-card" role="dialog" aria-modal="true" aria-labelledby="developerUnlockTitle" onclick="event.stopPropagation()">
-    <p class="about-title" id="developerUnlockTitle">开发人员入口</p>
+    <p class="about-title" id="developerUnlockTitle">显示完整界面</p>
     <div class="about-body">
-      <p>请输入开发口令以进入该系统。</p>
-      <input id="developerPassword" type="password" autocomplete="off" aria-label="开发口令" placeholder="请输入密码" onkeydown="if(event.key==='Enter'){event.preventDefault();forceDeveloperEntry()}">
+      <p id="developerUnlockDescription">输入密码后显示全部系统和相关栏目，仅本次运行有效。</p>
+      <input id="developerPassword" type="password" autocomplete="off" aria-label="交付显示口令" placeholder="请输入密码" onkeydown="if(event.key==='Enter'){event.preventDefault();forceDeveloperEntry()}">
       <p id="developerUnlockError" role="alert" aria-live="polite"></p>
     </div>
     <div class="about-actions">
       <button type="button" class="btn" onclick="closeDeveloperUnlock()">退出</button>
-      <button type="button" class="btn primary" id="developerUnlockOk" onclick="forceDeveloperEntry()">强制进入</button>
+      <button type="button" class="btn primary" id="developerUnlockOk" onclick="forceDeveloperEntry()">显示全部</button>
     </div>
   </div>
 </div>
@@ -1632,21 +1634,67 @@ function showSettingsPaneLoading(){
 /* ---------- 主界面页面切换（逐笔统计 / 报表采集 / 设置中心） ---------- */
 let currentPage='audit';
 const developerPages={audit:'S1',collect:'S2',central:'S3',dijin:'S4'};
+function isS1S2Edition(){return !isSystemVisible('S3')&&!isSystemVisible('S4')}
+function loadDistributionConfig(){
+  const node=document.getElementById('audit-distribution-config');
+  if(node&&node.textContent){try{return JSON.parse(node.textContent)}catch(e){}}
+  return null;
+}
+const DISTRIBUTION_CONFIG=loadDistributionConfig();
+function isSystemVisible(system){
+  if(state&&state.distributionUnlocked===true)return true;
+  const body=document.body;
+  if(DISTRIBUTION_CONFIG&&Array.isArray(DISTRIBUTION_CONFIG.enabledSystems)){
+    return DISTRIBUTION_CONFIG.enabledSystems.includes(system);
+  }
+  if(body&&body.classList&&body.classList.contains('distribution-s1s2-only'))return system==='S1'||system==='S2';
+  if(state&&state.distributionProfile==='s1s2')return system==='S1'||system==='S2';
+  const attr=body&&body.dataset&&body.dataset.enabledSystems;
+  return !attr||attr.split(/\s+/).filter(Boolean).includes(system);
+}
+function applyDistributionProfile(){
+  document.body.classList.toggle('distribution-ui-unlocked',!!(state&&state.distributionUnlocked));
+  document.querySelectorAll('.sidenav-item[data-system]').forEach(item=>{item.hidden=!isSystemVisible(item.dataset.system)});
+}
+function includesUndeliveredSystemInfo(text){
+  const value=String(text||'');
+  const systems=DISTRIBUTION_CONFIG&&Array.isArray(DISTRIBUTION_CONFIG.systems)?DISTRIBUTION_CONFIG.systems:[];
+  for(const system of systems){
+    if(isSystemVisible(system.id))continue;
+    if((system.contentKeywords||[]).some(keyword=>keyword&&value.toLowerCase().includes(String(keyword).toLowerCase())))return true;
+  }
+  if(systems.length)return false;
+  return isS1S2Edition()&&/\bS[34](?:\b|F\d|CFG)|(?:^|[^\d.])3\.[0-3](?=$|[^\d.])|大集中统计系统|地金|大集中比较|大集中指标查询|大集中通用配置|大集中执行比较|大集中本期数值核对|大集中指标比较拆分|两期数据\s*[⇨→]|比较文件\s*[⇨→]|机构说明\s*[⇨→]|本期数值核对|指标比较拆分/i.test(value);
+}
+function editionUpdateEntries(entries){
+  if(['S1','S2','S3','S4'].every(isSystemVisible))return entries;
+  return entries.map(entry=>({...entry,groups:(entry.groups||[]).map(group=>({
+    ...group,items:(group.items||[]).filter(item=>!includesUndeliveredSystemInfo(item))
+  })).filter(group=>group.items.length)})).filter(entry=>entry.groups.length);
+}
+function editionFaqItems(items){
+  if(['S1','S2','S3','S4'].every(isSystemVisible))return items;
+  const systems=DISTRIBUTION_CONFIG&&Array.isArray(DISTRIBUTION_CONFIG.systems)?DISTRIBUTION_CONFIG.systems:[];
+  return items.map(item=>({...item,answer:!isSystemVisible('S3')&&item.answerS1S2?item.answerS1S2:item.answer}))
+    .filter(item=>{
+      const tagged=Array.isArray(item.systems)?item.systems:[];
+      const categorySystems=systems.filter(system=>(system.faqCategories||[]).includes(String(item.category||''))).map(system=>system.id);
+      const itemSystems=tagged.length?tagged:categorySystems;
+      return itemSystems.every(isSystemVisible);
+    })
+    .filter(item=>!includesUndeliveredSystemInfo(String(item.question||'')+String(item.answer||'')));
+}
 function updateAuditWorkbenchMode(){
   const primary=document.getElementById('auditPrimaryButton'),summary=document.getElementById('auditSummaryButton');
   if(primary){primary.dataset.action='dag:汇总核查表校验';primary.title='DAG 主流程：复制公式、计算并生成审核副本与问题汇总';}
   if(summary){summary.dataset.action='dag:汇总校验结果说明';summary.title='DAG 主流程：汇总校验结果与报送说明';}
 }
 function openAuditWorkbench(){
-  if(developerSystemOpen('S1')){
-    registerAuditEggClick();
-    updateAuditWorkbenchMode();
-  }
+  registerAuditEggClick();
+  updateAuditWorkbenchMode();
   requestSystemNavigation('S1','audit');
 }
 function switchPage(page){
-  const system=developerPages[page];
-  if(system&&!developerSystemOpen(system)){showUnavailableFeature(system,page);return}
   if(page===currentPage){return}
   if(currentPage==='settings'&&CFG.dirty){
     askDiscardSettings(page);
@@ -1909,17 +1957,17 @@ function updateDagJson(text){try{DAG_EDITOR.draft=JSON.parse(text)}catch(e){}}
 async function validateSaveDag(){let payload;try{payload=JSON.parse(document.getElementById('dagJson').value)}catch(e){alert('JSON 格式错误：'+e.message);return}const check=await bridge.api.validate_dag_workflow(payload);if(!check.valid){alert('DAG 校验失败：\n'+(check.errors||[]).join('\n'));return}const saved=await bridge.api.save_dag_workflow(payload);if(!saved.ok){alert('保存失败：\n'+(saved.errors||[]).join('\n'));return}showSettingsStatus('已保存 DAG：'+saved.path);await renderDagEditor()}
 /* ---- 操作指引：纯静态说明，不调用后端、不修改配置 ---- */
 const GUIDE_FLOWS=[
-  {n:'1',name:'汇总核查表校验',scenario:'审核同一种基础数据报表，生成“本期审核结果”和各机构审核副本。',source:'逐笔统计系统 → 待办：筛选对应任务后，使用“批量导出核查表”取得源文件。',prep:'选择源数据目录；确认模板目录已存放对应模板；如模板公式依赖集中数据/参照表，再选择外部文件。',steps:'① 选择源数据目录；② 首次选择后核对自动识别的模板，必要时手动选择；③ 在待审核文件中取消本次不需处理的文件；④ 点击“汇总核查表校验”。',output:'执行结果目录下的本期审核结果、需要保留时的审核副本、流程运行日志。',tip:'原始报送文件不会修改；通常不需要勾选“递归子文件夹”。'},
-  {n:'2',name:'汇总校验结果说明',scenario:'汇总机构报送的任务说明、业务说明、本地校验结果等文件；机构文件放在子文件夹时尤其适用。',source:'逐笔统计系统 → 待办：筛选对应任务后，使用“批量导出校验结果说明”取得源文件。',prep:'选择包含校验结果及报送说明的源数据目录，并选择对应的汇总模板。',steps:'① 选择源数据目录；② 勾选“递归子文件夹”（文件分散在机构子目录时）；③ 核对待处理文件；④ 点击“汇总校验结果说明”。',output:'执行结果目录下的“校验结果与报送说明汇总”工作簿，以及可选运行日志。',tip:'模板表结构不匹配的文件会跳过，并在运行记录中提示。'},
-  {n:'3',name:'执行报表规则',scenario:'对两期报送数据执行环比、校验规则和外部核对，生成三张分类审核表。',source:'金融基础数据报表采集 → 业务处理 → 报表数据查看：勾选机构和 20201、20202、20203 报表，使用默认“单 Sheet”导出。',prep:'在“报表采集系统”中选择本期目录、上期目录；需要大集中核对时再选择大集中数据，并确认比较配置。',steps:'① 打开“报表采集系统”；② 选择本期、上期目录和输出目录；③ 点击“检查配置”确认环比策略无阻断问题；④ 需要时选择大集中数据与比较配置；⑤ 点击“执行报表规则”。',output:'输出目录下的“报表审核清单_时间戳.xlsx”，包含“环比规则”“外部核对规则”“校验规则”三张表。',tip:'原始文件不会被修改；规则由“2.报表采集系统_配置.xlsx”维护，指标参照中的环比启用、策略组和最小变动值决定环比执行。'},
-  {n:'4',name:'两期数据 ⇨ 比较文件',scenario:'比较两期大集中导数，按配置执行环比、警戒和指标校验。',source:'大集中系统 → 指标查询：选择机构及所有指标，分别导出本期和上期数据，不要混在同一份文件中。',prep:'打开“大集中统计系统”，选择本期数据文件、上期数据文件和输出目录。',steps:'① 选择两期 CSV/XLSX 导数；② 核对输出目录；③ 点击“两期数据 ⇨ 比较文件”。',output:'输出目录下的“比较结果_时间戳.xlsx”，并自动带入“比较文件.xlsx”。',tip:'规则由大集中通用配置和“3.1大集中执行比较_配置.xlsx”共同维护。'},
-  {n:'5',name:'比较文件 ⇨ 说明文件',scenario:'将比较文件中需要机构说明的指标整理为简化说明文件。',prep:'先打开比较文件，在最右侧“输出说明”列对需说明的行填写“是”。',steps:'① 选择或确认“比较文件.xlsx”；② 填写“输出说明”；③ 点击“比较文件 ⇨ 说明文件”。',output:'输出目录下的“指标说明_时间戳.xlsx”，并自动带入“说明文件.xlsx”。',tip:'此操作只导出选中行，不改写比较文件。'},
-  {n:'6',name:'机构说明 ⇨ 说明文件',scenario:'将机构反馈的变动原因批量回写至同一份说明文件，方便集中审核。',prep:'选择或导出目标说明文件，并准备机构填报完成的说明文件。',steps:'① 确认“说明文件.xlsx”；② 点击“机构说明 ⇨ 说明文件”；③ 批量选择机构反馈文件。',output:'目标说明文件会原地更新；同目录会保留导入前时间戳备份。',tip:'按机构代码、机构名称、指标代码、指标名称、数据值和增减额匹配；存在冲突时不自动覆盖。'},
-  {n:'7',name:'本期数值核对',scenario:'按本期数值核对规则检查一份专用单期数据文件，覆盖多频度、多批次的跨表核对。',source:'大集中系统 → 指标查询：导出本次需要比较的指标，例如日报 1 批、月报 1 批。若要核对其他批次，还需在 3.2 配置中增加相应校验公式。',prep:'选择“本期数值核对文件”（CSV/XLSX）和输出目录。',steps:'① 选择本期数值核对文件；② 核对输出目录；③ 点击“本期数值核对”。',output:'输出目录下的“数值核对结果_时间戳.xlsx”。',tip:'不会使用“两期数据”的本期文件；规则由大集中通用配置和“3.2大集中本期数值核对_配置.xlsx”维护，引用上期 {...} 的规则已停用。'},
-  {n:'8',name:'比较文件 ⇨ 金融表单',scenario:'将比较文件按机构拆分并回填至内嵌金融表单，生成便于查看的机构工作簿。',prep:'选择或确认“比较文件.xlsx”和输出目录。',steps:'① 选择比较文件；② 核对输出目录；③ 点击“比较文件 ⇨ 金融表单”。',output:'输出目录下“指标比较拆分_时间戳”文件夹中的机构金融表单。',tip:'表单模板和转表规则在“3.3大集中指标比较拆分_配置.xlsx”中维护。'},
-  {n:'9',name:'组合工作表（核查表）',egg:true,scenario:'文件名规范、需要把同一机构的多类报表（如个人贷款和单位贷款）合成一本，供制作联合模板或跨表核查。',prep:'源文件主名第一个下划线前必须是机构全称。',steps:'① 选择源数据目录；② 需要时勾选递归；③ 点击“组合工作表（核查表）”。',output:'每家机构一本合并工作簿。',tip:'同名工作表只保留先复制的一张；本流程不需要模板、外部文件或数据期。'},
-  {n:'10',name:'组合工作表（按配置）',egg:true,scenario:'按设置中心中当前选择的组合方案分组，适合机构名称或文件命名不规则的情况。',prep:'连续点击“设置中心”五次，进入“组合工作表配置”维护方案与分组。',steps:'① 选择源数据目录；② 在设置中心保存组合方案；③ 点击“组合工作表（按配置）”。',output:'按当前方案生成组合工作簿。',tip:'文件名正则和文件名关键字两种分组方式均可用。'},
-  {n:'11',name:'制作联合模板',egg:true,scenario:'需要把多个模板的独有工作表合并成一本“联合模板”，集中存放集中系统数据、参照表等公共依赖工作表，供跨表核查或制作模板时使用；这是低频的模板制作动作。',prep:'准备一个“基准模板”（包含集中系统数据、参照表等公共依赖工作表）和若干要并入的模板文件。',steps:'① 点击主界面“制作联合模板”按钮；② 阅读中文说明并确认；③ 第 1 步选择“基准模板”；④ 第 2 步批量选择“并入模板”；⑤ 等待制作完成。',output:'基准模板同级的“联合模板”目录：联合模板文件与“联合模板检查报告”。',tip:'基准模板只会另存为最终联合模板，原文件不修改；同名工作表保留先出现的一张，后续跳过；本动作不使用页面路径，也不会自动识别模板，不要将普通业务模板误选为基准模板。'}
+  {n:'1',editionSystem:'S1',name:'汇总核查表校验',scenario:'审核同一种基础数据报表，生成“本期审核结果”和各机构审核副本。',source:'逐笔统计系统 → 待办：筛选对应任务后，使用“批量导出核查表”取得源文件。',prep:'选择源数据目录；确认模板目录已存放对应模板；如模板公式依赖集中数据/参照表，再选择外部文件。',steps:'① 选择源数据目录；② 首次选择后核对自动识别的模板，必要时手动选择；③ 在待审核文件中取消本次不需处理的文件；④ 点击“汇总核查表校验”。',output:'执行结果目录下的本期审核结果、需要保留时的审核副本、流程运行日志。',tip:'原始报送文件不会修改；通常不需要勾选“递归子文件夹”。'},
+  {n:'2',editionSystem:'S1',name:'汇总校验结果说明',scenario:'汇总机构报送的任务说明、业务说明、本地校验结果等文件；机构文件放在子文件夹时尤其适用。',source:'逐笔统计系统 → 待办：筛选对应任务后，使用“批量导出校验结果说明”取得源文件。',prep:'选择包含校验结果及报送说明的源数据目录，并选择对应的汇总模板。',steps:'① 选择源数据目录；② 勾选“递归子文件夹”（文件分散在机构子目录时）；③ 核对待处理文件；④ 点击“汇总校验结果说明”。',output:'执行结果目录下的“校验结果与报送说明汇总”工作簿，以及可选运行日志。',tip:'模板表结构不匹配的文件会跳过，并在运行记录中提示。'},
+  {n:'3',editionSystem:'S2',name:'执行报表规则',scenario:'对两期报送数据执行环比、校验规则和外部核对，生成三张分类审核表。',source:'金融基础数据报表采集 → 业务处理 → 报表数据查看：勾选机构和 20201、20202、20203 报表，使用默认“单 Sheet”导出。',prep:'在“报表采集系统”中选择本期目录、上期目录；需要大集中核对时再选择大集中数据，并确认比较配置。',steps:'① 打开“报表采集系统”；② 选择本期、上期目录和输出目录；③ 点击“检查配置”确认环比策略无阻断问题；④ 需要时选择大集中数据与比较配置；⑤ 点击“执行报表规则”。',output:'输出目录下的“报表审核清单_时间戳.xlsx”，包含“环比规则”“外部核对规则”“校验规则”三张表。',tip:'原始文件不会被修改；规则由“2.报表采集系统_配置.xlsx”维护，指标参照中的环比启用、策略组和最小变动值决定环比执行。'},
+  {n:'4',editionSystem:'S3',name:'两期数据 ⇨ 比较文件',scenario:'比较两期大集中导数，按配置执行环比、警戒和指标校验。',source:'大集中系统 → 指标查询：选择机构及所有指标，分别导出本期和上期数据，不要混在同一份文件中。',prep:'打开“大集中统计系统”，选择本期数据文件、上期数据文件和输出目录。',steps:'① 选择两期 CSV/XLSX 导数；② 核对输出目录；③ 点击“两期数据 ⇨ 比较文件”。',output:'输出目录下的“比较结果_时间戳.xlsx”，并自动带入“比较文件.xlsx”。',tip:'规则由大集中通用配置和“3.1大集中执行比较_配置.xlsx”共同维护。'},
+  {n:'5',editionSystem:'S3',name:'比较文件 ⇨ 说明文件',scenario:'将比较文件中需要机构说明的指标整理为简化说明文件。',prep:'先打开比较文件，在最右侧“输出说明”列对需说明的行填写“是”。',steps:'① 选择或确认“比较文件.xlsx”；② 填写“输出说明”；③ 点击“比较文件 ⇨ 说明文件”。',output:'输出目录下的“指标说明_时间戳.xlsx”，并自动带入“说明文件.xlsx”。',tip:'此操作只导出选中行，不改写比较文件。'},
+  {n:'6',editionSystem:'S3',name:'机构说明 ⇨ 说明文件',scenario:'将机构反馈的变动原因批量回写至同一份说明文件，方便集中审核。',prep:'选择或导出目标说明文件，并准备机构填报完成的说明文件。',steps:'① 确认“说明文件.xlsx”；② 点击“机构说明 ⇨ 说明文件”；③ 批量选择机构反馈文件。',output:'目标说明文件会原地更新；同目录会保留导入前时间戳备份。',tip:'按机构代码、机构名称、指标代码、指标名称、数据值和增减额匹配；存在冲突时不自动覆盖。'},
+  {n:'7',editionSystem:'S3',name:'本期数值核对',scenario:'按本期数值核对规则检查一份专用单期数据文件，覆盖多频度、多批次的跨表核对。',source:'大集中系统 → 指标查询：导出本次需要比较的指标，例如日报 1 批、月报 1 批。若要核对其他批次，还需在 3.2 配置中增加相应校验公式。',prep:'选择“本期数值核对文件”（CSV/XLSX）和输出目录。',steps:'① 选择本期数值核对文件；② 核对输出目录；③ 点击“本期数值核对”。',output:'输出目录下的“数值核对结果_时间戳.xlsx”。',tip:'不会使用“两期数据”的本期文件；规则由大集中通用配置和“3.2大集中本期数值核对_配置.xlsx”维护，引用上期 {...} 的规则已停用。'},
+  {n:'8',editionSystem:'S3',name:'比较文件 ⇨ 金融表单',scenario:'将比较文件按机构拆分并回填至内嵌金融表单，生成便于查看的机构工作簿。',prep:'选择或确认“比较文件.xlsx”和输出目录。',steps:'① 选择比较文件；② 核对输出目录；③ 点击“比较文件 ⇨ 金融表单”。',output:'输出目录下“指标比较拆分_时间戳”文件夹中的机构金融表单。',tip:'表单模板和转表规则在“3.3大集中指标比较拆分_配置.xlsx”中维护。'},
+  {n:'9',editionSystem:'S1',name:'组合工作表（核查表）',egg:true,scenario:'文件名规范、需要把同一机构的多类报表（如个人贷款和单位贷款）合成一本，供制作联合模板或跨表核查。',prep:'源文件主名第一个下划线前必须是机构全称。',steps:'① 选择源数据目录；② 需要时勾选递归；③ 点击“组合工作表（核查表）”。',output:'每家机构一本合并工作簿。',tip:'同名工作表只保留先复制的一张；本流程不需要模板、外部文件或数据期。'},
+  {n:'10',editionSystem:'S1',name:'组合工作表（按配置）',egg:true,scenario:'按设置中心中当前选择的组合方案分组，适合机构名称或文件命名不规则的情况。',prep:'连续点击“设置中心”五次，进入“组合工作表配置”维护方案与分组。',steps:'① 选择源数据目录；② 在设置中心保存组合方案；③ 点击“组合工作表（按配置）”。',output:'按当前方案生成组合工作簿。',tip:'文件名正则和文件名关键字两种分组方式均可用。'},
+  {n:'11',editionSystem:'S1',name:'制作联合模板',egg:true,scenario:'需要把多个模板的独有工作表合并成一本“联合模板”，集中存放集中系统数据、参照表等公共依赖工作表，供跨表核查或制作模板时使用；这是低频的模板制作动作。',prep:'准备一个“基准模板”（包含集中系统数据、参照表等公共依赖工作表）和若干要并入的模板文件。',steps:'① 点击主界面“制作联合模板”按钮；② 阅读中文说明并确认；③ 第 1 步选择“基准模板”；④ 第 2 步批量选择“并入模板”；⑤ 等待制作完成。',output:'基准模板同级的“联合模板”目录：联合模板文件与“联合模板检查报告”。',tip:'基准模板只会另存为最终联合模板，原文件不修改；同名工作表保留先出现的一张，后续跳过；本动作不使用页面路径，也不会自动识别模板，不要将普通业务模板误选为基准模板。'}
 ];
 /* 设置中心卡片标题条：点击收起/展开卡片内容（事件委托，重渲染后仍有效）。 */
 document.getElementById('settingsPane').addEventListener('click',function(e){
@@ -1940,24 +1988,45 @@ function setUpdatesSub(sub){
   try{localStorage.setItem('updatesSub',sub);}catch(e){}
   renderUpdates();
 }
+function libreOfficeVersionAdvice(osName){
+  const os=String(osName||'').toLowerCase();
+  const kylin=/kylin|麒麟/.test(os);
+  const uos=/uos|uniontech|统信/.test(os);
+  if(/windows/.test(os))return {version:'Windows 使用 Excel/WPS，无需安装 LibreOffice',note:'下方版本建议用于 Linux 目标机。'};
+  if(kylin&&/11/.test(os))return {version:'25.8.7',note:'麒麟 V11 已有实机安装与 S1-F1 验证记录；安装前先切换维护模式并重启。'};
+  if(kylin||uos)return {version:'25.8.7',note:'统一推荐版本；AMD64 与 ARM64 必须选择对应架构的安装包，不能混用。UOS 25 满足官方内核和 glibc 最低要求；AMD64 还需 x86-64-v2 CPU。'};
+  return {version:'25.8.7',note:'Linux 统一推荐版本；请按系统和 CPU 架构选择对应的 DEB 安装包，AMD64 与 ARM64 不能混用；AMD64 还需 x86-64-v2 CPU。'};
+}
+function updatesHostInfoHtml(){
+  const env=state.systemEnvironmentInfo||{};
+  const os=env.os||'未知';
+  const architecture=env.architecture||'未知';
+  const advice=libreOfficeVersionAdvice(os);
+  return '<div class="updates-host-info"><span><strong>本机系统</strong>'+esc(os)+'</span>'
+    +'<span><strong>CPU 架构</strong>'+esc(architecture)+'</span>'
+    +'<span><strong>本机建议</strong>'+esc(advice.version)+'</span>'
+    +'<span class="updates-host-versions"><strong>Linux 版本参考</strong>UOS 20/25、麒麟 V10/V11 统一推荐 LibreOffice 25.8.7。AMD64 与 ARM64 必须使用各自架构的安装包，不能混用；麒麟 V11 安装前先进入维护模式并重启。</span>'
+    +'<span class="updates-host-versions">'+esc(advice.note)+'</span></div>';
+}
 async function renderUpdates(){
-  if(UPDATES_SUB==='libreoffice'&&!state.libreOfficeInstallAvailable)UPDATES_SUB='log';
   const pane=document.getElementById('settingsPane');
   const subTabs='<div class="updates-subtabs">'
     +'<button type="button" class="btn tiny'+(UPDATES_SUB==='log'?' primary':'')+'" onclick="setUpdatesSub(\'log\')">更新日志</button>'
     +'<button type="button" class="btn tiny'+(UPDATES_SUB==='faq'?' primary':'')+'" onclick="setUpdatesSub(\'faq\')">常见问题</button>'
-    +(state.libreOfficeInstallAvailable?'<button type="button" class="btn tiny'+(UPDATES_SUB==='libreoffice'?' primary':'')+'" onclick="setUpdatesSub(\'libreoffice\')">安装 LibreOffice</button>':'')
+    +'<button type="button" class="btn tiny'+(UPDATES_SUB==='libreoffice'?' primary':'')+'" onclick="setUpdatesSub(\'libreoffice\')">安装 LibreOffice</button>'
     +'</div>';
-  pane.innerHTML='<div class="advanced-zone">'+subTabs+'<div id="updatesBody" class="inspector-empty">正在读取…</div></div>';
+  const loRequired=UPDATES_SUB==='libreoffice'?'<div class="updates-lo-required"><strong>Linux 必须安装</strong><span>Linux 版必须安装 LibreOffice Calc 才能运行依赖表格计算的审核流程；Windows 版使用 Excel/WPS，无需安装 LibreOffice。</span></div>':'';
+  pane.innerHTML='<div class="advanced-zone">'+subTabs+loRequired+'<div id="updatesBody" class="inspector-empty">正在读取…</div></div>';
   const body=document.getElementById('updatesBody');
   try{
     if(UPDATES_SUB==='libreoffice'){
-      await refreshLibreOfficeInstall();
+      renderLibreOfficeInstall(LO_INSTALL);
+      await refreshLibreOfficeInstall(true);
       return;
     }
     if(UPDATES_SUB==='log'){
       const data=await bridge.api.get_update_log();
-      const entries=(data&&data.entries)||[];
+      const entries=editionUpdateEntries((data&&data.entries)||[]);
       if(!entries.length){
         body.className='inspector-empty';
         body.textContent='当前环境未随包分发更新日志（源码包或旧版包）。';
@@ -1983,7 +2052,7 @@ async function renderUpdates(){
         return;
       }
       body.className='';
-      FAQ_ALL=items;
+      FAQ_ALL=editionFaqItems(items);
       FAQ_CATEGORY='全部';
       FAQ_KEYWORD='';
       renderFaqList(body);
@@ -2007,41 +2076,82 @@ function renderLibreOfficeInstall(data){
   LO_INSTALL=data||{};
   body.className='';
   const busy=!!LO_INSTALL.busy||LO_INSTALL_PICKING;
+  const installSupported=!!LO_INSTALL.available&&!!LO_INSTALL.supported;
+  const maintenanceState=LO_INSTALL.kylinMaintenance||{};
+  const maintenanceReady=!maintenanceState.supported||(maintenanceState.state==='maintain'&&!maintenanceState.pendingRestart);
   const locked=busy||!!LO_INSTALL.auditBusy;
-  const disable=locked?' disabled':'';
+  const helperLocked=locked||!maintenanceReady||!installSupported;
   const row=(name,desc,right,title='')=>'<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">'+esc(name)+'</div><div class="gen-row-desc" title="'+esc(title||desc)+'">'+esc(desc)+'</div></div><div class="gen-row-right">'+right+'</div></div>';
-  const installed=LO_INSTALL.installed||(state.systemEnvironmentInfo||{}).libreoffice||'尚未取得检测结果';
-  const installedVersion=/LibreOffice\s+[\d.]+/.exec(installed);
+  const active=LO_INSTALL.activeEngine||{};
+  const installed=active.summary||(state.systemEnvironmentInfo||{}).libreoffice||active.display||(LO_INSTALL.available?'尚未取得检测结果':'仅在 Linux 环境检测 LibreOffice');
+  const versions=Array.isArray(LO_INSTALL.installedVersions)?LO_INSTALL.installedVersions:[];
   const sourceName=LO_INSTALL.sourceName||'未选择';
   const packageInfo=LO_INSTALL.packageVersion?('版本 '+LO_INSTALL.packageVersion+' · '+LO_INSTALL.architecture+' · '+LO_INSTALL.packageCount+' 个安装文件'):'支持 DEB 格式的 .tar.gz 安装包、解压目录或 DEBS 文件夹';
+  const installStatus=!LO_INSTALL.available?'仅 Linux 版本支持 DEB 安装；当前系统不会执行安装。':(!LO_INSTALL.supported?(LO_INSTALL.message||'当前 Linux 缺少 DEB 安装所需的系统工具。'):(LO_INSTALL.message||'选择可信来源的 LibreOffice 安装包后，检查通过即可安装。'));
   const methods='<div class="updates-subtabs"><button class="btn tiny'+(LO_INSTALL_METHOD==='terminal'?' primary':'')+'" onclick="setLibreOfficeInstallMethod(\'terminal\')">方式一：终端安装</button><button class="btn tiny'+(LO_INSTALL_METHOD==='helper'?' primary':'')+'" onclick="setLibreOfficeInstallMethod(\'helper\')">方式二：辅助安装</button></div>';
-  let html=methods+'<div class="gen-card">'
-    +row('已检测到 LibreOffice',installedVersion?installedVersion[0]:installed,'<button class="btn tiny" onclick="refreshLibreOfficeInstall()">刷新</button>',installed)
-    +row('选择安装来源',packageInfo,'<button class="btn tiny" onclick="pickLibreOfficeSource(false)"'+disable+'>选择安装包</button><button class="btn tiny" style="margin-left:8px" onclick="pickLibreOfficeSource(true)"'+disable+'>选择文件夹</button>')
+  let maintenanceHtml='';
+  const versionRows=versions.length?versions.map(function(item){
+    const release=String(item.release||'');
+    const displayVersion=item.version&&item.version!==release?('LibreOffice '+item.version):('LibreOffice '+(release==='system'?'系统版本':release));
+    const details=[item.active?'当前用于审核':'已安装',item.source,item.path||'未找到程序路径',item.packageCount?item.packageCount+' 个软件包':'未登记为系统软件包'].filter(Boolean).join(' · ');
+    const uninstall= item.canUninstall&&/^\d+\.\d+$/.test(release)
+      ?'<button class="btn tiny" onclick="uninstallLibreOfficeVersion(\''+release+'\')"'+(locked||!installSupported||(_requiresKylinMaintenance()&&(LO_INSTALL.kylinMaintenance.state!=='maintain'||LO_INSTALL.kylinMaintenance.pendingRestart))?' disabled':'')+'>卸载此版本</button>'
+      :(item.canUninstall?'':'<span class="muted">'+esc(item.source||'本页不支持卸载')+'</span>');
+    return row(displayVersion,details,uninstall,item.path||details);
+  }).join(''):row('版本检测',LO_INSTALL.available?'未发现可识别的 LibreOffice 安装。':'仅在 Linux 环境检测 LibreOffice。','');
+  const inventoryCard='<div class="gen-card">'
+    +row('当前用于审核',installed,'<button class="btn tiny" onclick="refreshLibreOfficeInstall()">刷新检测</button>',active.path||installed)
+    +'<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">已安装版本</div><div class="gen-row-desc">不同主版本目录通常可并存，但它们可能共用并更新公共依赖；相同主版本目录的更新会替换该版本对应的软件包。安装新版本时不会自动卸载旧版本。</div></div></div>'
+    +versionRows+'</div>';
+  let html=updatesHostInfoHtml()+methods+inventoryCard
+    +'<div class="gen-card">'
+    +row('选择安装来源',packageInfo,'<button class="btn tiny" onclick="pickLibreOfficeSource(false)"'+(helperLocked?' disabled':'')+'>选择安装包</button><button class="btn tiny" style="margin-left:8px" onclick="pickLibreOfficeSource(true)"'+(helperLocked?' disabled':'')+'>选择文件夹</button>')
     +row('已选文件',LO_INSTALL.source?'将安装此来源对应的 LibreOffice。':'选择安装包或解压目录。','<span style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(LO_INSTALL.source||'')+'">'+esc(sourceName)+'</span>')
-    +row('安装状态',LO_INSTALL.message||'选择可信来源的 LibreOffice 安装包后，检查通过即可安装。','<button class="btn tiny primary" onclick="installLibreOffice()"'+((!LO_INSTALL.canInstall||locked)?' disabled':'')+'>'+(LO_INSTALL.phase==='installing'?'正在安装…':'开始安装')+'</button>')
+    +row('安装状态',installStatus,'<button class="btn tiny primary'+(LO_INSTALL.phase==='installing'?' lo-install-running':'')+'" onclick="installLibreOffice()"'+((!LO_INSTALL.canInstall||locked||!installSupported)?' disabled':'')+'>'+(LO_INSTALL.phase==='installing'?'正在安装…':'开始安装')+'</button>')
     +'</div><p class="module-help-desc">请先保存并关闭正在编辑的 Office 文档。点击“开始安装”后，在系统授权窗口输入管理员密码。本页不会读取或保存密码。安装期间请保持审核工具打开。</p>'
-    +'<p class="module-help-desc">仅支持使用 DEB 软件包的 Linux 系统。请选择项目提供或 LibreOffice 官方来源的安装包；检查名称和架构不代表验证了发布者身份。离线安装若缺少系统依赖，请把安装日志交给管理员处理。</p>'
-    +'<p class="module-help-desc"><a href="https://github.com/Azi-lzb/Open-Data-Audit/releases/tag/Needed" target="_blank" rel="noopener noreferrer">获取 LibreOffice 安装包</a></p>';
+    +'<p class="module-help-desc">仅支持使用 DEB 软件包的 Linux 系统。请选择 LibreOffice 官方来源的安装包；检查名称和架构不代表验证了发布者身份。离线安装若缺少系统依赖，请把安装日志交给管理员处理。</p>'
+    +'<p class="module-help-desc"><a href="https://www.libreoffice.org/download/" target="_blank" rel="noopener noreferrer">获取 LibreOffice（官方下载）</a></p>'
+    +'<p class="module-help-desc">开发人员推荐 LibreOffice 25.8.7。请自行选择与系统及 CPU 架构相符的 Linux DEB 安装包；官网下载页未列出该版本时，可到 <a href="https://downloadarchive.documentfoundation.org/libreoffice/old/" target="_blank" rel="noopener noreferrer">官方历史版本目录</a> 查找 25.8.7。历史版本的维护状态以官方说明为准。</p>';
+  const maintenance=LO_INSTALL.kylinMaintenance||{};
+  const maintenanceSupported=!!maintenance.supported;
+  const modeDesc=maintenanceSupported
+    ?(maintenance.label+(maintenance.pendingRestart?' · 切换命令已提交，重启后生效':'')+(maintenance.state==='unknown'&&maintenance.detail?' · '+maintenance.detail:''))
+    :(maintenance.detail||'仅适用于麒麟 V11；当前系统不支持维护模式操作。');
+  const modeButtons='<button class="btn tiny" onclick="kylinMaintenanceAction(\'status\')"'+(locked||!maintenanceSupported?' disabled':'')+'>检查模式</button>'
+    +'<button class="btn tiny" style="margin-left:8px" onclick="kylinMaintenanceAction(\'enable\')"'+(locked||!maintenanceSupported||maintenance.state==='maintain'||maintenance.pendingRestart?' disabled':'')+'>切换到维护模式</button>'
+    +'<button class="btn tiny" style="margin-left:8px" onclick="kylinMaintenanceAction(\'exit\')"'+(locked||!maintenanceSupported||maintenance.state!=='maintain'||maintenance.pendingRestart?' disabled':'')+'>退出维护模式</button>';
+  maintenanceHtml='<div class="gen-card">'+row('麒麟 V11 系统模式',modeDesc,modeButtons,maintenance.detail||modeDesc)+'</div>'
+    +'<p class="module-help-desc">维护模式切换后需要重启。安装 LibreOffice 前先进入维护模式并重启；安装完成后如需退出，请点击“退出维护模式”，该操作会保留维护模式期间的系统更改，再手动重启。程序不会自动重启。</p>';
+  if(!maintenanceSupported)maintenanceHtml+='<p class="module-help-desc">本页在各平台保持相同布局；维护模式仅在麒麟 V11 Linux 上可操作，其他环境只显示说明，按钮保持禁用。</p>';
+  else if(maintenance.state!=='maintain'||maintenance.pendingRestart)maintenanceHtml+='<p class="module-help-desc">当前不是已确认并生效的维护模式，安装包选择、安装和卸载暂不可用。请先完成模式切换并重启，再重新打开此页面。</p>';
   if(LO_INSTALL_METHOD==='terminal'){
-    html=methods+'<div class="gen-card"><p class="gen-card-title">终端安装步骤</p>'
+    html=methods+inventoryCard+'<div class="gen-card"><p class="gen-card-title">终端安装步骤</p>'
       +row('1. 下载并解压','选择与本机 CPU 架构、系统版本相符的 Linux DEB 安装包，解压后打开其中的 DEBS 文件夹。','')
       +row('2. 打开终端','可在 DEBS 文件夹空白处右键选择“在终端中打开”。如果终端不在该文件夹，先执行下面的 cd 命令，并将示例路径改为实际 DEBS 路径。','')
       +'<pre style="margin:12px 20px;white-space:pre-wrap"><code>cd -- "/实际路径/DEBS"</code></pre>'
-      +row('3. 执行安装','在 DEBS 目录中执行下面的命令。注意 -i 后有一个空格；管理员密码在终端输入，屏幕通常不显示字符。','')
-      +'<pre style="margin:12px 20px;white-space:pre-wrap"><code>sudo dpkg -i *.deb</code></pre>'
+      +row('3. 执行安装','推荐使用 APT 安装本地软件包，依赖由系统包管理器处理；dpkg 作为备用方式，缺少依赖时需再使用 APT 修复。麒麟 V11 必须先进入维护模式并重启。','')
+      +'<pre style="margin:12px 20px;white-space:pre-wrap"><code># 推荐：自动处理依赖\nsudo apt install ./*.deb\n\n# 备用：直接安装软件包\nsudo dpkg -i ./*.deb\n# 如提示依赖缺失，再运行\nsudo apt install -f</code></pre>'
       +row('4. 检查结果','等待安装完成。若出现依赖缺失、架构不匹配或包管理器被占用，请保留终端输出并联系管理员。不要在审核任务运行时安装。','')
-      +'</div><p class="module-help-desc">请先保存并关闭 Office 文档，使用项目提供或 LibreOffice 官方来源的安装包。只适用于支持 DEB 的 Linux 系统。</p>'
-      +'<p class="module-help-desc"><a href="https://github.com/Azi-lzb/Open-Data-Audit/releases/tag/Needed" target="_blank" rel="noopener noreferrer">获取 LibreOffice 安装包</a></p>';
+      +'</div><p class="module-help-desc">请先保存并关闭 Office 文档，使用 LibreOffice 官方来源的安装包。只适用于支持 DEB 的 Linux 系统。</p>'
+      +'<p class="module-help-desc"><a href="https://www.libreoffice.org/download/" target="_blank" rel="noopener noreferrer">获取 LibreOffice（官方下载）</a></p>'
+      +'<p class="module-help-desc">开发人员推荐 LibreOffice 25.8.7。请自行选择与系统及 CPU 架构相符的 Linux DEB 安装包；官网下载页未列出该版本时，可到 <a href="https://downloadarchive.documentfoundation.org/libreoffice/old/" target="_blank" rel="noopener noreferrer">官方历史版本目录</a> 查找 25.8.7。历史版本的维护状态以官方说明为准。</p>';
   }
-  if(LO_INSTALL.auditBusy)html+='<p class="module-help-desc">审核任务正在运行，请完成后再安装。</p>';
-  if(LO_INSTALL.logPath)html+='<div class="inspector-actions"><button class="btn tiny" onclick="openPath(LO_INSTALL.logPath)">查看安装日志</button></div>';
+  html+=maintenanceHtml;
+  if(!LO_INSTALL.available)html+='<p class="module-help-desc">当前运行环境不支持 DEB 安装；此页仍展示完整 Linux 安装步骤，供不同交付版本核对相同界面。所有安装与维护模式操作按钮均不可用。</p>';
+  else if(!LO_INSTALL.supported)html+='<p class="module-help-desc">当前 Linux 缺少 DEB 安装所需的系统工具，选择、安装和卸载操作不可用。请使用系统软件管理器或联系管理员。</p>';
+  if(LO_INSTALL.auditBusy)html+='<p class="module-help-desc">审核任务正在运行，请完成后再安装、卸载或切换系统模式。</p>';
+  if(['uninstalling','changing_maintenance','checking_maintenance'].includes(LO_INSTALL.phase))html+='<p class="module-help-desc">系统操作进行中，请勿关闭审核工具。</p>';
+  if(LO_INSTALL.logPath)html+='<div class="inspector-actions"><button class="btn tiny" onclick="openPath(LO_INSTALL.logPath)">查看操作日志</button></div>';
   body.innerHTML=html;
 }
-async function refreshLibreOfficeInstall(){
+function _requiresKylinMaintenance(){return !!(LO_INSTALL.kylinMaintenance&&LO_INSTALL.kylinMaintenance.supported)}
+async function refreshLibreOfficeInstall(forceRender=false){
   if(LO_INSTALL_POLLING||!libreOfficeInstallVisible())return;
   LO_INSTALL_POLLING=true;
-  try{renderLibreOfficeInstall(await bridge.api.get_libreoffice_install())}
+  try{
+    const next=await bridge.api.get_libreoffice_install();
+    if(forceRender||JSON.stringify(next)!==JSON.stringify(LO_INSTALL))renderLibreOfficeInstall(next);
+  }
   catch(e){renderLibreOfficeInstall({...LO_INSTALL,message:'读取安装状态失败，请确认审核工具仍在运行。'})}
   finally{LO_INSTALL_POLLING=false}
 }
@@ -2066,14 +2176,32 @@ async function installLibreOffice(){
   try{renderLibreOfficeInstall(await bridge.api.start_libreoffice_install())}
   catch(e){renderLibreOfficeInstall({...LO_INSTALL,message:'无法开始安装：'+(e&&e.message||e)})}
 }
+async function uninstallLibreOfficeVersion(release){
+  if(LO_INSTALL.busy||LO_INSTALL.auditBusy)return;
+  const item=(LO_INSTALL.installedVersions||[]).find(function(entry){return entry.release===release&&entry.canUninstall});
+  if(!item)return;
+  const version=item.version||release;
+  const active=item.active?'\n\n该版本当前正用于审核；卸载后工具会自动选择剩余版本中的最高版本。':'';
+  const count=Number(item.packageCount)||0;
+  if(!confirm('将仅卸载 LibreOffice '+version+'（主版本 '+release+'，'+count+' 个版本专属软件包）。\n\n卸载会经过系统管理员授权；程序不会自动清理共享依赖，也不会卸载其他 LibreOffice 版本。请先关闭 Office 文档。'+active+'\n\n是否继续？'))return;
+  try{renderLibreOfficeInstall(await bridge.api.start_libreoffice_uninstall(release))}
+  catch(e){renderLibreOfficeInstall({...LO_INSTALL,message:'无法开始卸载：'+(e&&e.message||e)})}
+}
+async function kylinMaintenanceAction(action){
+  if(LO_INSTALL.busy||LO_INSTALL.auditBusy||!_requiresKylinMaintenance())return;
+  if(action==='enable'&&!confirm('这会提交进入麒麟 V11 维护模式的系统设置。命令完成后需要你手动重启，重启后才能在主系统安装 LibreOffice。是否继续？'))return;
+  if(action==='exit'&&!confirm('这会执行 `mm-cli -c` 保存维护模式期间的更改并提交退出。命令完成后需要你手动重启。不要使用会丢弃更改的 `mm-cli -c -n reboot`。是否继续？'))return;
+  try{renderLibreOfficeInstall(await bridge.api.start_kylin_maintenance(action))}
+  catch(e){renderLibreOfficeInstall({...LO_INSTALL,message:'麒麟 V11 模式操作失败：'+(e&&e.message||e)})}
+}
 /* ---- 操作指引 ---- */
 function renderGuide(){
   const pane=document.getElementById('settingsPane');
   let html='';
-  html+=GUIDE_FLOWS.filter(f=>!f.egg||auditExtrasUnlocked()).map(f=>{
+  html+=GUIDE_FLOWS.filter(f=>!f.egg||auditExtrasUnlocked()).filter(f=>!f.editionSystem||isSystemVisible(f.editionSystem)).map((f,index)=>{
       const rows=[['适用',f.scenario],['源数据获取',f.source],['准备',f.prep],['步骤',f.steps],['输出',f.output],['提示',f.tip]];
       return '<details class="guide-flow-card" open>'
-        +'<summary><span class="guide-flow-num">'+f.n+'</span><span>'+esc(f.name)+'</span></summary>'
+        +'<summary><span class="guide-flow-num">'+(index+1)+'</span><span>'+esc(f.name)+'</span></summary>'
         +'<div class="guide-flow-body"><div class="guide-flow-rows">'
         +rows.filter(r=>r[1]).map(r=>'<div class="guide-flow-row"><span class="guide-key">'+r[0]+'</span><span class="guide-val">'+esc(r[1])+'</span></div>').join('')
         +'</div></div></details>';
@@ -2084,7 +2212,7 @@ function renderGuide(){
 let FAQ_ALL=[];
 let FAQ_CATEGORY='全部';
 let FAQ_KEYWORD='';
-const FAQ_CATEGORY_ORDER=['全部','准备与数据','逐笔统计系统','报表采集系统','大集中统计系统','通用'];
+const FAQ_CATEGORY_ORDER=['全部','准备与数据','逐笔统计系统','报表采集系统','大集中统计系统','地金系统','通用'];
 function setFaqCategory(cat){
   FAQ_CATEGORY=cat;
   var body=document.getElementById('updatesBody');
@@ -2186,18 +2314,18 @@ function renderGeneral(){
     ])
     +group('配置')
     +card([
-      row('逐笔统计系统配置',(issues.summary?'<span class="cfg-warn">⚠ '+esc(issues.summary)+'</span>；':'' )+'两个流程的审核历史与人工说明。'+configDefaultStatus('summary'),
-        '<button class="btn" onclick="openSummaryConfig()">打开</button> <button class="btn" onclick="askSetSummaryConfigDefault()">设为默认</button> <button class="btn danger" onclick="askResetSummaryConfig()">重置</button>'),
-      row('报表采集系统配置',(issues.period?'<span class="cfg-warn">⚠ '+esc(issues.period)+'</span>；':'' )+'指标、机构、环比策略、校验与外部核对规则；指标参照含环比启用/策略组/最小变动值。'+configDefaultStatus('period'),
-        '<button class="btn" onclick="openPeriodConfig()">打开</button> <button class="btn" onclick="askSetPeriodConfigDefault()">设为默认</button> <button class="btn danger" onclick="askResetPeriodConfig()">重置</button>'),
-      row('大集中通用配置',centralConfigDescription('common'),
+      ...(isSystemVisible('S1')?[row('逐笔统计系统配置',(issues.summary?'<span class="cfg-warn">⚠ '+esc(issues.summary)+'</span>；':'' )+'两个流程的审核历史与人工说明。'+configDefaultStatus('summary'),
+        '<button class="btn" onclick="openSummaryConfig()">打开</button> <button class="btn" onclick="askSetSummaryConfigDefault()">设为默认</button> <button class="btn danger" onclick="askResetSummaryConfig()">重置</button>')]:[]),
+      ...(isSystemVisible('S2')?[row('报表采集系统配置',(issues.period?'<span class="cfg-warn">⚠ '+esc(issues.period)+'</span>；':'' )+'指标、机构、环比策略、校验与外部核对规则；指标参照含环比启用/策略组/最小变动值。'+configDefaultStatus('period'),
+        '<button class="btn" onclick="openPeriodConfig()">打开</button> <button class="btn" onclick="askSetPeriodConfigDefault()">设为默认</button> <button class="btn danger" onclick="askResetPeriodConfig()">重置</button>')]:[]),
+      ...(isSystemVisible('S3')?[row('大集中通用配置',centralConfigDescription('common'),
         '<button class="btn" onclick="openCentralConfig(\'common\')">打开</button> <button class="btn" onclick="askSetCentralConfigDefault(\'common\')">设为默认</button> <button class="btn danger" onclick="askResetCentralConfigProfile(\'common\')">重置</button>'),
       row('大集中执行比较配置',centralConfigDescription('comparison'),
         '<button class="btn" onclick="openCentralConfig(\'comparison\')">打开</button> <button class="btn" onclick="askSetCentralConfigDefault(\'comparison\')">设为默认</button> <button class="btn danger" onclick="askResetCentralConfigProfile(\'comparison\')">重置</button>'),
       row('大集中本期数值核对配置',centralConfigDescription('cross'),
         '<button class="btn" onclick="openCentralConfig(\'cross\')">打开</button> <button class="btn" onclick="askSetCentralConfigDefault(\'cross\')">设为默认</button> <button class="btn danger" onclick="askResetCentralConfigProfile(\'cross\')">重置</button>'),
       row('大集中指标比较拆分配置',centralConfigDescription('forms'),
-        '<button class="btn" onclick="openCentralConfig(\'forms\')">打开</button> <button class="btn" onclick="askSetCentralConfigDefault(\'forms\')">设为默认</button> <button class="btn danger" onclick="askResetCentralConfigProfile(\'forms\')">重置</button>'),
+        '<button class="btn" onclick="openCentralConfig(\'forms\')">打开</button> <button class="btn" onclick="askSetCentralConfigDefault(\'forms\')">设为默认</button> <button class="btn danger" onclick="askResetCentralConfigProfile(\'forms\')">重置</button>')]:[]),
     ]);
   pane.innerHTML=html;
   syncGeneralControls();
@@ -2235,6 +2363,7 @@ function renderAdvanced(){
     '<button type="button" class="btn tiny env-copy-btn" onclick="exportDiagInfo(this)">导出本机设置信息</button>');
   const rowsEnvSystem=[
     envRow('os','系统','操作系统版本；LibreOffice 离线包按系统与 glibc 选型。'),
+    envRow('architecture','CPU 架构','本机运行架构。常见 Linux DEB 包对应 x86_64（AMD64/amd64）或 ARM64（aarch64/arm64）。'),
     envRow('locale','区域编码','ANSI 代码页与 Python 编码偏好；中文文件名/内容乱码类问题的定位依据。系统级 UTF-8（65001）会改变默认读写编码。'),
     envRow('glibc','glibc','系统 C 库版本；过旧时新 LibreOffice 离线包会无法启动（UOS20 为 2.28）。'),
     envRow('hardware','硬件','CPU / 内存 / 显卡；性能类问题定位用。'),
@@ -2325,14 +2454,14 @@ function renderAdvanced(){
   const cards=advancedLayoutMode()==='function'?[
     envZoneCard,
     advCard('文件选择',rowsPicker),
-    advCard('Excel 文件处理',rowsCentralForm+rowsAuditExcel),
-    advCard('计算与条件格式',rowsAuditCalc),
-    advCard('大集中表达式求值',rowsCentralExpr),
+    ...(isSystemVisible('S1')||isSystemVisible('S3')?[advCard('Excel 文件处理',(isSystemVisible('S3')?rowsCentralForm:'')+(isSystemVisible('S1')?rowsAuditExcel:''))]:[]),
+    ...(isSystemVisible('S1')?[advCard('计算与条件格式',rowsAuditCalc)]:[]),
+    ...(isSystemVisible('S3')?[advCard('大集中表达式求值',rowsCentralExpr)]:[]),
   ]:[
     envZoneCard,
     advCard('通用设置',rowsPicker),
-    advCard('逐笔统计系统',rowsAuditExcel+rowsAuditCalc),
-    advCard('大集中统计系统',rowsCentralForm+rowsCentralExpr),
+    ...(isSystemVisible('S1')?[advCard('逐笔统计系统',rowsAuditExcel+rowsAuditCalc)]:[]),
+    ...(isSystemVisible('S3')?[advCard('大集中统计系统',rowsCentralForm+rowsCentralExpr)]:[]),
   ];
   pane.innerHTML= ''
     +'<div class="advanced-zone" id="advancedZone">'
@@ -3007,57 +3136,39 @@ async function toggleOutputPin(){const v=!state.outputPinned;await bridge.api.up
 async function togglePcOutputPin(){await bridge.api.toggle_period_output_pin();await refresh()}
 async function openPath(p){await bridge.api.open_path(p);await refresh()}
 async function openGuide(){await bridge.api.open_user_guide()}
-function openAbout(){document.getElementById('aboutMask').style.display='flex'}
+let distributionUnlockClicks=[];
+function openAbout(){distributionUnlockClicks=[];document.getElementById('aboutMask').style.display='flex'}
 function closeAbout(){document.getElementById('aboutMask').style.display='none'}
-let unavailableReturnFocus=null;
-let unavailableTarget=null;
-let unavailableUnlockClicks=[];
-function showUnavailableFeature(system,page){
-  unavailableTarget=system&&page?{system:system,page:page}:null;
-  unavailableUnlockClicks=[];
-  unavailableReturnFocus=document.activeElement;
-  document.getElementById('unavailableMask').style.display='flex';
-  document.getElementById('unavailableOk').focus();
-}
-function closeUnavailableFeature(){
-  document.getElementById('unavailableMask').style.display='none';
-  unavailableTarget=null;
-  unavailableUnlockClicks=[];
-  if(unavailableReturnFocus&&typeof unavailableReturnFocus.focus==='function')unavailableReturnFocus.focus();
-  unavailableReturnFocus=null;
-}
-function registerUnavailableUnlockClick(){
-  if(!unavailableTarget||document.getElementById('unavailableMask').style.display!=='flex')return;
+function registerDistributionUnlockClick(){
+  if(document.getElementById('aboutMask').style.display!=='flex'||['S1','S2','S3','S4'].every(isSystemVisible))return;
   const now=Date.now();
-  unavailableUnlockClicks=unavailableUnlockClicks.filter(t=>now-t<2000);
-  unavailableUnlockClicks.push(now);
-  if(unavailableUnlockClicks.length<5)return;
-  const target=unavailableTarget;
-  closeUnavailableFeature();
-  openDeveloperUnlock(target.system,target.page);
+  distributionUnlockClicks=distributionUnlockClicks.filter(t=>now-t<2000);
+  distributionUnlockClicks.push(now);
+  if(distributionUnlockClicks.length<5)return;
+  distributionUnlockClicks=[];
+  closeAbout();
+  openDeveloperUnlock();
 }
 let developerUnlockTarget=null;
 let developerReturnFocus=null;
 let developerUnlockBusy=false;
-function developerSystemOpen(system){
-  if(!state||!state.developerAccess)return system==='S1'||system==='S2';
-  return state.developerAccess[system]===true;
-}
+
 function requestSystemNavigation(system,page){
-  if(developerSystemOpen(system)){switchPage(page);return}
-  showUnavailableFeature(system,page);
+  switchPage(page);
 }
-function openDeveloperUnlock(system,page){
+function openDeveloperUnlock(){
   developerReturnFocus=document.activeElement;
-  developerUnlockTarget={system:system,page:page};
-  const names={S1:'逐笔统计系统',S2:'报表采集系统',S3:'大集中统计系统',S4:'地金系统'};
-  document.getElementById('developerUnlockTitle').textContent=names[system]+' · 开发人员入口';
+  developerUnlockTarget={distribution:true};
+  document.getElementById('developerUnlockTitle').textContent='显示完整界面';
+  document.getElementById('developerUnlockDescription').textContent='输入密码后显示全部系统和相关栏目，仅本次运行有效。';
+  document.getElementById('developerUnlockOk').textContent='显示全部';
   document.getElementById('developerPassword').value='';
-  document.getElementById('developerUnlockError').textContent=state&&state.developerAccessMessage||'';
+  document.getElementById('developerUnlockError').textContent='';
   document.getElementById('developerUnlockMask').style.display='flex';
   document.getElementById('developerPassword').focus();
 }
 function closeDeveloperUnlock(){
+  if(developerUnlockBusy)return;
   document.getElementById('developerUnlockMask').style.display='none';
   document.getElementById('developerPassword').value='';
   developerUnlockTarget=null;
@@ -3071,7 +3182,7 @@ async function forceDeveloperEntry(){
   const button=document.getElementById('developerUnlockOk');
   developerUnlockBusy=true;button.disabled=true;
   try{
-    const result=await bridge.api.unlock_developer_system(target.system,password);
+    const result=await bridge.api.unlock_distribution_ui(password);
     if(developerUnlockTarget!==target)return;
     if(!result.ok){
       document.getElementById('developerUnlockError').textContent=result.message||'无法验证开发口令。';
@@ -3079,8 +3190,10 @@ async function forceDeveloperEntry(){
       return;
     }
     state=result.state;
+    developerUnlockBusy=false;
     closeDeveloperUnlock();
-    switchPage(target.page);
+    applyDistributionProfile();
+    if(currentPage==='settings'&&CFG.data)setSettingsTab(CFG.tab);
   }catch(e){
     if(developerUnlockTarget===target)document.getElementById('developerUnlockError').textContent='无法验证开发口令，请重新启动审核工具后重试。';
   }finally{developerUnlockBusy=false;button.disabled=false}
@@ -3702,12 +3815,6 @@ document.addEventListener('keydown',e=>{
     }
     return;
   }
-  const unavailable=document.getElementById('unavailableMask');
-  if(unavailable&&unavailable.style.display==='flex'){
-    if(e.key==='Escape'){e.preventDefault();closeUnavailableFeature()}
-    else if(e.key==='Tab'){e.preventDefault();document.getElementById('unavailableOk').focus()}
-    return;
-  }
   if(e.key!=='Escape')return;
   const nm=document.getElementById('settingsNameMask');
   if(nm&&nm.style.display==='flex'){cancelFlowName();return}
@@ -3844,10 +3951,7 @@ async function refresh(){
   }
   setConnectionLost(false);
   state=s;
-  if(developerPages[currentPage]&&!developerSystemOpen(developerPages[currentPage])){
-    const fallback=Object.keys(developerPages).find(page=>developerSystemOpen(developerPages[page]));
-    applySwitchPage(fallback||'settings');
-  }
+  applyDistributionProfile();
   if(s.appInfo){document.title=s.appInfo.title;document.getElementById('appVersion').textContent=s.appInfo.title}
   // 背景颜色以后端保存的设置为准（localStorage 仅用于启动前预应用，避免闪白）。
   applyTheme(s.uiTheme||'日间');

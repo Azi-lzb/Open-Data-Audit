@@ -443,8 +443,11 @@ def create_app() -> Flask:
 
     @app.post("/api/<method>")
     def call(method: str):
-        if method in {"get_libreoffice_install", "choose_libreoffice_source", "start_libreoffice_install"}:
-            # 安装入口只接受本机页面的 JSON 请求；拒绝跨站表单和 DNS 重绑定主机名。
+        if method in {
+            "get_libreoffice_install", "choose_libreoffice_source", "start_libreoffice_install",
+            "start_libreoffice_uninstall", "start_kylin_maintenance",
+        }:
+            # LibreOffice 安装/卸载及麒麟模式入口只接受本机 JSON 请求。
             origin = request.headers.get("Origin", "")
             local_hosts = {"127.0.0.1", "localhost", "::1"}
             try:

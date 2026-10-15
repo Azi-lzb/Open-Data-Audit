@@ -8,8 +8,8 @@
 #   ├─ core/{src,frontend,基础数据审核工具使用说明.docx}   ← 业务核心与前端
 #   └─ config/                                                ← 三册配置
 #
-# 配置策略：默认仅打包公开 config/ 中的空表头工作簿。
-#   --with-local-config 显式读取本机 config-real/，仅供本人验证，禁止外发。
+# 配置策略：有 config-real/ 时默认打包真实配置；不存在时回退公开 config/。
+#   携带真实配置的包仅供内部使用，禁止外发。
 #
 # 不打包：core/tests（开发基线）、core/data（本机运行数据）、Windows 专属文件
 #         （build_exe.py、wheels/、*.bat、build/、dist/ 旧产物）。
@@ -23,6 +23,17 @@ DIST="$SCRIPT_DIR/dist"
 
 WITH_LOCAL_CONFIG=0
 [ "$1" = "--with-local-config" ] && WITH_LOCAL_CONFIG=1
+if [ "$WITH_LOCAL_CONFIG" = "1" ] && [ ! -d "$ROOT/config-real" ]; then
+    echo "[错误] --with-local-config 需要本机 config-real/。"; exit 1
+fi
+if [ -d "$ROOT/config-real" ]; then
+    CONFIG_SOURCE="$ROOT/config-real"
+    CONFIG_PROFILE=internal-config
+else
+    CONFIG_SOURCE="$ROOT/config"
+    CONFIG_PROFILE=public-config
+fi
+[ -d "$CONFIG_SOURCE" ] || { echo "[错误] 未找到配置目录：$CONFIG_SOURCE"; exit 1; }
 
 [ -d "$CORE/src/base_audit" ] || { echo "[错误] 未找到共享核心：$CORE"; exit 1; }
 [ -f "$CORE/frontend/web/index.html" ] || { echo "[错误] 未找到共享前端 index.html"; exit 1; }
@@ -80,14 +91,14 @@ done
 
 # ---- 配置 ----
 mkdir -p "$PKG/config"
-if [ "$WITH_LOCAL_CONFIG" = "1" ]; then
-    [ -d "$ROOT/config-real" ] || { echo "[错误] 未找到本机 config-real/"; exit 1; }
-    echo "[警告] 携带本机 config-real/（含真实机构与历史），仅供本人验证，禁止外发。"
-    cp -r "$ROOT/config-real/." "$PKG/config/"
+if [ "$CONFIG_PROFILE" = "internal-config" ]; then
+    echo "[警告] 携带真实配置（来源：${CONFIG_SOURCE##*/}），仅供内部使用，禁止外发。"
+    cp -r "$CONFIG_SOURCE/." "$PKG/config/"
 else
-    cp "$ROOT/config/"*.xlsx "$PKG/config/"
+    cp "$CONFIG_SOURCE/"*.xlsx "$PKG/config/"
     echo "[配置] 已复制公开空表头工作簿。"
 fi
+printf '%s\n' "$CONFIG_PROFILE" > "$PKG/config-profile.txt"
 
 find "$PKG" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 find "$PKG" -name "*.pyc" -delete 2>/dev/null || true
@@ -112,6 +123,6 @@ echo ""
 echo "打包完成：dist/$ARTIFACT（$SIZE）"
 cat "$ARTIFACT.sha256"
 echo ""
-[ "$WITH_LOCAL_CONFIG" = "1" ] && echo "注意：本包携带本机真实配置，请勿外发。"
+[ "$CONFIG_PROFILE" = "internal-config" ] && echo "注意：本包携带真实配置，请勿外发。"
 echo "目标机器要求：python3 + pip（pip3 install -r requirements.txt）、LibreOffice Calc。"
-echo "正式审核需要通过独立渠道提供真实配置。"
+[ "$CONFIG_PROFILE" = "public-config" ] && echo "本包使用公开空表头配置；正式审核需导入机构真实配置。"

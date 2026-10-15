@@ -5,12 +5,12 @@ Windows）共用 `core` 的唯一业务核心（`base_audit` 后端 +
 `frontend` 前端 + `tests` 测试）。本目录只放外壳与平台启动/打包脚本。
 
 窗口标题、关于页面与程序文件名统一读取 `版本管理/VERSION_MANIFEST.json`。
-当前整包版本为 `V26.1.2.0`（年份.大版本.中版本.小版本），对应：
+当前整包版本为 `V26.1.5.1`（年份.大版本.中版本.小版本），对应：
 
-- pywebview：`审核工具_V26.1.2.0.exe`
-- Flask Win10/11：`审核工具_Flask_V26.1.2.0.exe`
-- Flask Win7：`审核工具_Flask_Win7兼容_V26.1.2.0.exe`
-- UOS/Linux 可执行程序：`审核工具_V26.1.2.0`
+- pywebview：`审核工具_V26.1.5.1.exe`
+- Flask Win10/11：`审核工具_Flask_V26.1.5.1.exe`
+- Flask Win7：`审核工具_Flask_Win7兼容_V26.1.5.1.exe`
+- UOS/Linux 可执行程序：`审核工具_V26.1.5.1`
 
 图标采用 `core/frontend/assets/app-icon.png` 的红色图形，Windows 程序使用同源 `.ico`。
 
@@ -30,21 +30,45 @@ Windows）共用 `core` 的唯一业务核心（`base_audit` 后端 +
 ```bat
 Windows-1-启动审核工具.bat     :: 运行（源码模式，绑定根目录 core；--packed 用打包版）
 Windows-2-打包双版本.bat       :: 构建 Win10/11 与 Win7 两个 EXE，放在同一个发布文件夹
+Windows-2-打包双版本_S1-S2专用.bat :: 双击构建 S1/S2 专用版，包含 Win10/11 与 Win7 两个 EXE
 ```
 
 ### Windows 双发行形态（同一业务核心）
 
-运行 `Windows-2-打包双版本.bat`。它在 `dist\` 下新建一个目录，把两个
+双击 `Windows-2-打包双版本.bat`，默认构建完整版。它在 `dist\` 下生成版本目录，把两个
 EXE 与共用的 `core\`、`config\` 放在一起；用户按自己的 Windows 版本选择
 对应 EXE。两套构建脚本保存在 `windows-build/`，由双版本入口依次调用。
+交付范围与 Linux 共用 `distribution-profiles.json`。默认读取 `full` 方案；
+要生成只显示 S1/S2 的双版本包，直接双击以下专用 BAT，无需输入参数：
+
+```bat
+Windows-2-打包双版本_S1-S2专用.bat
+:: 等同于 Windows-2-打包双版本.bat --profile s1s2
+```
+
+两个 EXE 共用同一份处理后的前端；S3/S4 导航及相关指引、问答、常规和高级设置
+按方案隐藏，输出目录追加 JSON 中的 `outputSuffix`（S1/S2 为 `_S1-S2`）。
+S1/S2 包按 JSON 的 `excludedConfigPatterns` 排除 3.0—3.3 配置工作簿，
+包含默认配置及备份目录中的同名副本；Windows、Linux 使用同一筛选实现。
+代码仍完整保留。通过关于口令显示 S3/S4 后，使用这些系统须另行导入相应配置。
+版本号自动读取版本清单；完整版目录为 `Windows-Flask_V26.1.5.1`，
+S1/S2 版为 `Windows-Flask_V26.1.5.1_S1-S2`。两个版本先在临时目录完成构建，
+成功后才发布到版本目录；同名旧包移入 `dist/归档-旧发行包-日期/`，失败时保留旧包。
+Windows 与 Linux 共用导航及 S1/S2 交付规则；运行环境、计算引擎与系统操作按平台能力展示。
+两个内部构建完成后才处理发行目录中的页面，仓库源页面始终保留完整界面。
+Windows-1、Linux-1 的源码开发启动不应用交付隐藏；Linux-1 在发行包内启动时仍遵从包内方案。
+pywebview 不应用这套交付隐藏。
+隐藏交付版可打开“关于”，在 2 秒内连续点击标题“关于审核工具”5 次，输入交付显示口令后
+显示全部系统及相关栏目。本次运行有效，重启后端恢复原交付范围；详见 `../docs/开发入口与本机开关.md`。
+
 不要把旧 `dist\core\data` 或旧 `dist\config` 当作发布内容；它们可能包含
 本机运行数据。合并发布目录的布局为：
 
 ```
 dist\
-└─ windows-YYYYMMDD_HHMMSS\
-   ├─ 审核工具_Flask_V26.1.2.0.exe          ← Win10/11
-   ├─ 审核工具_Flask_Win7兼容_V26.1.2.0.exe  ← Win7
+└─ Windows-Flask_V26.1.5.1\                ← S1/S2 版追加 _S1-S2
+   ├─ 审核工具_Flask_V26.1.5.1.exe          ← Win10/11
+   ├─ 审核工具_Flask_Win7兼容_V26.1.5.1.exe  ← Win7
    ├─ core\                              ← src、frontend 与空的 data 目录
    ├─ config\                            ← 当前正式配置副本
    ├─ 运行库修复\                         ← Win7 缺运行库时使用
@@ -65,7 +89,7 @@ Win7 使用独立的 32 位 Python 3.7/3.8 环境。
 
 > **绿色便携版已移除**（2026-09-21 用户要求）：不再生成内嵌运行时的
 > 便携目录/ZIP。`build_win7.py portable` 会明确报错；历史产物留在原处，
-> 请只分发本次生成的时间戳目录。
+> 请只分发本次成功生成的版本目录。
 
 Win7 阶段（内部 `windows-build/build-win7.bat`）使用已验证的 32 位 Python；旧虚拟环境失效时创建
 `build-win7-venv-rebuilt`，不会复用原有坏环境。可通过 `PYTHON_WIN7`
@@ -88,9 +112,10 @@ Win7 包不在 EXE 旁散放 DLL。目标机使用系统 UCRT；裸 Win7 报缺
 > 在 Win7 上会让 python.exe 直接「无法启动」——2026-09-21 真机踩坑实证。
 > 本打包脚本不再进行 app-local UCRT 分发。
 
-**传输**：合并打包后只拷贝一个 `dist\windows-*\` 目录
+**传输**：合并打包后只拷贝一个 `dist\Windows-Flask_V*\` 目录
 （两个 EXE 必须与 core\ 同级）。外发前核对 `config\` 中的机构信息是否适合接收方。
-`dist\` 根目录中的旧 EXE、`core\`、`config\` 等是历史产物，切勿与时间戳目录混发。
+`dist\` 根目录中的旧 EXE、`core\`、`config\` 等是历史产物，切勿与版本目录混发。
+`windows-时间戳` 是构建中间目录；带 `BUILD_INCOMPLETE.txt` 的目录不可交付。
 往目标机传大目录树时务必确认拷贝完整——真机曾因丢文件报
 `can't open file 'run.py'`；新 EXE 已把全部业务模块打进包内，不再依赖
 外部拷贝的完整性。
@@ -103,11 +128,9 @@ Win7 包不在 EXE 旁散放 DLL。目标机使用系统 UCRT；裸 Win7 报缺
 “在终端中运行”即可启动（加 `--background` 参数为后台启动并自动打开浏览器）。
 其余脚本（打包、冒烟、源码验收包等）同样方式运行，用途速查见同目录 `文件说明.txt`。
 
-说明：不再随仓库和发行包提供 `.desktop` 快捷方式——实测 UOS 桌面对该类入口
-的路径解析不可靠（相对 Exec 拒载、启动工作目录不定），双击体验反而不如直接
-运行脚本。安装 DEB 的用户从系统应用菜单启动「基础数据审核工具 V3」，该入口
-由安装包注册，稳定可靠。入口文件在版本库中带 Linux 可执行权限，无需手动
-chmod。纯源码启动需要 Python 3.8+ 及 `requirements.txt` 依赖；UOS20 自带的
+DEB 安装包会注册“审核工具 V版本号”应用菜单和桌面快捷方式；简体中文环境显示
+“审核工具”，其他语言环境回退显示 `audit-tools`。手动运行脚本时，入口文件在版本库中
+带 Linux 可执行权限，无需手动 chmod。纯源码启动需要 Python 3.8+ 及 `requirements.txt` 依赖；UOS20 自带的
 Python 3.7 不满足源码启动要求（发行包不受影响，见下）。
 
 ### 冻结发行包（DEB + tar.gz，自带 Python）
@@ -117,11 +140,33 @@ Python 3.7 不满足源码启动要求（发行包不受影响，见下）。
 ```sh
 /bin/sh ./Linux-1-启动审核工具.sh        # 前台调试运行（源码模式）
 /bin/sh ./Linux-2-打包DEB与TARGZ.sh      # 冻结+审计，一次出 DEB + tar.gz
+/bin/sh ./Linux-2-打包DEB与TARGZ.sh --profile s1s2 # 按 JSON 配置生成 S1/S2 交付版
 /bin/sh ./Linux-3-测试发行包启动.sh        # 本机实测 dist/ 最新 .deb 与 .tar.gz 能否启动
 ```
 
-- **DEB**：文件管理器双击安装到 `/opt/base-audit-v3/`，注册应用菜单
-  「基础数据审核工具 V3」（`base-audit-v3` 命令同效）。
+系统归属和交付方案集中在 `distribution-profiles.json`。Linux-2 与 Linux-7 都读取该文件；
+调整某方案的 `enabledSystems` 后，重打包会同步控制侧栏、操作指引、问答、常规设置和高级设置中的对应内容。
+目前 `full` 默认开放 S1–S4，`s1s2` 默认开放 S1、S2；隐藏仅用于交付界面范围，不拆分业务核心。
+
+Windows 本机双击 `Linux-7-Docker双架构打包.bat`，会启动 Docker Desktop，
+再通过 Ubuntu WSL 调用同名 SH，在 Docker 中依次构建 amd64、arm64 完整版。
+构建 S1/S2 交付版时传入 `--profile s1s2`；Linux/WSL 终端也可给主脚本加同一参数。
+旧的 S1/S2 专用入口仍可作为兼容快捷方式使用。
+Ubuntu 须已启用 Docker Desktop WSL 集成及 ARM64 模拟支持。
+
+完整版输出到 `dist/Linux-amd64_V版本/`、`dist/Linux-arm64_V版本/`；
+专用版目录追加 `_S1-S2`，每目录仅一个 DEB、一个程序 TAR.GZ、一个程序＋LO TAR.GZ。
+专用版隐藏未开放系统的侧栏菜单，以及对应的常规设置、高级设置、操作指引、问答和更新条目；
+S1/S2 的外部数据参照保留。只调整交付显示范围，不拆分共用业务核心。
+构建默认优先使用 `config-real/`，缺失才回退 `config/`；两个版本各自输出，不互相覆盖。
+
+- **DEB**：完整发行包使用 `Audit-Tools_V版本_构建时间_系统_Python_glibc_架构.deb`；S1/S2 专用版以 `Audit-Tools-S1-S2_V` 开头；
+  专用 DEB 包名为 `audit-tools-s1-s2`，与完整版互斥，安装时由 APT 替换，不可并存。
+  UOS 20/25、麒麟 V10/V11 桌面版均推荐从主系统终端以 APT 安装到
+  `/opt/base-audit-v3/`；麒麟 V11 先进入维护模式。V11 图形安装器可能把 DEB 放进
+  KARE 兼容环境，届时菜单启动的审核工具
+  可能看不到主系统的 LibreOffice/WPS。完整包管理器标识为 `audit-tools`，S1/S2 专用版为 `audit-tools-s1-s2`；注册应用菜单
+  「审核工具 V版本」及桌面快捷方式。原 `base-audit-v3` 包会在升级时替换，旧命令保留为兼容入口。
 - **tar.gz 便携包**：DEB 的备用方案——目标机无 root、包管理受限或不想安装时，
   解压到任意可写目录，运行其中 `shell-flask/Linux-1-启动审核工具.sh`
   （文件管理器右键“在终端中运行”或终端直接执行）；启动器自动识别发行包布局。
@@ -131,6 +176,18 @@ Python 3.7 不满足源码启动要求（发行包不受影响，见下）。
 - **Linux-3-测试发行包启动.sh**：打包后、分发前的本机实测（解包→启动→HTTP 200 与页面
   标题校验→释放端口→汇总）；可随产物拷到 UOS/麒麟目标机做安装前预检，
   测试机不需要 Python。
+  默认等待服务启动 30 秒；Docker/QEMU 的 ARM64 模拟检查可设置
+  `FLASK_SMOKE_START_TIMEOUT=180` 延长等待时间，启动后的 HTTP、图标和端口释放检查保持一致。
+- **通用离线交付**：`Linux-6-组装通用离线交付.sh` 将同架构审核工具 DEB
+  与 LibreOffice 官方 25.8.7 主安装包组装为单个 tar.gz，包含 42 个 LibreOffice
+  DEB、SHA-256 清单和 `install.sh`（源码为 `Linux-5-通用离线安装.sh`）。先核对
+  LibreOffice 官方 SHA-256，目标机再执行 `sh ./install.sh --check` 和
+  `sh ./install.sh`。适用于对应 CPU 架构的 UOS 20/25、麒麟 V10/V11 桌面版；仅 V11 须先进入
+  维护模式。脚本通过主系统 APT 安装，禁止联网补依赖；不要双击 DEB 进入 KARE。
+  组装沿用输入 DEB 的配置来源，支持 `audit-tools` 与 `audit-tools-s1-s2`；
+  默认构建优先真实配置，缺失时回退公开空表头；含真实配置的产物仅供内部使用。
+  安装内部包不会覆盖既有用户配置；已启动过公开包的测试机须在设置中心导入正式配置。
+  amd64 与 arm64 分别打包；目标系统缺少基础依赖时，离线安装会明确失败，须另备匹配系统的依赖包。
 
 引擎默认**不用构建机系统 Python**，而是下载 python-build-standalone 的自包含
 CPython 3.12.14（glibc 2.17 基线构建，含 Tcl/Tk）并用 PyInstaller 冻结，因此
@@ -141,11 +198,33 @@ glibc** 与架构（如 `..._uos-25_py3.12.14_glibc2.25_amd64.deb`）——构�
 ELF 审计 GLIBC/GLIBCXX 符号版本，超过目标基线（默认 glibc 2.28，即 UOS20）时
 构建失败并列出超标文件，取代旧的“到最老目标系统上构建”要求。
 
-**跨机器/跨芯片**：PyInstaller 不能交叉编译，不同 CPU 架构需到对应机器上打包；
+**跨机器/跨芯片**：PyInstaller 不能直接在 x86-64 Python 中生成 ARM64 程序，
+不同 CPU 架构需进入对应架构的运行环境打包（实体机或 QEMU 模拟容器）；
 `amd64` 与 `arm64`（飞腾/鲲鹏）打包机自动下载对应架构解释器，其它架构回退该机
 系统 Python（`--python` 可指定解释器）。UOS 与麒麟（Kylin V10 等 Debian 系）
 均适用：DEB 依赖只有 libc6/libcrypt1/libstdc++6/xdg-utils/iproute2，tar.gz
 完全免安装。
+
+没有 ARM64 实体机器时，可在 x86-64 Windows 的 Docker Desktop 中用 QEMU 构建。
+先用 `docker run --rm --platform linux/arm64 alpine:3.20 uname -m` 确认输出
+`aarch64`，再以 `docker build --platform linux/arm64 -f shell-flask/Dockerfile.arm64-builder
+-t audit-tools-arm64-builder .` 建立构建镜像。容器内运行 `Linux-2-打包DEB与TARGZ.sh
+--skip-tgz` 输出 arm64 DEB；`Linux-6-组装通用离线交付.sh` 配上官方
+`LibreOffice_25.8.7_Linux_aarch64_deb.tar.gz` 生成完整交付包。QEMU 构建只能验证
+ARM64 包结构与模拟运行，最终仍须在目标 ARM64 UOS/麒麟机器验收安装和 S1-F01。
+
+在项目根目录的 PowerShell 中可直接使用：
+
+```powershell
+$repo = (Get-Location).Path
+docker build --platform linux/arm64 -f shell-flask/Dockerfile.arm64-builder -t audit-tools-arm64-builder .
+docker run --rm --platform linux/arm64 --mount "type=bind,source=$repo,target=/work" --mount 'type=volume,source=audit-tools-arm64-cache,target=/root/.cache' --env FLASK_DIST_DIR=/work/shell-flask/dist/arm64 audit-tools-arm64-builder sh shell-flask/Linux-2-打包DEB与TARGZ.sh --skip-tgz
+$deb = (Get-ChildItem shell-flask/dist/arm64 -Filter '*.deb' | Sort-Object LastWriteTime -Descending | Select-Object -First 1).Name
+docker run --rm --platform linux/arm64 --mount "type=bind,source=$repo,target=/work" --mount 'type=bind,source=F:\VMware_share,target=/lo,readonly' audit-tools-arm64-builder sh shell-flask/Linux-6-组装通用离线交付.sh "shell-flask/dist/arm64/$deb" /lo/LibreOffice_25.8.7_Linux_aarch64_deb.tar.gz shell-flask/dist/arm64
+```
+
+内部测试版把输出目录改成 `shell-flask/dist/arm64/internal`，给 `Linux-2` 加
+`--with-local-config`，给 `Linux-6` 加 `--internal-config`；该包不得上传公开仓库。
 
 **配置边界**：默认打包使用仓库公开 `config/` 的空表头配置（构建时仍做隐私
 清理校验，机构参照/审核历史所在表只保留表头）；`--with-local-config` 从本机

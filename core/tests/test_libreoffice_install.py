@@ -374,6 +374,8 @@ def test_missing_pkexec_and_dpkg_tools_are_reported_without_shell_fallback(monke
 
 def test_installer_uses_safe_argv_and_reports_successful_target_version(tmp_path, mocked_linux, monkeypatch):
     debs = _make_debs_folder(tmp_path / "source")
+    monkeypatch.setattr(installer, "_installed_libreoffice_inventory", lambda: ([], {"display": "", "path": "", "source": ""}))
+    monkeypatch.setattr(installer, "_apt_get_path", lambda: None)
     malicious_name = debs / "calc ; touch injected $HOME.deb"
     existing_calc = next(debs.glob("*libreoffice25.8-calc*.deb"))
     existing_calc.rename(malicious_name)
@@ -470,6 +472,7 @@ def test_post_install_probe_does_not_fall_back_to_an_unrelated_existing_engine(m
     import base_audit.engines.libreoffice as engine_module
 
     monkeypatch.setattr(engine_module, "find_calc_engine", lambda: SimpleNamespace(command_prefix=("/usr/bin/soffice",), display="/usr/bin/soffice"))
+    monkeypatch.setattr(engine_module, "_find_direct_engine", lambda: None)
     monkeypatch.setattr(installer, "_is_executable", lambda _path: False)
     monkeypatch.setattr(installer.subprocess, "run", lambda *_args, **_kwargs: pytest.fail("must not probe an unrelated engine"))
 

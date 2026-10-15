@@ -1,0 +1,37 @@
+【时间、执行者与 WIP】
+2026-10-15（Asia/Shanghai）；执行者 Codex。
+修改前/后 commit 均为 f695136c181f9cf99720f51559b84bcfc75ff58d（desktop）；未提交或推送。
+保留 LibreOffice 官方下载入口、DEB 安装信息修复、V26.1.2.3 发行包和既有 WIP；新 DEB 单独输出到 V26.1.2.4 目录。
+
+【目的】
+用户希望 DEB 安装后在 Linux 桌面有快捷方式；升级时快捷方式应随目标产品版本更新。
+
+【修改文件】
+- shell-flask/Linux-2-打包DEB与TARGZ.sh：DEB postinst 在安装/升级时识别 SUDO_USER、PKEXEC_UID 和活动图形会话用户；优先通过 xdg-user-dir DESKTOP 找桌面路径，再回退 Desktop/桌面。由目标用户运行 install 创建/覆盖“审核工具.desktop”，并尝试写入桌面信任标记。系统菜单入口和桌面快捷方式共用同一启动入口。未找到桌面用户/目录时跳过桌面图标创建，不阻断安装。
+- 版本管理/VERSION_MANIFEST.json：整包 V26.1.2.3 → V26.1.2.4（PATCH）。
+- 版本管理/产品发布/CHANGELOG.md、日志/更新日志.txt、日志/开发日志.txt：记录桌面快捷方式及验证范围。
+- rules/11_版本管理与组件编号.md、shell-flask/README.md：同步当前整包版本和文件名示例。
+- 本记录。
+
+【组件版本】
+系统：公共 Linux 安装/打包；未新增 Sx-Fxx 编号。
+影响功能：S1/S2/S3 全部保持原版本。
+影响配置：S1/S2/S3 全部保持原版本；不修改工作簿及用户业务设置。
+未修改的相关组件：全部业务功能和配置组件。
+版本升级原因：PATCH——Linux DEB 安装增加桌面快捷方式并随版本更新；业务审核行为不变。
+
+【内部包】
+产物：shell-flask/dist/交付-V26.1.2.4-20261015/Linux-amd64-x86_64/审核工具_V26.1.2.4_2026.10.15.081340_ubuntu-24.04_py3.12.14_glibc2.25_amd64.deb。
+SHA-256：fb35dbf201940febdef5203df0002d7c7db16ff02d6251ea756cd98bbbcfdb83。
+包内含本机 config-real/ 的正式配置，仅用于内部测试，禁止外发或上传 GitHub。
+
+【验证】
+- DEB 构建成功，Architecture=amd64，产品版本 V26.1.2.4；冻结应用最低 glibc 实测 2.25（目标基线 2.28）。
+- 从 DEB 提取 postinst，`sh -n` 通过；使用临时模拟用户与临时 Desktop 目录执行 configure，生成可执行的“审核工具.desktop”，其 Name 为“审核工具 V26.1.2.4”，Exec 指向系统启动器。测试临时文件结束后清理。
+- Linux 发行包启动冒烟：1 通过、0 失败；HTTP 200、页面标题“审核工具 V26.1.2.4”、图标资源可获取、服务退出后端口释放。
+- `git diff --check` 通过；无业务自动化回归（仅变更 Linux 安装脚本和版本/发行记录）。未在麒麟/UOS 真机安装；桌面管理器对图标信任标记的表现需目标机确认。
+- 本机未安装 DEB；Windows EXE 未重建。
+
+【限制与回滚】
+快捷方式创建需要维护脚本获得目标用户身份，且用户已有桌面目录；若系统包管理后台不提供用户信息、loginctl 无活动图形会话或未安装 xdg-user-dir，桌面快捷方式可能跳过，但系统应用菜单仍可用。
+未删除旧发行包、真实配置或用户数据。可回滚本记录列出的 DEB postinst、版本及文档增量；构建产物位于被忽略的 dist/。

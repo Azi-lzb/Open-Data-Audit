@@ -145,8 +145,9 @@ def build(win7: bool) -> int:
         "--icon", str(icon),
         "--add-data", f"{manifest}{os.pathsep}版本管理",
         "--add-data", f"{assets}{os.pathsep}assets",
-        # 用户版更新日志随包分发（运行期 update_log_path 从 _MEIPASS 根定位）。
-        "--add-data", f"{update_log}{os.pathsep}.",
+        # 与共享身份模块的冻结资源位置一致。
+        "--add-data", f"{update_log}{os.pathsep}日志",
+        "--add-data", f"{faq}{os.pathsep}docs",
     ]
     if sys.platform == "win32":
         version_file = write_version_file(name, product)

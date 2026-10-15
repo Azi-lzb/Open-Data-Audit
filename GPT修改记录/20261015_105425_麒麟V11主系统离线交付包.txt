@@ -1,0 +1,33 @@
+【时间、执行者与 WIP】
+2026-10-15 10:54（Asia/Shanghai）；Codex，desktop 分支。保留先前全部未提交 WIP；本次未 commit、push、merge 或修改 main。
+
+【目标】
+麒麟 V11 交付审核工具与 LibreOffice 25.8.7 主系统安装包，避免双击 DEB 进入 KARE 后看不到主系统 Office。用户明确要求不再继续 KARE 适配；本轮未修改 core 的 KARE 或 S1-F01 计算实现。
+
+【修改文件】
+- shell-flask/Linux-5-麒麟V11离线安装.sh：离线交付包安装入口；只支持 V11 amd64，检查 43 个 DEB 的 SHA-256、包名/版本/架构；查询维护模式后由普通用户确认，使用 sudo apt-get --no-download 一次安装审核工具和 LibreOffice；安装后核对 dpkg 登记与 soffice --version。不自动切换模式或重启。
+- shell-flask/Linux-6-组装麒麟V11离线交付.sh：检查官方 LibreOffice 主安装包 SHA-256，解出 42 个 DEB，加入现有 Audit-Tools DEB、安装脚本、SHA256SUMS 与安装说明，输出单个 tar.gz 及外层 SHA-256。
+- shell-flask/README.md、shell-flask/文件说明.txt、docs/LibreOffice安装说明.md：说明 V11 主系统离线交付路径。
+- 日志/开发日志.txt：登记包装流程与验收边界。
+- 本记录。
+
+【版本、来源与隐私】
+产品 V26.1.4.0、S1-F01 v2.2.0、各配置组件版本均不变；发行包只是重新组合相同审核工具 DEB 和官方 LO DEB，无业务代码变化。
+LibreOffice 源文件：F:\\VMware_share\\LibreOffice_25.8.7_Linux_x86-64_deb.tar.gz。官方 SHA-256 为 7f4d7b2e36921eec5122c655249a24cc88935ee357e8261fd3bccd15aa1f7b9f，本地哈希一致；官方校验地址为 https://download.documentfoundation.org/libreoffice/stable/25.8.7/deb/x86_64/LibreOffice_25.8.7_Linux_x86-64_deb.tar.gz.sha256。
+审核工具使用上一轮公开空表头版 Audit-Tools_V26.1.4.0_2026.10.15.102814_ubuntu-24.04_py3.12.14_glibc2.25_amd64.deb；未加入 config-real、业务原始文件或测试数据。
+
+【最终交付物】
+shell-flask/dist/Audit-Tools_V26.1.4.0_Kylin-V11_amd64_LO25.8.7_offline_20261015_105303.tar.gz
+同名 .sha256；两者复制到 F:\\VMware_share。最终 tar.gz 大小 291085414 字节；源与共享目录 SHA-256 同为 A86421F1A8171689647F010CA645DD4EA08EBE66689A1FF6A29917EE5DFCE2EA。
+
+【验证】
+- 两个新 shell 脚本 sh -n 语法检查通过。
+- 组装脚本核对官方 LO 压缩包并从中取得 42 个 DEB；其内置 install.sh --check 通过，核对审核工具版本 1:26.1.4.0、42 个 LO 25.8.7 DEB、amd64 架构和 43 个文件 SHA-256。
+- 从最终共享 tar.gz 重新列目录，确认包含 43 个 DEB，install.sh 在归档中为可执行权限；共享与 dist 副本哈希一致。
+- 外层 .sha256 使用相对文件名；在 F:\\VMware_share 直接执行 sha256sum -c 通过。
+- WSL Ubuntu 24.04 的 apt-get --no-download 模拟命令解析成功，但因 WSL 缺少若干系统依赖而停止，不能代表麒麟 V11 依赖完整；未在 WSL 安装这些软件。
+- 真实麒麟 V11 的 sudo APT 安装、菜单新旧入口区分与 S1-F01 回归未执行；VMware Tools 仍不可用，需在目标机验证。
+
+【风险与后续】
+脚本禁止从网络下载依赖。若目标 V11 缺少基础依赖，APT 会明确失败，需管理员另备系统依赖；不做自动修复。若已有旧 KARE base-audit-v3，菜单可能保留旧入口，新版主系统入口须先核验，再处理旧包。
+本次首次组装的 105043 草稿包仍留在 dist/ 和 VMware 共享目录，最终交付仅使用 105303 包；自动审批拒绝了清理草稿的文件删除操作，未继续重试或修改其他文件。

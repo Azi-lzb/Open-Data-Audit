@@ -55,6 +55,8 @@ def test_dag_native_flow_golden_contract(native_env):
         engines.libreoffice.LibreOfficeCalculator, "recalculate", fake_recalculate
     ), patch.object(
         engines.libreoffice.LibreOfficeCalculator, "require_available", lambda self: None
+    ), patch.object(
+        engines, "calculation_engine_preflight", return_value=(True, "LibreOffice Calc (mock)")
     ):
         result = run_dag_flow(
             "dag:汇总核查表校验", service=service, template_path=template,
@@ -136,6 +138,8 @@ def test_s1_business_outputs_are_identical_when_run_log_export_changes(native_en
         engines.libreoffice.LibreOfficeCalculator, "recalculate", fake_recalculate
     ), patch.object(
         engines.libreoffice.LibreOfficeCalculator, "require_available", lambda self: None
+    ), patch.object(
+        engines, "calculation_engine_preflight", return_value=(True, "LibreOffice Calc (mock)")
     ):
         for config, output_dir, export_logs in zip(configs, output_dirs, (False, True)):
             results.append(run_dag_flow(

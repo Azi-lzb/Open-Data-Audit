@@ -1,0 +1,45 @@
+# 麒麟 V11 主系统 APT 安装 LibreOffice
+
+日期：2026-10-15 10:23（Asia/Shanghai）
+
+## 修改概述
+
+- 根据用户提供的麒麟 V11 实机结果，修正此前“V11 必须通过 KARE 安装和运行 LibreOffice”的判断：用户已在 Maintain Mode 下使用 `sudo apt install ./*.deb` 成功安装，并报告 S1-F1 直接发现主系统 LibreOffice、实测成功。
+- 内置 Linux DEB 安装器改为优先通过系统 `apt-get` 一次安装整组已校验的包，让 APT 处理依赖；没有 APT 时回退 `dpkg`。安装后校验主系统 Calc 版本，不再自动写入 KARE 配置。
+- V11 检查完成提示与失败提示加入 Maintain Mode 指引；程序不会自行切换系统模式或重启。
+- S1-F1 的直接 LibreOffice 调用逻辑不因本次 V11 路径调整而改变；保留既有可选 KARE 计算适配，但 V11 默认安装路径不依赖它。
+- 更新 Linux 安装说明、README、V11 调查文档、产品发布记录和版本清单说明。
+
+## 影响文件
+
+- `core/src/base_audit/native/libreoffice_install.py`
+- `core/src/base_audit/web_app.py`
+- `core/src/base_audit/engines/libreoffice.py`
+- `core/tests/test_libreoffice_install_api.py`
+- `core/tests/test_native_uos.py`
+- `shell-flask/Linux-3-测试发行包启动.sh`
+- `docs/LibreOffice安装说明.md`
+- `docs/麒麟V11_KARE安装LibreOffice与S1计算方案.md`
+- `README.md`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/产品发布/CHANGELOG.md`
+- `版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md`
+
+## 【组件版本】
+
+- 产品：V26.1.4.0（保持；本次修正该未提交版本的安装器方案与验收说明）
+- 影响功能：S1-F01 汇总核查表校验 v2.2.0 → v2.2.0（未变；没有更改 S1-F1 的主系统 LibreOffice 调用）
+- 影响配置：S1-CFG-01 v2.0.0 → v2.0.0（未变）；其他配置组件未变
+- 未修改的相关系统：S2、S3 业务实现和配置
+- 版本升级原因：产品安装辅助能力使用系统 APT 兼容麒麟 V11 Maintain Mode；S1-F01 版本不升级，因为其直接引擎调用不需要改动。
+
+## 验证与限制
+
+- 自动化测试：`test_libreoffice_install_api.py`、`test_native_uos.py`、`test_version_manifest.py` 定向回归 59 passed / 6 skipped / 1 deselected。未过滤时另外 1 项 `test_dag_audit_dispatches_to_native` 因 Windows 测试机没有 LibreOffice、真实计算引擎预检失败；不涉及本次安装器变更。
+- WSL Ubuntu 24.04 amd64 构建 DEB 与 tar.gz 成功；最低 glibc 要求 2.25。Linux 发行包启动冒烟修正了 `Audit-Tools_V...` 新前缀识别后，DEB 和 tar.gz 均通过 HTTP 200、标题、图标和端口释放检查（2/2）。默认公开空表头配置构建，未使用 `config-real`。
+- 对构建出的 amd64 DEB 执行 APT 本地文件安装依赖解析模拟，APT 正确识别本地包并解析系统依赖；模拟未实际安装或改动 WSL 系统。
+- 产物：`shell-flask/dist/Audit-Tools_V26.1.4.0_2026.10.15.102814_ubuntu-24.04_py3.12.14_glibc2.25_amd64.deb` 与同名 `.tar.gz`。
+- 真实麒麟 V11：用户报告手动 APT 安装及 S1-F1 测试通过；本机尚未通过审核工具内置入口在 V11 上执行安装，需用户在 V11 点选该入口后完成最终验证。
+- Docker/WSL 模拟不能替代麒麟桌面、Maintain Mode 和 pkexec 授权窗口的实机验收。
+
+Git：未提交。

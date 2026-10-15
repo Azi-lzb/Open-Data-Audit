@@ -1,0 +1,38 @@
+时间：2026-10-15 22:47:31（Asia/Shanghai）
+执行者：Codex
+修改前/后 commit：工作区 HEAD 未变（未提交）
+WIP：工作区存在大量既有未提交变更。本次保留原有文件和 S1/S2 专用包装入口，没有重置、清理 dist、提交或推送。
+
+【目的】
+把 S1-S4 界面归属和 Linux 交付方案放入一份 JSON，让 Linux-2/Linux-7 读取同一配置；S1/S2 交付隐藏尚未交付系统相关的界面栏目。
+
+【新增】
+shell-flask/distribution-profiles.json
+shell-flask/distribution_profile.py
+
+【修改】
+core/frontend/web/index.html：按发行版嵌入的 enabledSystems 控制侧栏、操作指引、问答、更新内容、常规设置和高级设置中的 S1-S4 内容；完整版默认显示全部系统。无后端权限或功能调用链变化。
+shell-flask/Linux-2-打包DEB与TARGZ.sh：新增 --profile full|s1s2，读取 JSON 设置 DEB 包名/冲突关系/产物前缀和前端范围；保留旧 --s1-s2-only 参数兼容。
+shell-flask/Linux-7-Docker双架构打包.sh、.bat：按 JSON 选择配置并传给 Linux-2，按配置区分输出目录。
+shell-flask/Linux-6-组装通用离线交付.sh：读取审核工具 DEB 元数据生成对应离线包名称。
+shell-flask/README.md、shell-flask/文件说明.txt：补充 JSON 配置、方案调用和隐藏范围说明。
+日志/开发日志.txt：仅新增开发记录，未更新用户版更新日志。
+
+【保留范围】
+未删除 Linux-2 与 Linux-7 的 S1/S2 专用 SH/BAT 入口；它们继续作为兼容快捷方式调用通用脚本。未加入 About 密码解锁，因为默认隐藏已满足当前选择。没有修改后端权限、功能 API、审核业务逻辑、配置结构或真实工作簿。
+
+【静态检查】
+- `python -m py_compile shell-flask/distribution_profile.py`：通过。
+- `python -m json.tool shell-flask/distribution-profiles.json`：通过。
+- Node.js 编译检查 `index.html` 中 1 段内联脚本：通过。
+- Windows Git `sh.exe -n`：Linux-2、Linux-6、Linux-7 及两个 S1/S2 SH 快捷入口，共 5 个脚本通过。
+- `git diff --check`：通过。
+- 未运行 pytest、端到端测试、Docker 构建或安装包构建；Linux-7 BAT 未在 CMD 中执行。
+
+【组件版本】
+产品整包：V26.1.5.1 → V26.1.5.1（未变）。
+S1/S2/S3 功能组件与配置组件：全部未变；本轮仅交付范围和 UI 显示归属调整，不涉及业务功能或工作簿配置。
+S4：仅使用现有导航页的交付显示归属，本轮未新增业务功能实现。
+
+【回滚说明】
+本轮没有删除文件或生成发行包。回滚时只撤销本记录列出的局部变更，必须保留工作区其他既有 WIP。

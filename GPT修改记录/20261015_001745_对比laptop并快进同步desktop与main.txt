@@ -1,0 +1,51 @@
+【时间与执行者】
+时间：2026-10-15（Asia/Shanghai）。执行者：Codex。
+修改前 commit：本机 desktop/main、origin/desktop/main 为 2995e7e11eab4a053a73ae91a1237238080b0185。
+修改后 commit：本机 desktop/main、origin/desktop/main/laptop 为 f695136c181f9cf99720f51559b84bcfc75ff58d。
+当前工作分支：desktop。本机旧 local laptop 分支未切换或覆盖；GitHub laptop 已是上述提交。
+
+【目的与用户授权】
+用户要求对比 laptop 与 desktop 的 bug 修复，并同步到 main。
+仅同步 laptop 的现有公开提交；本机上一轮尚未提交的 V26.1.2.1 打包修复仍保留工作区，不扩大本轮提交范围。
+origin 已核对为 https://github.com/Azi-lzb/Open-Data-Audit.git；未访问或修改 Close 私库。
+
+【对比与同步内容】
+fetch 后 origin/laptop 比 desktop/main 多 1 条提交，无分叉：
+f695136 高级设置与组合工作表配置默认隐藏；修复打包脚本续行符。
+提交仅影响：
+- core/frontend/web/index.html：高级设置及组合工作表配置解锁由 localStorage 持久记忆改为当前页面会话内存状态；默认隐藏，五连击解锁，新会话复位。
+- shell-flask/Linux-2-打包DEB与TARGZ.sh：补更新日志参数行末续行符。与本机未提交的同项修复完全一致，快进后该项已纳入提交，不再作为本机 diff 出现。
+- GPT修改记录/20261015_001003_高级设置与组合工作表配置默认隐藏并修复打包续行符.txt：laptop 原记录。
+本轮另新增本记录；证据及辅助脚本保存在被忽略的 core/data/git-sync-20261015_001745/。
+
+【WIP 保护】
+核对无既有暂存内容，保存 tracked-wip.patch、10 个 WIP 文件哈希及未跟踪记录副本。
+仅临时 stash 8 个已跟踪的打包改动，未移动 external/、地金工具/、config-real/、dist/ 或本机未跟踪记录。
+desktop --ff-only 更新至 origin/laptop；在该已提交状态验证，再切 main --ff-only 更新并 push origin desktop main；无强推、rebase 或独有提交覆盖。
+回到 desktop，apply 指定临时 stash。对 3 个文件恢复原始换行字节后，10 个既有 WIP 文件 SHA256 与保护前完全一致。
+确认恢复无误后删除本轮临时 stash；其余 stash 未动。147 个真实/公开配置及 external/地金工具受保护文件均未变。
+原安装包和交付目录保留；此前打出的 V26.1.2.1 包尚未包含本次页面可见性修复。
+
+【实际检查】
+- 检查 origin、分支差异、提交全文及全部 diff；0 个 desktop 独有提交，1 个 laptop 独有提交。
+- Node VM 编译页面内脚本，并执行解锁函数检查：默认隐藏、四次不解锁、第五次解锁、再次五次隐藏、隐藏按钮、切回通用页、新会话复位、禁止访问旧持久键，全部通过。不是浏览器端到端点击验收。
+- 对候选提交使用独立临时 Git 目录/索引，以 2995e7e 作比较基线、f695136 作候选树，运行 python tools/check_public_snapshot.py：3 个文件通过，0 个工作簿。正式索引未被暂存或改动。
+- 合入 main 前在 f695136 状态执行 python -m pytest -q -rs core/tests（独立 basetemp）：905 passed / 13 skipped / 3 failed / 0 errors / 2 subtests passed，127.87 秒。
+- 3 个失败仍是未找到 LibreOffice Calc 的原有环境问题：golden/test_golden_native_flow.py 的 test_dag_native_flow_golden_contract、test_s1_business_outputs_are_identical_when_run_log_export_changes，以及 test_native_uos.py 的 test_dag_audit_dispatches_to_native。失败原因与既有记录一致。
+- 13 个跳过中 7 个为 Windows 上 Linux 系统探测项；6 个为全量运行的 Python 没有加载 Flask 环境。使用已有 .venv/Lib/site-packages 补测 test_libreoffice_install_api.py：22 passed / 0 skipped / 0 failed / 0 errors，1.14 秒，覆盖前述 6 项。
+- git diff --check 通过。
+- push 后 git ls-remote 复核 GitHub main/desktop/laptop 均为 f695136c181f9cf99720f51559b84bcfc75ff58d；本机 desktop/main 及三个 origin 引用一致。
+
+【组件版本】
+纯分支同步，不另改产品或组件版本；laptop 原提交沿用 V26.1.2.0。
+本机保留的未提交打包修复产品版本为 V26.1.2.1；未以本次同步名义提交这部分 WIP。
+S1/S2/S3 业务功能、配置组件未改；S4 未实施；VBA 迁移无影响。
+
+【未执行与限制】
+没有实际浏览器五连击端到端测试、真实麒麟/UOS/Win7 或 Office 新验收；本轮未重打安装包。
+上述 LibreOffice 依赖缺失失败未修复为通过，也未用 mock 或改测试跳过来掩盖。
+本记录同前两份本机打包记录暂未提交，留待后续明确提交本机打包变更时一并纳入。
+
+【删除与回滚】
+未删除用户文件、旧产物或独有提交；仅删除已恢复并核对的本轮临时 stash。
+此次是授权快进与正常推送，无新业务提交。若需撤回远端修复，使用新的 revert 提交并另行取得用户授权，禁止强推回退公共历史。WIP 备份及验证证据保留于忽略目录。

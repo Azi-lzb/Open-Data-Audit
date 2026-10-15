@@ -1,6 +1,70 @@
 # S1-F01 汇总核查表校验
 
-当前版本：v2.0.0
+当前版本：v2.2.1
+
+## v2.2.1 — 2026-10-15 13:45
+
+变更类型：Bugfix / PATCH
+
+前版本：v2.2.0
+新版本：v2.2.1
+
+修改内容：
+- 多个 TDF LibreOffice DEB 版本并存时，direct 引擎按数值版本优先选择最新的 `/opt/libreofficeX.Y/program/soffice`；`BASE_AUDIT_SOFFICE` 和 `BASE_AUDIT_LIBREOFFICE_DIR` 显式设置仍优先。
+- 修复安装页已核验新版本，但 S1 计算引擎仍从 PATH 或系统目录选择旧版本的状态不一致。
+
+影响文件：
+- `core/src/base_audit/engines/libreoffice.py`
+- `core/src/base_audit/native/libreoffice_install.py`
+- `core/src/base_audit/web_app.py`
+- `core/frontend/web/index.html`
+
+配置影响：无工作簿、规则或业务配置变化。
+相关配置：S1-CFG-01 v2.0.0（未变）。
+测试：未运行自动化测试；Python 语法编译检查通过。多版本选择和 S1 计算需在 Linux/V11 真机确认。
+GPT修改记录：GPT修改记录/20261015_134524_LinuxLibreOffice版本与麒麟维护模式管理.txt。
+Git提交：未提交。
+
+## v2.2.0 — 2026-10-15 09:43
+
+变更类型：Feature / MINOR
+
+前版本：v2.1.0
+新版本：v2.2.0
+
+修改内容：
+- 支持从应用数据目录读取显式提供的 KARE 环境配置；没有该配置时，原有 direct/玲珑自动发现逻辑不变。
+- KARE 配置读取不参与麒麟 V11 内置 LibreOffice 安装；V11 Maintain Mode 的主系统安装会使用原有 direct LibreOffice 发现路径。
+
+影响文件：
+- `core/src/base_audit/engines/libreoffice.py`
+- `core/src/base_audit/web_app.py`
+- `core/tests/test_native_uos.py`
+
+配置影响：无工作簿或业务规则变化；可选读取用户显式提供的 `data/libreoffice-kare.json`，内置安装器不会自动创建该文件。
+相关配置：S1-CFG-01 v2.0.0（未变）。
+测试：KARE 引擎模拟用例通过；用户报告麒麟 V11 主系统 LibreOffice 已被 S1-F1 直接发现并完成实机测试。
+GPT修改记录：GPT修改记录/20261015_麒麟V11改用主系统APT安装LibreOffice.txt。
+Git提交：未提交。
+
+## v2.1.0 — 2026-10-15 09:03
+
+变更类型：Feature / MINOR
+
+前版本：v2.0.0
+新版本：v2.1.0
+
+修改内容：
+- 增加可选 KARE LibreOffice 计算引擎，命令采用已提供的 `kare run <app-id> ...` 调用形式。
+- 临时工作簿、转换输出与独立 profile 可映射到 KARE upper backing directory；传给兼容环境的路径转换为其根文件系统内路径。
+- KARE 入口要求显式配置 app ID；多个 KARE 环境时显式指定 upper 路径，不影响直接 LibreOffice 和玲珑引擎。
+
+配置影响：无工作簿或业务规则配置变化；新增运行环境变量见 docs/麒麟V11_KARE安装LibreOffice与S1计算方案.md。
+测试：KARE 模拟 Docker 内的项目真实计算器公式重算通过；定向 KARE/direct/玲珑/临时文件用例 5 passed；S1 组 445 passed / 13 skipped / 3 failed，3 项因 Windows 测试机无法发现 Linux LibreOffice 而在 native 公式预检失败。麒麟 V11 Guest 真机安装和调用未执行。
+GPT修改记录：GPT修改记录/20261015_090302_麒麟V11_KARE与LibreOffice适配.txt。
+Git提交：未提交。
+
+已知限制：KARE DEB 安装流程与应用 ID/upper 路径需在麒麟 V11 中验证；本次不修改现有 pkexec/dpkg 安装器。
 
 ## v2.0.0 — 2026-10-13 21:54
 

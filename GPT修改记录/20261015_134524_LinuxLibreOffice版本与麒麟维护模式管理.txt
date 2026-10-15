@@ -1,0 +1,42 @@
+# Linux LibreOffice 版本管理与麒麟维护模式管理
+
+日期：2026-10-15 13:45（Asia/Shanghai）
+
+## 修改概述
+
+- 设置中心的 LibreOffice 管理页列出已检测的版本、安装目录和当前审核实际使用的引擎；多个版本并存时，默认优先使用数值版本较高的 TDF `/opt/libreofficeX.Y`，显式指定路径仍优先。
+- 安装新版本时不自动卸载旧版。对选定的版本化 DEB 软件包提供单版本卸载；先运行 APT 模拟方案，只有计划与该版本的包清单完全一致才继续，不执行 autoremove，也不自动清理共享依赖。系统仓库版和手动目录仅检测，不由本页卸载。
+- 麒麟 V11 页面显示模式状态，并提供检查、切换到维护模式、保存退出维护模式入口。命令由 pkexec 授权；程序不自动重启。退出使用 `mm-cli -c`，不使用会丢弃更改的 `mm-cli -c -n reboot`。
+- 终端安装说明统一为 `sudo apt install ./*.deb`。麒麟 V11 在确认维护模式并重启后才开放安装/卸载入口。
+
+## 影响文件
+
+- `core/frontend/web/index.html`
+- `core/src/base_audit/engines/libreoffice.py`
+- `core/src/base_audit/native/libreoffice_install.py`
+- `core/src/base_audit/web_app.py`
+- `shell-flask/app.py`
+- `shell-flask/README.md`
+- `docs/LibreOffice安装说明.md`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/README.md`
+- `rules/11_版本管理与组件编号.md`
+- `版本管理/产品发布/CHANGELOG.md`
+- `版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md`
+
+## 【组件版本】
+
+- 产品：V26.1.4.0 → V26.1.5.0
+- 影响功能：S1-F01 汇总核查表校验 v2.2.0 → v2.2.1
+- 影响配置：S1-CFG-01 v2.0.0 → v2.0.0（未变）；其他配置组件未变
+- 未修改的相关系统：S2、S3 的功能实现与配置
+- 版本升级原因：产品新增 Linux LibreOffice 版本/麒麟维护模式管理能力；S1-F01 修复多个版本并存时审核引擎可能仍选旧版的问题，属于 PATCH。
+
+## 验证与限制
+
+- 修改后的 Python 模块已通过语法编译检查；未运行自动化测试。
+- 尚未在真实麒麟 V11 验收 `mm-cli -s/-o/-c`、pkexec 认证、维护模式重启、APT 单版本卸载计划及重启后状态。
+- 未在带多个官方 LibreOffice 版本的 Linux 主机实测 active 引擎优先级；需确认设置中心显示的版本与 S1 使用的版本一致。
+- 保留本轮开始前工作区已有的其他修改，不提交、不推送。
+
+Git：未提交。

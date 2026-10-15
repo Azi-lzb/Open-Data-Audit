@@ -36,6 +36,17 @@ def _os_pretty_name() -> str:
     return f"{platform.system()} {platform.release()}"
 
 
+def _architecture_summary() -> str:
+    """本机 CPU 架构；同时显示常见的 Windows/Linux 命名。"""
+    machine = platform.machine().strip()
+    normalized = machine.casefold()
+    if normalized in {"amd64", "x86_64", "x64"}:
+        return "x86_64（AMD64）"
+    if normalized in {"arm64", "aarch64"}:
+        return "ARM64（aarch64）"
+    return machine or "未知"
+
+
 def _glibc_version() -> str:
     """本机 glibc 版本；Windows 无此概念。
 
@@ -469,6 +480,7 @@ def system_environment_summary(probe_version: bool = False, probe_com: bool = Fa
         _SUMMARY = {
             "app": _app_summary(),
             "os": _os_pretty_name(),
+            "architecture": _architecture_summary(),
             "glibc": _glibc_version(),
             "python": _python_description(),
             "libreoffice": _libreoffice_summary(probe_version=False),
@@ -494,6 +506,7 @@ def system_environment_text() -> str:
         (
             f"产品：{info['app']}",
             f"系统：{info['os']}",
+            f"架构：{info['architecture']}",
             f"区域编码：{info['locale']}",
             f"glibc：{info['glibc']}",
             f"Python：{info['python']}",

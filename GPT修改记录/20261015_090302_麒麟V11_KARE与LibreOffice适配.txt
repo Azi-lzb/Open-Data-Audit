@@ -1,0 +1,47 @@
+【时间】2026-10-15 09:03（Asia/Shanghai）
+【执行者】Codex
+【修改前 commit】f695136（desktop）
+【修改后 commit】f695136（未提交）
+【WIP 状态】工作区原有 DEB/桌面快捷方式、版本清单、帮助文档、打包脚本及地金工具等 WIP 保留；未提交、未推送。新增 Docker 下载包、模拟样本和产出放在被忽略的 core/data/kare-v11-sim/。
+
+【目的】根据本机 WSL2、Docker 和 VMware 虚拟机能力，验证麒麟 V11 的 KARE 环境中 LibreOffice 无头计算路径；评估并落地 S1-F1 的安全适配。
+
+【修改文件】
+- core/src/base_audit/engines/libreoffice.py：新增显式 KARE 计算引擎；传入 app ID 和 upper 根目录，把 upper backing directory 映射为 KARE 容器内路径；临时工作簿、输出和独立 profile 使用该映射。
+- core/src/base_audit/engines/__init__.py：无可用 Calc 时补充 KARE 环境变量指引。
+- core/tests/test_native_uos.py：新增 KARE app ID/upper 发现与缺 app ID 拒绝选择的测试。
+- core/tests/test_version_manifest.py：更新 S1-F01 预期组件版本。
+- docs/麒麟V11_KARE安装LibreOffice与S1计算方案.md：记录 WSL2 Docker 模拟、vmrun 调用示例、当前限制及真机验收清单。
+- docs/LibreOffice安装说明.md：注明现有辅助安装入口仅调用主系统 dpkg，尚未接入麒麟 V11 KARE。
+- 版本管理/VERSION_MANIFEST.json、版本管理/产品发布/CHANGELOG.md、版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md、日志/更新日志.txt、日志/开发日志.txt：登记本次变化。
+
+【逻辑变化】
+- 新环境变量：BASE_AUDIT_ENGINE=kare、BASE_AUDIT_KARE_APP_ID；多套 KARE 环境时设置 BASE_AUDIT_KARE_UPPER_ROOT。未显式提供 app ID 时不猜测或调用 KARE 应用。
+- 假定 upper 是 KARE 根文件系统 overlay 的 backing directory；项目将 KARE 暂存路径映射到容器路径。该路径映射已在 Docker 模拟中验证，麒麟 V11 真机路径与权限仍未验证。
+- 未改 libreoffice_install.py。其真实日志只记录 pkexec/dpkg 返回码 255，无系统错误正文；当前 V11 KARE 安装 CLI、包登记流程和应用 ID 未查证，暂不把主系统 dpkg 安装器改写成未经验证的命令。
+- 未修改业务配置或 VBA。
+
+【组件版本】
+系统：S1 逐笔统计系统
+影响功能：S1-F01 汇总核查表校验 v2.0.0 → v2.1.0（MINOR：新增可选 KARE LibreOffice 计算路径）
+影响配置：无；S1-CFG-01 保持 v2.0.0
+未修改的相关组件：S1-F02～F05、S2-*、S3-*、其余配置组件
+整包版本：V26.1.2.4 → V26.1.3.0（S1 新增可选平台计算能力）
+
+【测试】
+- WSL2 Ubuntu 20.04 Docker：官方 LibreOffice 25.8.7.3-3 amd64 DEB 成功安装；Calc 无头重算公式缓存 6；DOCX→PDF 输出 17,497 字节；项目真实 LibreOfficeCalculator 通过模拟 `kare run org.libreoffice.libreoffice` 重算；输入 SHA-256 `fb6cbf62ee29b1976dfa231c30d2d9f739bdbbf4524cce6c75550d62bc8da995` 前后不变。
+- 定向 KARE/direct/玲珑/临时文件测试：5 passed，24 deselected。
+- engine preflight + version manifest：8 passed，4 skipped；单独 version manifest：8 passed。
+- S1 分组：445 passed，13 skipped，3 failed。失败为 `test_dag_native_flow_golden_contract`、`test_s1_business_outputs_are_identical_when_run_log_export_changes`、`test_dag_audit_dispatches_to_native`；在 Windows 测试机模拟 Linux 时无法发现真实 Linux LibreOffice，失败发生在 S1-F1 计算预检。
+- S3 分组：500 passed，6 skipped，2 subtests passed。
+- compileall 通过；git diff --check 通过（Git 对此前打包脚本/README 的 CRLF WIP 给出行尾转换提示）。
+- VMware V11 虚拟机显示运行中，但 vmrun Guest Tools 状态 unknown、Guest IP 为空，Guest 复制/执行未能使用；未执行真实麒麟 V11 安装、应用 ID、upper 路径、离线依赖或真机 S1-F1。
+
+【未执行项与已知问题】
+- KARE 25.8.7 DEB 安装未完成。较早 openKylin 文档的 `kare -b v10sp1` / `kare -e baseOS -i <deb>` 不等同于已核实的商业麒麟 V11 接口；需 Guest 实际 `kare --help`、`kare run --help`、包状态和路径输出后实现。
+- S1-F1 桌面启动器的 KARE 环境变量持久化尚未接入；当前适配要求启动进程继承环境变量，适合作为技术验证入口。
+- Docker 使用 Ubuntu 20.04 依赖，不代表 KARE 兼容环境缺失的麒麟运行库清单。
+
+【回滚提示】移除本次 KARE 引擎分支、两个新增测试和本文档即可回退代码能力；不需回滚用户数据。不要删除 core/data/kare-v11-sim 中其它数据前先确认归属；该目录按项目规则被 Git 忽略。
+
+【删除清单】无。

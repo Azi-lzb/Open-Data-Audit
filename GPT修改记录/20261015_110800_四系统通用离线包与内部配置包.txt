@@ -1,0 +1,26 @@
+【时间、执行者与 WIP】
+2026-10-15 11:08（Asia/Shanghai）；Codex，desktop 分支，修改前 commit f695136。保留已有未提交 WIP；本次未 commit、push、merge 或修改 main。
+
+【目标】
+让 amd64 的 UOS 20、UOS 25、麒麟 V10、麒麟 V11 桌面版共用审核工具与 LibreOffice 25.8.7 的离线 APT 安装包；另做含 config-real 的内部测试包。
+
+【修改文件】
+- shell-flask/Linux-5-通用离线安装.sh、Linux-6-组装通用离线交付.sh：原 V11 专属新脚本改名并泛化。普通用户在主系统终端执行，V11 单独提示维护模式，其他系统直接走 APT；核对架构、内核、glibc、43 个 DEB 包名/版本/架构和 SHA-256；APT 禁止网络下载，可重装或覆盖目标旧版本。
+- shell-flask/Linux-2-打包DEB与TARGZ.sh：--with-local-config 只带当前六册与默认六册配置，不再把 config-real 的备份文件夹一起装包。
+- shell-flask/README.md、shell-flask/文件说明.txt、docs/LibreOffice安装说明.md、日志/开发日志.txt：通用安装和内外包边界说明。
+- 本记录。无业务核心、配置源文件及 VBA 变更；【组件版本】不升级，产品版本维持 V26.1.4.0。
+
+【交付物】
+公开包：shell-flask/dist/Audit-Tools_V26.1.4.0_Linux-amd64_LO25.8.7_public-config_offline_20261015_110417.tar.gz；SHA-256 48F40929E56ABA8D0B4C78E532BE562F028DD043471B24CA37FA557853159406。
+内部包：shell-flask/dist/internal/Audit-Tools_V26.1.4.0_Linux-amd64_LO25.8.7_internal-config_offline_20261015_110612.tar.gz；SHA-256 01E5374CC86E1BA1E8EEC72A856D12C5A6AFCB14C4A7E2C6EB4D62C5F83B17F8。
+同名 .sha256 随包保存。公开包复制到 F:\VMware_share，内部包只复制到 F:\VMware_share\内部测试-勿外发；两处副本与源文件 SHA-256 相同。dist/ 被 Git 忽略，不得将内部包上传 GitHub。
+
+【验证】
+- 官方 LibreOffice 25.8.7 x86-64 原包 SHA-256 与官方值一致；两包组装时各自的 install.sh --check 通过，43 个 DEB 各自满足版本、架构与 SHA-256 检查。
+- 两包外层 .sha256 校验通过，归档中均有 43 个 DEB。通用安装和组装脚本 sh -n 通过，git diff --check 通过。
+- 内部 DEB 中六册当前配置与本机 config-real 对应文件逐字节一致；不含备份文件夹。冻结可执行文件实测最低 glibc 要求 2.25。
+- 未新增自动测试：本轮调整的是离线组装脚本，以构建时和包内校验作定向验证。未在 UOS 20/25、麒麟 V10/V11 真机执行 APT 安装，也未进行真机 S1-F01 重算；不能据此宣称四系统均已验收。
+
+【风险与回滚】
+同一 amd64 包还要求目标机具备 LibreOffice 官方要求的内核 4.18+、glibc 2.27+、x86-64-v2 CPU，以及可满足的系统依赖。脚本预检前两项，缺少离线依赖会由 APT 明确报错；arm64 须另行构建对应架构包。UOS 可能需要开启开发者模式，V11 需维护模式。安装内部包不会覆盖已有用户配置，已启动过公开包的测试机须在设置中心导入正式配置。
+本轮未删除业务数据；此前的 V11 专属包仍保留。回滚可继续使用此前 V11 专属脚本和包；此次构建产物均在忽略目录及本机 VMware 共享目录，不影响公开仓库。

@@ -1,0 +1,47 @@
+时间：2026-10-15 22:30:09（Asia/Shanghai）
+执行者：Codex（侧对话，用户明确要求增加 Linux-7 S1/S2 专用交付版）
+修改前/后 commit：f695136c181f9cf99720f51559b84bcfc75ff58d（未提交）
+WIP：仓库有大量既有未提交变更，包括 Linux-2 专用版及前端分发范围逻辑；本次按当前实现局部补充，不覆盖既有 WIP，无 Git 写操作。
+
+【目的】
+在现有 Docker 双架构构建入口之外提供 S1/S2 专用入口，隐藏 S3/S4 功能及专属界面信息，继续共用唯一 core。
+
+【新增】
+shell-flask/Linux-7-Docker双架构打包_S1-S2专用.bat
+shell-flask/Linux-7-Docker双架构打包_S1-S2专用.sh
+core/tests/test_distribution_profile.py
+本修改记录。
+
+【局部修改】
+shell-flask/Linux-7-Docker双架构打包.sh：新增 --s1-s2-only，转交 Linux-2；分离输出目录和产物前缀，保留每架构三件套及输出目录保护。
+shell-flask/Linux-7-Docker双架构打包.bat：白名单传递专用版参数；修正 WSL 路径转换时结尾反斜杠引用，两个 BAT 采用 UTF-8、CRLF。
+shell-flask/Linux-5-通用离线安装.sh：支持专用 DEB 包名，按实际包名核对安装版本。
+shell-flask/Linux-6-组装通用离线交付.sh：识别专用包名，离线包名称保留 S1-S2 范围。
+core/frontend/web/index.html：补齐专用版常规配置、混合问答、更新日志过滤与指引连续编号；保留完整版显示与 S1/S2 外部数据参照。
+docs/常见问题.json：五条共用问答增加可选 answerS1S2；完整答案保留。
+core/tests/conftest.py、core/tests/TEST_GROUPS.md：登记分发范围前端行为测试，归入三个系统公共组。
+shell-flask/README.md、shell-flask/文件说明.txt：说明入口、输出、配置优先级与实际交付范围。
+日志/开发日志.txt：增加开发记录；未修改用户版更新日志。
+
+【逻辑、配置及 VBA 影响】
+复用现有 Linux-2 --s1-s2-only，未复制业务实现、未修改审核算法、工作簿、配置或 VBA 语义。
+S1/S2 专用版只是显示范围控制，不是物理删除核心模块或安全授权机制。
+构建配置仍默认优先 config-real，缺失回退 config；真实配置与产物继续不入 Git。
+
+【验证】
+python -m pytest -q -rs core/tests/test_distribution_profile.py core/tests/test_app_identity.py core/tests/test_web_app.py：63 passed，0 failed/skip/error。
+新增前端检查使用 Node.js 实际执行完整版和专用版过滤/渲染函数，并检查整页脚本语法；页面微调后再运行该测试通过。
+WSL sh -n：Linux-5/6/7 及新 SH 入口通过；两个 Linux-7 SH 帮助入口通过。
+五个集成场景通过：完整版两架构三件套；专用版参数透传与独立输出；帮助/非法参数；非产物文件保护；真实 Linux-6 + Linux-5 --check 接受最小专用 DEB 与官方 LO 25.8.7 的 42 个 DEB，生成范围明确的离线归档。
+前四个场景用临时项目和 Docker 替身验证构建编排，不冒充真实双架构应用构建；第五场景在临时 amd64 容器中使用真实 LO 压缩包与最小测试 DEB，未执行 APT 安装。
+BAT：实际 CMD 执行非法参数返回 2；CMD→WSL 的路径转换、中文 SH 名和范围参数以 --help 模式通过。未双击触发完整打包。
+git diff --check（本次已跟踪修改文件）：通过。
+未执行：完整 amd64/arm64 应用重建、业务工作簿回归、ARM64 真机或目标系统安装；现有 dist 交付包未重新生成或替换。
+
+【组件版本】
+本次为交付范围与打包入口调整，未发布新整包；产品仍为 V26.1.5.1，不升级。
+S1/S2/S3 功能组件与全部配置组件版本不变，S4 未新增业务实现。
+
+【删除与回滚】
+无业务文件删除。测试只在临时目录和自动删除的容器中组装，未覆盖 dist 产物。
+回滚仅撤销本记录列出的局部新增与补丁，保留既有 WIP；禁止整文件重置或回滚他人的改动。
