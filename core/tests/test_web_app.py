@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -7,13 +9,14 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from base_audit.web_app import WebApi
+from base_audit import app_identity
 from base_audit.name_config import HISTORY_WORKBOOK_NAME, initialize_config
 from base_audit.history import HISTORY_AUDIT_SHEET
 from base_audit.workflow.catalog import save_custom_workflow
@@ -31,6 +34,20 @@ class _Window:
 
 
 class WebAppCompatibilityTests(unittest.TestCase):
+    @staticmethod
+    def _write_marker_workbook(path: Path, marker: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        book = Workbook()
+        try:
+            book.active["A1"] = marker
+            book.save(path)
+        finally:
+            book.close()
+
+    @staticmethod
+    def _file_hash(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
     def test_run_log_preferences_are_independent_and_legacy_api_is_compatible(self) -> None:
         with TemporaryDirectory() as folder:
             root = Path(folder)
@@ -85,6 +102,17 @@ class WebAppCompatibilityTests(unittest.TestCase):
         self.assertIn("公式校验复制方式：", source)
         self.assertIn("条件格式判定方式：", source)
         self.assertNotIn("let logFull=", source)
+
+    def test_settings_ui_exposes_independent_external_reference_template_actions(self) -> None:
+        source = (ROOT / "frontend" / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("row('大集中外部数据模板'", source)
+        self.assertIn("isSystemVisible('S1')||isSystemVisible('S2')", source)
+        self.assertIn("第2行表头，B列机构、C列数值；参照表代码→报表项目优先。", source)
+        self.assertIn("open_external_reference_config()", source)
+        self.assertIn("set_external_reference_config_default()", source)
+        self.assertIn("reset_external_reference_config()", source)
+        self.assertIn("恢复整册工作簿，包含全部数据", source)
+        self.assertIn("尚未保存独立默认快照时无法重置", source)
 
     def test_period_config_check_button_is_in_field_header(self) -> None:
         source = (ROOT / "frontend" / "web" / "index.html").read_text(encoding="utf-8")
@@ -467,6 +495,80 @@ class WebAppCompatibilityTests(unittest.TestCase):
             backups = list((root / "config" / "备份文件夹").glob("2.报表采集系统_配置_备份_*.xlsx"))
             self.assertEqual(len(backups), 2)
             self.assertFalse((root / "config" / "2.报表采集系统_单位配置.xlsx").exists())
+
+    def test_external_reference_default_and_reset_restore_complete_workbook_hash(self) -> None:
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            manifest = root / "VERSION_MANIFEST.json"
+            manifest.write_text(json.dumps({
+                "product": {"id": "test", "name": "测试工具", "version": "26.1.0.0"},
+                "configs": {"S2-CFG-02": {"file": "config/外部模板.xlsx"}},
+            }), encoding="utf-8")
+            (root / "config-real").mkdir()
+            with patch.object(app_identity, "manifest_path", return_value=manifest):
+                api = WebApi(root)
+                target = Path(api.state["externalReferenceConfig"])
+                self.assertEqual(target, root / "config-real" / "外部模板.xlsx")
+                self._write_marker_workbook(target, "original workbook")
+                original_hash = self._file_hash(target)
+
+                run_data = root / "chosen-run-data.xlsx"
+                api.state["pcCentral"] = str(run_data)
+                api.settings.period_central_file = str(run_data)
+                api.set_external_reference_config_default()
+                snapshot = Path(api.state["configDefaults"]["externalReference"])
+                self.assertTrue(snapshot.is_file())
+                self.assertEqual(self._file_hash(snapshot), original_hash)
+
+                self._write_marker_workbook(target, "edited workbook")
+                api.reset_external_reference_config()
+
+                self.assertEqual(self._file_hash(target), original_hash)
+                self.assertEqual(api.state["pcCentral"], str(run_data))
+                self.assertEqual(api.settings.period_central_file, str(run_data))
+
+    def test_external_reference_reset_without_snapshot_leaves_workbook_unchanged(self) -> None:
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            manifest = root / "VERSION_MANIFEST.json"
+            manifest.write_text(json.dumps({
+                "product": {"id": "test", "name": "测试工具", "version": "26.1.0.0"},
+                "configs": {"S2-CFG-02": {"file": "config/外部模板.xlsx"}},
+            }), encoding="utf-8")
+            (root / "config-real").mkdir()
+            with patch.object(app_identity, "manifest_path", return_value=manifest):
+                api = WebApi(root)
+                target = Path(api.state["externalReferenceConfig"])
+                self._write_marker_workbook(target, "keep this workbook")
+                before = self._file_hash(target)
+
+                with self.assertRaisesRegex(RuntimeError, "尚未保存.*默认快照"):
+                    api.reset_external_reference_config()
+
+                self.assertEqual(self._file_hash(target), before)
+
+    def test_external_reference_reset_stops_when_backup_fails(self) -> None:
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            manifest = root / "VERSION_MANIFEST.json"
+            manifest.write_text(json.dumps({
+                "product": {"id": "test", "name": "测试工具", "version": "26.1.0.0"},
+                "configs": {"S2-CFG-02": {"file": "config/外部模板.xlsx"}},
+            }), encoding="utf-8")
+            (root / "config-real").mkdir()
+            with patch.object(app_identity, "manifest_path", return_value=manifest):
+                api = WebApi(root)
+                target = Path(api.state["externalReferenceConfig"])
+                self._write_marker_workbook(target, "approved default")
+                api.set_external_reference_config_default()
+                self._write_marker_workbook(target, "current user data")
+                before = self._file_hash(target)
+
+                with patch.object(api, "_backup_config_file", side_effect=OSError("disk full")):
+                    with self.assertRaisesRegex(RuntimeError, "无法备份"):
+                        api.reset_external_reference_config()
+
+                self.assertEqual(self._file_hash(target), before)
 
     def test_period_compare_paths_and_output_are_persisted_separately(self) -> None:
         with TemporaryDirectory() as folder:

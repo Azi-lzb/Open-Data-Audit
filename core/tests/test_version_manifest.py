@@ -24,7 +24,7 @@ EXPECTED_FEATURES = {
     "S3-F01", "S3-F02", "S3-F03", "S3-F04", "S3-F05",
 }
 EXPECTED_CONFIGS = {
-    "S1-CFG-01", "S2-CFG-01",
+    "S1-CFG-01", "S2-CFG-01", "S2-CFG-02",
     "S3-CFG-00", "S3-CFG-01", "S3-CFG-02", "S3-CFG-03",
 }
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
@@ -49,7 +49,7 @@ def test_manifest_is_valid_json_with_core_sections(manifest: dict) -> None:
     assert set(manifest["systems"]) == {"S1", "S2", "S3"}
 
 
-def test_all_11_features_and_6_configs_registered(manifest: dict) -> None:
+def test_all_11_features_and_7_configs_registered(manifest: dict) -> None:
     assert set(manifest["features"]) == EXPECTED_FEATURES
     assert set(manifest["configs"]) == EXPECTED_CONFIGS
 
@@ -71,9 +71,9 @@ EXPECTED_VERSIONS = {
     # S1-F01 v2.2.1：多个官方 LibreOffice DEB 版本并存时优先使用最高版本。
     "S1-F01": "2.2.1", "S1-F02": "1.1.1", "S1-F03": "1.1.0",
     "S1-F04": "1.1.0", "S1-F05": "1.0.1",
-    "S2-F01": "7.1.0", "S3-F01": "1.5.2", "S3-F02": "1.1.0",
+    "S2-F01": "7.2.0", "S3-F01": "1.5.2", "S3-F02": "1.1.0",
     "S3-F03": "1.1.0", "S3-F04": "1.2.2", "S3-F05": "2.0.0",
-    "S1-CFG-01": "2.0.0", "S2-CFG-01": "8.0.2",
+    "S1-CFG-01": "2.0.0", "S2-CFG-01": "8.2.1", "S2-CFG-02": "1.0.0",
     "S3-CFG-00": "2.0.2", "S3-CFG-01": "3.0.3",
     "S3-CFG-02": "1.0.3", "S3-CFG-03": "2.0.0",
 }
@@ -81,7 +81,7 @@ EXPECTED_VERSIONS = {
 
 def test_component_ids_are_unique_and_versions_wellformed(manifest: dict) -> None:
     ids = [*manifest["features"], *manifest["configs"]]
-    assert len(ids) == len(set(ids)) == 17
+    assert len(ids) == len(set(ids)) == 18
     for cid, component in [*manifest["features"].items(), *manifest["configs"].items()]:
         assert VERSION_RE.match(component["version"]), component
         assert component["version"] == EXPECTED_VERSIONS.get(cid, "1.0.0"), cid
@@ -97,7 +97,8 @@ def test_every_component_has_changelog(manifest: dict) -> None:
 
 EXPECTED_CONFIG_VERSIONS = {
     "S1-CFG-01": "2.0.0",
-    "S2-CFG-01": "8.0.2",
+    "S2-CFG-01": "8.2.1",
+    "S2-CFG-02": "1.0.0",
     "S3-CFG-00": "2.0.2",
     # v3.0.0：3.1 表达式规则输入列从“触发方式”升级为“是否取反（是/否）”。
     "S3-CFG-01": "3.0.3",

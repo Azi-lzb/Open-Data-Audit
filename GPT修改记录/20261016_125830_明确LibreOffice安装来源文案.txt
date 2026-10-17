@@ -1,0 +1,18 @@
+时间：2026-10-16 12:58:30（Asia/Shanghai）
+执行者：Codex
+修改前/后 commit：4ef855574ee41c64ebb39ee9d0c12f099a0e7bd6 / 未提交。
+WIP：保留已有设置改名、说明显示修复及其他用户工作，本次最小化修改。
+
+目的：明确辅助安装入口的目标为 LibreOffice（LO）官方 Linux DEB 格式 tar.gz/tgz 套装或解压后的 DEBS 文件夹，不是通用 DEB 安装器。
+修改文件：
+- core/frontend/web/index.html：来源标题、常驻说明、两个选择按钮、空状态及浏览器选择对话框标题；检查出版本后仍保留来源范围说明。
+- core/src/base_audit/web_app.py：原生文件筛选显示名称及参数错误提示。
+- core/tests/test_libreoffice_install_api.py：同步现有原生选择器筛选名称断言，扩展名过滤不变。
+- 本记录。
+
+验证：安装 API 与交付/页面脚本测试 29 passed、6 skipped、0 failed；Python 编译、git diff --check 通过。首次定向测试的旧筛选名称断言失败，按新显示名称更新后通过。
+未执行：实际软件安装、浏览器截图、重新打包及业务全量。
+
+【组件版本】
+不升级。纯文案调整；产品 V26.1.5.1 及全部功能/配置版本保持不变。来源识别、校验、选择范围和系统安装命令均未修改。
+无配置、VBA 或业务文件修改，无删除。回滚仅恢复本次文案和对应断言，不覆盖其他 WIP。未 commit/push/merge。

@@ -1,0 +1,32 @@
+【时间与执行者】
+2026-10-16 17:26（Asia/Shanghai），Codex。
+前后 commit：4ef855574ee41c64ebb39ee9d0c12f099a0e7bd6，desktop 分支，未提交/推送/合并。保留此前工作区 WIP。
+
+【用户要求与范围】
+用户要求重新打包 Linux 双架构以及 Windows Flask，统一限定 S1/S2，并按较低 GLIBC 版本适配。
+仅生成本地 dist 交付物和本记录；未修改业务代码、源配置、版本清单或 CHANGELOG。
+
+【构建与结果】
+Linux：Ubuntu 16.04.6 / glibc 2.23 基线，Python 3.12.14 冻结运行时，GLIBC_TARGET=2.23、GLIBCXX_TARGET=3.4.21，构建命令入口 shell-flask/Linux-2-打包DEB与TARGZ.sh --profile s1s2。
+AMD64 使用 x86_64 rootfs 原生构建，产物时间戳 2026.10.16.091303；ARM64 使用 AArch64 rootfs + QEMU 构建，产物时间戳 2026.10.16.091842。两架构均生成 DEB 与 tar.gz。
+ELF 审计：最低 GLIBC 符号要求 2.17；无 GLIBCXX 符号依赖。目标用户空间为 glibc 2.23。
+Windows：python shell-flask/build_windows_all.py --profile s1s2；生成现代 Windows Flask EXE 与 Win7 兼容 EXE，置于同一 S1/S2 交付目录。
+最终使用当前 config-real 快照。S2-CFG-01 文件 SHA256：86c5084689cfa7705b33b994cedf7201e549e8fc7599c24afd71c1eb1af5ee01；S2-CFG-02 外部模板 SHA256：e3c88cd02bb1d240b56d35b0c6478ba8c16e132a65856425e42a16c074814399。各平台包内两份文件均与当前源文件逐字节匹配。
+
+【实际验证】
+- Linux 发行包冒烟：DEB/tar.gz × amd64/arm64，共 4 项通过、0 跳过、0 失败、0 错误；首页 HTTP 200、页面标题及图标资源正常，关闭后端口释放。amd64 在 glibc 2.23 rootfs 原生执行；arm64 在 glibc 2.23 AArch64 rootfs 内通过 QEMU 执行。
+- Linux 包元数据与配置：Architecture 分别为 amd64/arm64；4 个包内 profile marker 均为 s1s2；S3 配置工作簿均已排除；侧车及根目录 SHA256SUMS 校验通过。
+- Windows：distribution-profile.txt 为 s1s2；两版 EXE 均生成；S3 配置工作簿排除；S2 配置与外部模板哈希匹配当前 config-real。未启动 Windows EXE 做 UI 运行验收。
+- 未新增测试模块；复用 shell-flask/Linux-3-测试发行包启动.sh 做包级启动验证。未执行真实麒麟 V10 设备安装、菜单集成或 LibreOffice 验收。
+
+【交付目录】
+shell-flask/dist/dual-arch-glibc223-20261016_S1-S2_V26.1.6.0/：双架构 DEB/tar.gz、build-info、SHA256SUMS、manifest 和说明；首次构建快照移至本机 WSL 构建缓存，不放入交付目录。
+shell-flask/dist/Windows-Flask_V26.1.6.0_S1-S2/：Windows 现代版与 Win7 兼容版及当前 S1/S2 配置。重建脚本将前一版目录自动归档至 shell-flask/dist/归档-旧发行包-20261016/；请使用上述稳定目录作为最新交付。
+两个交付目录位于被 .gitignore 排除的 dist 中，含内部真实配置，仅供内部使用，不得外发或提交公开仓库。
+Linux 包不含 LibreOffice；目标机仍需桌面会话、xdg-utils、iproute2 及系统兼容的 LibreOffice Calc。隔离 rootfs 结果不等同于麒麟实体机验收。
+
+【组件版本】
+不升级。产品仍 V26.1.6.0；S1-F01 v2.2.1、S2-F01 v7.2.0、S1-CFG-01 v2.0.0、S2-CFG-01 v8.2.1、S2-CFG-02 v1.0.0，均按 VERSION_MANIFEST 保持不变。此次只重打包当前已版本化代码/配置快照，无业务或配置语义修改；S3-* 未修改。
+
+【删除清单与回滚】
+无项目源文件删除。无 Git 提交、推送或合并。dist 交付物可按需重新构建；本机缓存中的前一版包仅作回滚备份。

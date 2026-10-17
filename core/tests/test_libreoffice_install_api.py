@@ -175,7 +175,7 @@ def test_native_picker_tar_filter_and_cancel(monkeypatch):
     calls = []
     api._select_path = lambda **kw: calls.append(kw) or ()
     assert api.choose_libreoffice_source()["phase"] == "ready"
-    assert calls[0]["file_types"] == (("LibreOffice 安装包", "*.tar.gz *.tgz"),)
+    assert calls[0]["file_types"] == (("LibreOffice Linux DEB 压缩包", "*.tar.gz *.tgz"),)
     assert api._libreoffice_installer.prepared == []
 
 

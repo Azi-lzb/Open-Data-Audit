@@ -65,20 +65,20 @@ def available_summary_readers() -> list[dict[str, str]]:
     """
     readers = [{
         "value": SUMMARY_READER_PYTHON,
-        "label": "OPENPYXL（推荐）",
-        "description": "直接读取已保存的数据，速度更快；不启动办公软件。",
+        "label": "读取已保存结果（openpyxl）",
+        "description": "读取已保存的数据或公式缓存，不重新计算公式；缓存过期可能导致结果过期。",
     }]
     if sys.platform == "win32":
         readers.append({
             "value": SUMMARY_READER_COM,
-            "label": "Office（兼容）",
-            "description": "使用当前计算引擎刷新公式缓存后，再读取汇总结果。",
+            "label": "通过办公软件读取（Office）",
+            "description": "通过当前选择的 Excel/WPS 计算引擎打开工作簿并读取汇总结果。",
         })
     else:
         readers.append({
             "value": SUMMARY_READER_LIBREOFFICE,
-            "label": "Office（兼容）",
-            "description": "使用当前计算引擎刷新公式缓存后，再读取汇总结果。",
+            "label": "通过办公软件读取（Office）",
+            "description": "由 LibreOffice Calc 在临时副本上重算，再通过 openpyxl 读取汇总结果。",
         })
     return readers
 

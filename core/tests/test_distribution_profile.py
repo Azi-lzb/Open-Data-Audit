@@ -17,6 +17,68 @@ NODE = shutil.which("node")
 FRONTEND = ROOT / "core/frontend/web/index.html"
 
 
+@pytest.mark.parametrize("shell", ["shell-flask", "shell-pywebview"])
+@pytest.mark.parametrize("profile_id", ["full", "s1s2"])
+def test_external_reference_and_its_default_are_shipped_without_changing_source(tmp_path, monkeypatch, shell, profile_id):
+    manifest = json.loads((ROOT / "版本管理/VERSION_MANIFEST.json").read_text(encoding="utf-8"))
+    filename = Path(manifest["configs"]["S2-CFG-02"]["file"]).name
+    private = tmp_path / "config-real"
+    (private / "默认配置").mkdir(parents=True)
+    (private / filename).write_bytes(b"private-current-template")
+    (private / "默认配置" / filename).write_bytes(b"independent-default-template")
+    (private / "3.0-test.xlsx").write_bytes(b"s3-only")
+    before = {p.relative_to(private): p.read_bytes() for p in private.rglob("*.xlsx")}
+    monkeypatch.syspath_prepend(str(ROOT / "shell-flask"))
+    spec = importlib.util.spec_from_file_location(f"external_pack_{shell.replace('-', '_')}", ROOT / shell / "build_exe.py")
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    monkeypatch.setattr(builder, "CONFIG_TEMPLATE", private)
+    release = tmp_path / "release"
+    if shell == "shell-flask":
+        monkeypatch.setattr(builder, "DIST", release)
+        builder.assemble_config_template()
+    else:
+        builder.assemble_config_template(release)
+    from distribution_profile import DEFAULT_CONFIG, filter_release_config, load_config
+    filter_release_config(release / "config", load_config(DEFAULT_CONFIG), profile_id)
+    assert (release / "config" / filename).read_bytes() == before[Path(filename)]
+    assert (release / "config/默认配置" / filename).read_bytes() == before[Path("默认配置") / filename]
+    assert (release / "config/3.0-test.xlsx").exists() is (profile_id == "full")
+    assert {p.relative_to(private): p.read_bytes() for p in private.rglob("*.xlsx")} == before
+
+
+def test_linux_public_payload_keeps_external_headers_and_removes_private_rows(tmp_path):
+    import sys
+    from openpyxl import load_workbook
+    script = (ROOT / "shell-flask/Linux-2-打包DEB与TARGZ.sh").read_text(encoding="utf-8")
+    block = re.search(r"<<'PY'\n(import shutil\nimport sys\nimport json\n.*?\n)PY\n", script, re.S)
+    assert block is not None
+    manifest_path = ROOT / "版本管理/VERSION_MANIFEST.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    filename = Path(manifest["configs"]["S2-CFG-02"]["file"]).name
+    source = tmp_path / "source"
+    shutil.copytree(ROOT / "config", source)
+    book = load_workbook(source / filename)
+    headers = [c.value for c in book["集中系统数据"][2]]
+    book["集中系统数据"]["B3"] = "private-bank"
+    book["集中系统数据"]["C3"] = 17
+    book["参照表"].append(["private-code", "private-bank", "private-region"])
+    book.save(source / filename)
+    book.close()
+    before = (source / filename).read_bytes()
+    target = tmp_path / "release/config"
+    (target / "默认配置").mkdir(parents=True)
+    result = subprocess.run([sys.executable, "-X", "utf8", "-", str(source), str(target), str(manifest_path)], input=block[1], text=True, encoding="utf-8", capture_output=True)
+    assert result.returncode == 0, result.stderr
+    for path in (target / filename, target / "默认配置" / filename):
+        exported = load_workbook(path)
+        assert [c.value for c in exported["集中系统数据"][2]] == headers
+        assert exported["集中系统数据"].max_row == 2
+        assert exported["参照表"].max_row == 1
+        exported.close()
+    assert (source / filename).read_bytes() == before
+
+
 @pytest.mark.parametrize("profile_id", ["full", "s1s2"])
 def test_windows_build_finalizes_with_same_profile_as_linux(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, profile_id: str
@@ -150,6 +212,46 @@ console.log('profile behavior passed');
         [NODE, "-e", program], check=True, capture_output=True, text=True, encoding="utf-8"
     )
     assert "profile behavior passed" in result.stdout
+
+
+@pytest.mark.skipif(NODE is None, reason="未安装 Node.js，无法执行前端行为检查")
+def test_xml_tool_notes_use_one_collapse_mechanism() -> None:
+    """说明使用统一卡片折叠，避免 details 原生切换与 collapsed 样式相互抵消。"""
+    html = FRONTEND.read_text(encoding="utf-8")
+    render = "function renderAdvanced" + html.split(
+        "function renderAdvanced", 1
+    )[1].split("/* 高级设置双布局", 1)[0]
+    listener = html.split("/* 设置中心卡片标题条", 1)[1].split(
+        "/* ---- 更新与答疑", 1
+    )[0].split("*/", 1)[1]
+    program = r"""
+const assert=require('node:assert/strict');
+let click;
+const pane={innerHTML:'',addEventListener:(event,fn)=>{if(event==='click')click=fn;}};
+const document={getElementById:()=>pane};
+const state={};
+const esc=value=>String(value);
+const advancedLayoutMode=()=> 'system';
+const envGroupCollapsed=()=>true,envZoneCollapsed=()=>true;
+const isSystemVisible=()=>true,syncGeneralControls=()=>{};
+""" + render + listener + r"""
+renderAdvanced();
+const notes=pane.innerHTML.match(/<div class="gen-card"><p class="gen-card-title">处理工具与兼容性说明<\/p>([\s\S]*?)<\/div><\/div>/);
+assert.ok(notes,'说明应默认展开，使用普通卡片而非原生 details');
+assert.match(notes[1],/zipfile/);
+assert.doesNotMatch(pane.innerHTML,/<details class="gen-card"/);
+const classes=new Set(['gen-card']);
+const card={classList:{contains:name=>classes.has(name),toggle:name=>{
+  if(classes.has(name)){classes.delete(name);}else{classes.add(name);}
+}}};
+const title={parentElement:card};
+const event={target:{closest:()=>title}};
+assert.equal(classes.has('collapsed'),false);
+click(event);assert.equal(classes.has('collapsed'),true);
+click(event);assert.equal(classes.has('collapsed'),false);
+"""
+    result = subprocess.run([NODE, "-e", program], capture_output=True, text=True, encoding="utf-8")
+    assert result.returncode == 0, result.stderr
 
 
 def test_distribution_unlock_password_and_process_lifetime(tmp_path: Path) -> None:

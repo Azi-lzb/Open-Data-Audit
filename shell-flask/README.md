@@ -160,6 +160,8 @@ Ubuntu 须已启用 Docker Desktop WSL 集成及 ARM64 模拟支持。
 S1/S2 的外部数据参照保留。只调整交付显示范围，不拆分共用业务核心。
 构建默认优先使用 `config-real/`，缺失才回退 `config/`；两个版本各自输出，不互相覆盖。
 
+大集中外部数据模板已登记为 `S2-CFG-02`，文件名以版本清单为准。完整版和S1/S2版都携带它及独立默认快照；Windows两个外壳、Linux内部构建复制本机真实模板，公开构建仅携带第2行指标表头、参照表头及说明。设置中心提供打开、设为默认和重置；重置按整册快照恢复并先备份，运行时仍需选择已更新当期数据的外部文件。首行/A列为空、第2行表头、B列机构标签、C列起数值的位置须保持。
+
 - **DEB**：完整发行包使用 `Audit-Tools_V版本_构建时间_系统_Python_glibc_架构.deb`；S1/S2 专用版以 `Audit-Tools-S1-S2_V` 开头；
   专用 DEB 包名为 `audit-tools-s1-s2`，与完整版互斥，安装时由 APT 替换，不可并存。
   UOS 20/25、麒麟 V10/V11 桌面版均推荐从主系统终端以 APT 安装到
@@ -190,13 +192,14 @@ S1/S2 的外部数据参照保留。只调整交付显示范围，不拆分共�
   amd64 与 arm64 分别打包；目标系统缺少基础依赖时，离线安装会明确失败，须另备匹配系统的依赖包。
 
 引擎默认**不用构建机系统 Python**，而是下载 python-build-standalone 的自包含
-CPython 3.12.14（glibc 2.17 基线构建，含 Tcl/Tk）并用 PyInstaller 冻结，因此
-**在一台 UOS 25 上构建的包同样能运行在 UOS 20（glibc 2.28）/ 麒麟 V10 / UOS 25**；
+CPython 3.12.14（glibc 2.17 基线构建，含 Tcl/Tk）并用 PyInstaller 冻结。
+**能否运行由整个冻结包的原生依赖和目标机环境决定，不能只凭 Python 基线或“麒麟 V10”名称判断**；
 构建机只需 `dpkg-deb`、`tar`、`objdump`（binutils）、`sha256sum` 和网络（首次，
 官方 PyPI 失败自动改用镜像）。产物文件名含构建系统、Python 版本、**实测最低
 glibc** 与架构（如 `..._uos-25_py3.12.14_glibc2.25_amd64.deb`）——构建后逐个
 ELF 审计 GLIBC/GLIBCXX 符号版本，超过目标基线（默认 glibc 2.28，即 UOS20）时
-构建失败并列出超标文件，取代旧的“到最老目标系统上构建”要求。
+构建失败并列出超标文件。较老目标环境还须确认 pip 选择的二进制 wheel 基线；
+仅修改 `GLIBC_TARGET` 不会降低已有依赖的 glibc 要求。
 
 **跨机器/跨芯片**：PyInstaller 不能直接在 x86-64 Python 中生成 ARM64 程序，
 不同 CPU 架构需进入对应架构的运行环境打包（实体机或 QEMU 模拟容器）；
@@ -235,9 +238,42 @@ docker run --rm --platform linux/arm64 --mount "type=bind,source=$repo,target=/w
 自动带入）。
 
 **验收状态**：2026-09-29 在 UOS Desktop 25 上完成全流程构建并对 DEB 与 tar.gz
-做了解包冒烟（均 HTTP 200、端口释放干净，tar.gz 便携模式自动识别通过），冻结包
-实测最低 glibc 2.25（来源 lxml `getentropy`）。UOS 20 / 麒麟 V10 / arm64 实机
-安装与业务全流程仍待真机验收。逐笔系统的组合流程与 S1-F05「制作联合模板」在
+做了解包冒烟（均 HTTP 200、端口释放干净，tar.gz 便携模式自动识别通过）。完整版和
+S1/S2 版均随包保留 `lxml`；openpyxl 在支持的 XML 操作中优先使用它，其他部分仍用
+标准库等实现。此前普通环境构建的 AMD64 冻结包最低 glibc 2.25（来源 lxml `getentropy`）。
+无 lxml 的 AMD64 实验包曾降到 glibc 2.17，但该实验策略目前不作为默认打包策略。
+禁用 lxml 后曾出现的 9 项 S3-F05 测试失败，已定位为测试模板注入代码未兼容
+`<definedNames />` 空节点写法；只在内存中调整测试样例后，相关 44 项定向测试通过，
+不能据此认定 S3-F05 必须依赖 lxml，测试文件尚未正式修复。
+Python 运行时及原生组件仍依赖系统 glibc；此前携带 lxml 的 AMD64 产物不满足 glibc
+2.23 基线。ARM64 包需独立构建、审计，不能套用 AMD64 的最低版本结论。
+2026-10-16 已在 WSL2 下建立 Ubuntu Base 16.04.6 ARM64 / glibc 2.23 用户空间，
+用 QEMU 8.2.2 构建完整版。全新环境为同一个 lxml 6.1.3 选择了
+`cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64` wheel，保留 lxml 的
+冻结包实际审计最低 glibc 为 2.17；较新构建环境可能选择更高基线 wheel。
+构建命令为 `PIP_ONLY_BINARY=:all: GLIBC_TARGET=2.23 GLIBCXX_TARGET=3.4.21 FLASK_DIST_DIR=/evidence/dist bash shell-flask/Linux-2-打包DEB与TARGZ.sh --python /opt/python/bin/python3 --profile full`，
+须在上述 ARM64 隔离环境执行。旧版 dpkg-deb 不支持 `--root-owner-group` 时，
+打包脚本使用 root 临时组包目录或 fakeroot 兼容构建。
+该环境中 core 全量回归为 926 passed、11 skipped、2 subtests passed，0 failures/errors；
+源码/冻结程序共 10 项专项检查通过，DEB 与 tar.gz 解包启动均通过。
+冻结程序通过 HTTP 接口完成 S1-F01（真实 LibreOffice 重算）、S2-F01（三张结果表）和
+S3-F05（两种渲染器），并确认服务进程实际加载 lxml.etree 与 libc-2.23.so。
+S3-F05 各冻结渲染器与对应源码输出完全一致；两种渲染器之间仍有 13 处表头/空值格
+格式或浮点尾数差异，已记录，未在本次修改其行为。715 个原始配置/数据文件哈希未变。
+证据和公开配置安装包保存在本机忽略目录
+`shell-flask/dist/ARM64-glibc223-validation-20261016/`，入口为 `验证说明.txt`。
+本次公式重算使用 LibreOffice 5.1.6.2，不代表 LO 25.8/26.8 安装包兼容 glibc 2.23；
+该模拟验证也不替代麒麟实体机的桌面安装、系统集成和性能验收。
+随后在独立 Ubuntu Base 16.04.6 AMD64 / glibc 2.23 chroot 中完成同版本完整版构建，
+同样保留 lxml 6.1.3，ELF 最低 glibc 为 2.17。AMD64 core 回归为
+926 passed、11 skipped、2 subtests passed，源码/冻结专项 10 项及两种包启动均通过；
+原始 715 个文件哈希未变。两个架构的 129 个运行源码文件归一化换行后内容一致。
+双架构目录为本机忽略的 `shell-flask/dist/dual-arch-glibc223-20261016/`，
+包含 `amd64/`、`arm64/` 各自的 DEB、tar.gz、报告，以及根目录 `先看这里.txt` 和
+`SHA256SUMS`。目标机 `uname -m` 为 `x86_64` 选 amd64，为 `aarch64` 选 arm64。
+包内为公开空表头配置，需导入正式配置；LibreOffice 不随包提供。
+UOS 20 / 麒麟 V10 / arm64 实机
+安装与业务全流程仍待验收。逐笔系统的组合流程与 S1-F05「制作联合模板」在
 UOS 使用共享核心的 native/openpyxl 实现；只有确实依赖 Excel/WPS COM 原生语义
 的能力限于 Windows。
 

@@ -1,0 +1,42 @@
+时间：2026-10-16 11:12:19（Asia/Shanghai）
+执行者：Codex
+修改前 commit：4ef855574ee41c64ebb39ee9d0c12f099a0e7bd6
+修改后 commit：未提交
+工作区状态：开始时有多项用户未跟踪文件和目录；均保留，未纳入本次修改。
+
+【修改目的】
+验证并支持 Linux S1/S2 冻结包不携带可选 lxml 后端，以降低目标机 glibc 最低要求，评估麒麟 V10 ARM64（glibc 2.23）的可运行性。
+
+【修改文件】
+- shell-flask/Linux-2-打包DEB与TARGZ.sh
+- shell-flask/README.md
+- GPT修改记录/20261016_111219_LinuxS1S2包排除lxml适配旧glibc.txt
+
+【变化说明】
+- Linux S1/S2 profile 使用 PyInstaller `--exclude-module lxml`，由 OpenPyXL 回退到 Python 标准库 XML 后端；完整 profile 继续收集 lxml。
+- 包内 `build-info.txt` 增加 XML 后端信息。
+- README 记录两种 profile 的最低 glibc 测量结果及 ARM64 验收限制。
+- 未改业务逻辑、公开配置、真实配置、VBA 或配置格式；无生产文件删除。
+
+【组件版本】
+系统：Linux 发行打包
+影响功能：无；未修改 S1-F01～S1-F05、S2-F01、S3-F01～S3-F05 的业务实现。
+影响配置：无；六册配置结构及版本不变。
+未修改的相关组件：S1、S2、S3 全部功能和配置组件。
+版本升级原因：不升级。此次只调整 Linux S1/S2 冻结包依赖选择，不改变业务契约；整包版本仍为 V26.1.5.1。
+
+【验证】
+- `bash -n shell-flask/Linux-2-打包DEB与TARGZ.sh`：通过。
+- `git diff --check`：通过。
+- 无 lxml 导入环境下的既有回归：S1 组 459 passed（其中一次 Windows 临时目录重命名权限异常，单测重跑通过）；S2 组 308 passed、6 skipped。
+- 完整核心测试关闭 OpenPyXL lxml 后端：914 passed、9 failed、13 skipped、2 subtests passed；9 个失败集中在 S3 快速 OOXML 定义名称删除测试。保留完整 profile 的 lxml 后，相关测试模块 31/31 通过。
+- 更新后的正式打包脚本在临时 Git 快照构建 S1/S2 AMD64 DEB：最低 glibc 2.17（目标上限 2.23）；PyInstaller 应用目录未包含 lxml；启动冒烟通过，首页 HTTP 200、图标资源可访问、测试端口已释放。
+- 同一脚本构建完整 AMD64 DEB：确认 lxml 仍被打包，最低 glibc 2.25（目标上限 2.28）。本次未对完整包执行启动冒烟。
+
+【未执行项与已知限制】
+- 未完成 ARM64 构建和麒麟 V10 实机验收。当前 Docker Desktop Secrets Engine 因 stale socket 无法启动；本轮仅在 WSL Ubuntu x86_64 验证，不能据此保证 ARM64 所有依赖均兼容 glibc 2.23。
+- 构建依赖清单仍含 lxml；S1/S2 冻结应用本身排除了 lxml。完整 profile 暂时保留 lxml，待 S3 的 9 项无 lxml 测试失败专项排查。
+
+【临时产物与回滚】
+- 测试 DEB、解包目录和源码快照只放在 Windows 临时目录；测试结束后删除，不作为项目交付物。
+- 回滚时恢复 Linux 打包脚本中的公共 `--collect-all lxml` 参数，删除 `LXML_STATUS` 分支和对应 README 说明，并删除本记录；不涉及数据迁移。

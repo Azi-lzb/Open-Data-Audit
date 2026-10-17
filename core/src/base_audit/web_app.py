@@ -11,6 +11,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
+from . import app_identity
 from .app_identity import app_title, icon_path, load_product_info, render_app_page
 from .developer_access import (
     DEVELOPER_SYSTEMS,
@@ -439,6 +440,14 @@ class WebApi:
             "central": "；".join(central_issues),
         }
         self.state["periodConfigCheck"] = period_report
+        try:
+            external_reference_config = self._external_reference_config_path()
+        except RuntimeError:
+            # Older/partial manifests must not prevent the rest of the app from
+            # starting; the template actions report the missing registration.
+            self.state["externalReferenceConfig"] = ""
+        else:
+            self.state["externalReferenceConfig"] = str(external_reference_config)
         self.state["configDefaults"] = {
             key: str(path) if path.is_file() else ""
             for key, path in self._config_default_paths().items()
@@ -763,7 +772,7 @@ class WebApi:
     def _config_default_paths(self) -> dict[str, Path]:
         """Return the independent, user-approved full-workbook defaults."""
         default_dir = release_config_dir(self.project_root) / "默认配置"
-        return {
+        paths = {
             "summary": default_dir / HISTORY_WORKBOOK_NAME,
             "period": default_dir / CONFIG_WORKBOOK_NAME,
             "common": default_dir / COMMON_CONFIG_NAME,
@@ -771,6 +780,30 @@ class WebApi:
             "cross": default_dir / CROSS_CONFIG_NAME,
             "forms": default_dir / FORM_CONFIG_NAME,
         }
+        try:
+            external_reference_config = self._external_reference_config_path()
+        except RuntimeError:
+            return paths
+        paths["externalReference"] = default_dir / external_reference_config.name
+        return paths
+
+    def _external_reference_config_path(self) -> Path:
+        """Locate the optional S2 external-reference workbook through MANIFEST."""
+        try:
+            manifest_file = app_identity.manifest_path()
+            manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+            component = manifest["configs"]["S2-CFG-02"]
+            relative_file = component["file"]
+            if not isinstance(relative_file, str) or not relative_file.strip():
+                raise ValueError("组件 file 字段必须是非空路径")
+            basename = Path(relative_file.replace("\\", "/")).name
+            if basename in {"", ".", ".."}:
+                raise ValueError("组件 file 字段未提供有效文件名")
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "版本清单未登记有效的 S2-CFG-02 大集中外部数据模板，无法定位配置文件"
+            ) from exc
+        return release_config_dir(self.project_root) / basename
 
     def _save_config_default(self, source: Path, *, key: str, label: str) -> dict[str, Any]:
         """Save one complete active workbook as the future reset source."""
@@ -800,6 +833,52 @@ class WebApi:
     def set_period_config_default(self) -> dict[str, Any]:
         source = Path(self.state.get("pcConfig") or release_config_dir(self.project_root) / CONFIG_WORKBOOK_NAME)
         return self._save_config_default(source, key="period", label="报表采集系统配置")
+
+    def open_external_reference_config(self) -> dict[str, Any]:
+        """Open the independently managed S2 external-reference template."""
+        target = self._external_reference_config_path()
+        if not target.is_file():
+            self.state["status"] = "大集中外部数据模板不存在"
+            self._log(f"未找到大集中外部数据模板：{target}")
+            return self.state
+        return self.open_path(str(target))
+
+    def set_external_reference_config_default(self) -> dict[str, Any]:
+        target = self._external_reference_config_path()
+        return self._save_config_default(
+            target, key="externalReference", label="大集中外部数据模板",
+        )
+
+    def reset_external_reference_config(self) -> dict[str, Any]:
+        """Restore the complete workbook from its private user snapshot only."""
+        import shutil
+
+        target = self._external_reference_config_path()
+        snapshot = self._config_default_paths().get("externalReference")
+        if snapshot is None or not snapshot.is_file():
+            raise RuntimeError(
+                f"尚未保存大集中外部数据模板的独立默认快照，无法重置：{target.name}"
+            )
+
+        backup_path = None
+        if target.is_file():
+            try:
+                backup_path = self._backup_config_file(target)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"无法备份“{target.name}”，已中止重置以保护当前数据：{exc}"
+                ) from exc
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(snapshot, target)
+        except OSError as exc:
+            raise RuntimeError(f"无法从独立默认快照恢复“{target.name}”：{exc}") from exc
+
+        self._refresh_config_issues()
+        self.state["status"] = "大集中外部数据模板已从默认快照恢复"
+        backup_text = str(backup_path) if backup_path else "原文件不存在，未生成备份"
+        self._log(f"已从默认快照恢复大集中外部数据模板：{target}（当前文件备份：{backup_text}）")
+        return self.state
 
     def set_central_config_default(self, profile: str) -> dict[str, Any]:
         _, label, source = self._central_config_profile(profile)
@@ -1182,14 +1261,14 @@ class WebApi:
         if not sys.platform.startswith("linux"):
             return self.get_libreoffice_install()
         if not isinstance(folder, bool) or not isinstance(path, str):
-            raise ValueError("请选择 LibreOffice 安装包或解压目录。")
+            raise ValueError("请选择 LibreOffice 官方 Linux DEB .tar.gz 安装包或解压后的 DEBS 文件夹。")
         current = self.get_libreoffice_install()
         if current.get("busy") or self.state["busy"]:
             return dict(current, message="正在处理任务，请结束后再选择 LibreOffice 安装包。")
         if not path:
             selected = self._select_path(
                 folder=folder, current=str(Path.home()),
-                file_types=(("LibreOffice 安装包", "*.tar.gz *.tgz"),),
+                file_types=(("LibreOffice Linux DEB 压缩包", "*.tar.gz *.tgz"),),
             )
             path = str(selected[0]) if selected else ""
         if not path:

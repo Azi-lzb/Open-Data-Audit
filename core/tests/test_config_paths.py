@@ -10,6 +10,30 @@ from config_paths import resolve_test_config
 from base_audit.node_flow_config import release_config_dir
 
 
+def test_external_public_template_only_exempts_the_second_header_row() -> None:
+    import importlib.util
+    from openpyxl import Workbook
+
+    checker = Path(__file__).resolve().parents[2] / "tools/check_public_snapshot.py"
+    spec = importlib.util.spec_from_file_location("public_snapshot_checker", checker)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    book = Workbook()
+    data = book.active
+    data.title = "集中系统数据"
+    data["C2"] = "公开指标表头"
+    reference = book.create_sheet("参照表")
+    reference.append(["统一社会信用代码", "报表项目", "机构地区"])
+    assert module.workbook_privacy_errors(book, external_reference=True) == []
+    assert module.workbook_privacy_errors(book)
+    for cell in ("A1", "B2", "B3", "C3"):
+        data[cell] = "不应公开的内容"
+        assert module.workbook_privacy_errors(book, external_reference=True)
+        data[cell] = None
+    reference.append(["私有代码", "私有机构", "私有地区"])
+    assert module.workbook_privacy_errors(book, external_reference=True)
+
+
 def _file(root: Path, directory: str, relative_path: str) -> Path:
     path = root / directory / relative_path
     path.parent.mkdir(parents=True, exist_ok=True)

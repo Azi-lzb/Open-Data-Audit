@@ -1,0 +1,26 @@
+时间：2026-10-16 12:51:57（Asia/Shanghai）
+执行者：Codex
+修改前 commit：4ef855574ee41c64ebb39ee9d0c12f099a0e7bd6
+修改后 commit：未提交
+WIP：保留已有高级设置改名、打包说明及用户未跟踪文件；本次只修复说明卡片。
+
+【原因】
+说明使用 details/summary 原生折叠，同时 summary 套用了 gen-card-title。设置页委托点击事件会切换父卡片 collapsed 类，与 details.open 的原生切换相互抵消，导致正文始终不可见。
+
+【修改】
+- core/frontend/web/index.html：改用现有 advCard/row 普通卡片，默认展开；说明分为 Python 标准库、openpyxl 与 lxml、Linux 兼容性三行，只使用统一卡片折叠机制。
+- core/tests/test_distribution_profile.py：新增回归，执行实际 renderAdvanced 和委托点击处理器，检查默认内容存在、排除双重折叠结构，并验证收起后能再次展开。
+- 本记录。
+
+【验证】
+- 新增回归在修复前失败（默认展开的统一说明卡片不存在）。
+- 修复后 python -m pytest -q --tb=short core/tests/test_distribution_profile.py core/tests/test_web_app.py：49 passed，0 failed，0 skipped；包含页面脚本语法检查。
+- git diff --check：通过。
+- 未执行浏览器截图或重新打包；未运行业务全量，未修改业务处理逻辑。
+
+【组件版本】
+不升级。仅修正前端说明的显示与折叠交互；产品版本 V26.1.5.1、全部业务功能/配置组件版本不变。
+
+【影响和回滚】
+无配置、VBA、原始文件或业务输出变更，无生产文件删除。回滚仅恢复本次说明卡片片段并删除新增回归和本记录，不要覆盖此前的改名 WIP。
+未 commit、push、merge。

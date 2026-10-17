@@ -1,0 +1,35 @@
+【时间与执行者】
+2026-10-17 00:18（Asia/Shanghai），Codex。
+前后 commit：4ef855574ee41c64ebb39ee9d0c12f099a0e7bd6，desktop 分支；未提交、推送或合并。保留原有工作区 WIP。
+
+【用户要求与范围】
+用户已清空 dist，要求重新生成 Linux 双架构和 Windows Flask 的 S1/S2 发行包，并适配较低 GLIBC。
+仅生成本机 dist 交付物及本记录；未修改业务代码、源配置、版本清单或 CHANGELOG。
+
+【构建结果】
+Linux：使用 Ubuntu 16.04.6 / glibc 2.23 rootfs 与 Python 3.12.14，目标 GLIBC 2.23、GLIBCXX 3.4.21，构建入口为 shell-flask/Linux-2-打包DEB与TARGZ.sh --profile s1s2。AMD64 在 x86_64 rootfs 原生构建；ARM64 在 AArch64 rootfs + QEMU 构建。每个架构生成 DEB 与便携 tar.gz。
+Linux 发行包 ELF 审计结果：最低 GLIBC 符号要求 2.17，无 GLIBCXX 符号依赖；目标用户空间 glibc 2.23。
+Windows：python shell-flask/build_windows_all.py --profile s1s2，生成现代 Windows Flask EXE、Win7 兼容 EXE 和 S1/S2 配置目录；另生成 ZIP 交付包及 SHA256 侧车。目录中 vc_redist_2019.x86.exe 是运行库修复程序，不是第三个审核工具版本。
+
+【配置与校验】
+使用当前本机正式配置快照。S2 报表配置 SHA256：86c5084689cfa7705b33b994cedf7201e549e8fc7599c24afd71c1eb1af5ee01；S2 外部数据模板 SHA256：e3c88cd02bb1d240b56d35c0b6478ba8c16e132a65856425e42a16c074814399。Windows 包内两份文件与 config-real 源逐字节匹配；S1/S2 交付方案已排除 S3 配置工作簿。真实配置随包，仅限内部使用，不得外发或提交公开仓库。
+Linux manifest 中四个主包的文件大小和 SHA256 均与产物一致；各包 .sha256 侧车及 SHA256SUMS.txt 校验通过。Windows ZIP 与其 .sha256 侧车校验通过。
+
+【实际验证】
+- Linux 发行包启动冒烟：DEB/tar.gz × amd64/arm64，共 4 项通过、0 跳过、0 失败、0 错误；glibc 2.23 rootfs 下首页 HTTP 200、标题和图标正常，停止后端口释放。ARM64 在 QEMU 下完成。
+- python -m pytest core/tests/test_distribution_profile.py -q：11 passed。
+- Windows distribution-profile.txt 为 s1s2；现代版与 Win7 版 EXE 均已生成，配置哈希与源文件一致。未启动 EXE 做 Windows UI 运行验收。
+- 未在麒麟 V10 实机安装验收，也未验证 LibreOffice 桌面集成。Linux 包不含 LibreOffice；隔离 rootfs 测试不等同于麒麟实体机验收。
+- 已卸载本轮使用的 WSL rootfs bind mounts，并注销本轮临时 qemu-aarch64 binfmt 注册。
+
+【交付位置】
+shell-flask/dist/dual-arch-glibc223-20261017_S1-S2_V26.1.6.0/：AMD64、ARM64 各含 DEB/tar.gz、各自校验侧车与 build-info，以及 README、manifest、SHA256SUMS。
+shell-flask/dist/Windows-Flask_V26.1.6.0_S1-S2/：Windows Flask 现代版与 Win7 兼容版、VC++ 运行库修复程序及 S1/S2 配置。
+shell-flask/dist/Windows-Flask_V26.1.6.0_S1-S2.zip：Windows 目录压缩包；同目录 .sha256 文件供校验。
+全部产物位于被 .gitignore 排除的 dist 中；不要外发包含真实配置的发行包。
+
+【组件版本】
+不升级。产品仍 V26.1.6.0；S1-F01 v2.2.1、S2-F01 v7.2.0、S1-CFG-01 v2.0.0、S2-CFG-01 v8.2.1、S2-CFG-02 v1.0.0，均依 VERSION_MANIFEST.json 保持不变。
+
+【Git】
+无源文件删除；未提交、推送或合并。此前工作区 WIP 原样保留。

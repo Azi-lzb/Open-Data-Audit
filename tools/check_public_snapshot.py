@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import json
 from io import BytesIO
 from pathlib import Path
 
@@ -21,6 +22,26 @@ FORBIDDEN_PARTS = {
 GUIDE_SHEET = "使用说明"
 
 
+def workbook_privacy_errors(book, *, external_reference: bool = False) -> list[str]:
+    """仅登记的外部模板允许第2行表头；首行、保留列和数据区仍须为空。"""
+    errors = []
+    for sheet in book:
+        if sheet.title == GUIDE_SHEET:
+            continue
+        first_data_row = 2
+        if external_reference and sheet.title == "集中系统数据":
+            if any(c.value not in (None, "") for row in sheet.iter_rows(max_row=1) for c in row):
+                errors.append(f"外部模板首行必须为空：{sheet.title}")
+            if any(str(c.value or "").strip() for row in sheet.iter_rows(min_row=2, max_row=2, max_col=2) for c in row):
+                errors.append(f"外部模板A2、B2须为空：{sheet.title}")
+            first_data_row = 3
+        for row in sheet.iter_rows(min_row=first_data_row):
+            if any(cell.value not in (None, "") for cell in row):
+                errors.append(f"发现表头以下内容：{sheet.title}")
+                break
+    return errors
+
+
 def main() -> int:
     raw = subprocess.check_output(["git", "diff", "--cached", "--name-only", "-z"], cwd=ROOT)
     paths = [Path(p.decode("utf-8")) for p in raw.split(b"\0") if p]
@@ -29,6 +50,11 @@ def main() -> int:
         return 1
     errors: list[str] = []
     books = 0
+    # 清单与工作簿都检查暂存版本，避免工作区改名扩大豁免范围。
+    manifest_raw = subprocess.check_output(
+        ["git", "show", ":版本管理/VERSION_MANIFEST.json"], cwd=ROOT
+    )
+    external_file = json.loads(manifest_raw).get("configs", {}).get("S2-CFG-02", {}).get("file")
     for path in paths:
         if any(part.lower() in FORBIDDEN_PARTS for part in path.parts):
             errors.append(f"禁止公开的目录：{path}")
@@ -43,13 +69,14 @@ def main() -> int:
         staged = subprocess.check_output(["git", "show", f":{path.as_posix()}"], cwd=ROOT)
         book = load_workbook(BytesIO(staged), read_only=True, data_only=False)
         try:
-            for sheet in book:
-                if sheet.title == GUIDE_SHEET:
-                    continue
-                for row in sheet.iter_rows(min_row=2):
-                    if any(cell.value not in (None, "") for cell in row):
-                        errors.append(f"发现表头以下内容：{path} / {sheet.title}")
-                        break
+            errors.extend(
+                f"{path} / {message}" for message in workbook_privacy_errors(
+                    book, external_reference=path.as_posix() in {
+                        external_file,
+                        f"config/默认配置/{Path(external_file).name}" if external_file else "",
+                    },
+                )
+            )
         finally:
             book.close()
     if errors:

@@ -59,8 +59,40 @@ def test_formal_and_default_s2_configs_pass_read_only_check() -> None:
                 assert all(cell.font.bold and cell.font.color.rgb.endswith("FFFFFF") for cell in business[1])
                 body_cells = [cell for row in business.iter_rows(min_row=2) for cell in row if cell.value not in (None, "")]
                 assert body_cells
-                assert all(cell.fill.fill_type is None for cell in body_cells)
-                assert all(not cell.font.bold and cell.font.color.rgb.endswith("000000") for cell in body_cells)
+                source_columns = [cell.column for cell in business[1] if cell.value == "来源标志"]
+                if business_name == "机构参照" and source_columns:
+                    source_column = source_columns[0]
+                    source_colors = {"仅大集中": "FFF2CC", "仅金数": "DDEBF7"}
+                    for cell in body_cells:
+                        source = business.cell(cell.row, source_column).value
+                        assert source in {"双方共有", "仅大集中", "仅金数"}
+                        if source in source_colors:
+                            assert cell.fill.fill_type == "solid"
+                            assert cell.fill.fgColor.rgb.endswith(source_colors[source])
+                        else:
+                            assert cell.fill.fill_type is None
+                elif business_name == "机构参照":
+                    # 当前正式参照表按用户要求移除了来源标志列，但保留了
+                    # 用于人工辨识来源的浅色填充；不能再据此要求所有单元格无底色。
+                    allowed_colors = {"FFF2CC", "DDEBF7"}
+                    assert all(
+                        cell.fill.fill_type is None
+                        or (
+                            cell.fill.fill_type == "solid"
+                            and any(cell.fill.fgColor.rgb.endswith(color) for color in allowed_colors)
+                        )
+                        for cell in body_cells
+                    )
+                else:
+                    assert all(cell.fill.fill_type is None for cell in body_cells)
+                assert all(
+                    not cell.font.bold
+                    and (
+                        (cell.font.color.type == "rgb" and cell.font.color.rgb.endswith("000000"))
+                        or (cell.font.color.type == "theme" and cell.font.color.theme == 1)
+                    )
+                    for cell in body_cells
+                )
             assert [cell.value for cell in book["外部核对规则"][1]] == [
                 "规则编号", "指标代码", "比较方式", "外部指标名称", "容差", "级别", "启用",
             ]

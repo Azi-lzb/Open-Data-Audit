@@ -1,0 +1,16 @@
+【时间、执行者与 WIP】
+2026-10-15 10:39（Asia/Shanghai）；Codex。desktop 分支，保留现有未提交工作；本次未提交或推送。
+
+【问题与判断】
+用户反馈同一麒麟 V11：解压发行包运行 .sh 能发现主系统 LibreOffice/WPS，安装版从菜单启动则都显示“未找到”。随后用户确认：审核工具 DEB 是双击图形安装器安装的；kare -l 显示旧 base-audit-v3（另有 zcode、renderdoc），主系统 dpkg-query -W audit-tools 显示没有匹配软件包。因此旧审核工具位于 KARE，而拟交付的新 audit-tools 尚未登记到主系统。麒麟和 openKylin 的官方资料说明 KARE 使用独立命名空间与目录挂载；此隔离能解释已安装版与解压版视图不同。
+
+【修改】
+- shell-flask/README.md：明确麒麟 V11 的审核工具 DEB 应在维护模式下用主系统 APT 安装，提示图形安装器可能放入 KARE。
+- docs/LibreOffice安装说明.md：加入主系统与 KARE 安装位置的只读判别命令及系统安装路径，避免把应用隔离误判为 LibreOffice 未安装。
+
+【版本与影响】
+仅文档；产品 V26.1.4.0、S1-F01 v2.2.0、全部配置组件版本不变。未更改业务实现、发行包或用户设置。无需重新打包；当前 V26.1.4.0 DEB 的元数据为 Package: audit-tools、Version: 1:26.1.4.0、Architecture: amd64，并声明替换旧 base-audit-v3。
+
+【验证与待确认】
+阅读启动器、DEB 包装脚本及 LO/WPS 探测逻辑；WSL 用 dpkg-deb -f 检查现有发行包元数据。VMware V11 仍运行，但 VMware Tools 状态 unknown、vmrun 无法读取 Guest IP，旧 VNC 地址 旧 VNC 地址连接超时（未记录具体地址），因此未能代用户在 Guest 安装或复测。建议用户在维护模式下通过主系统 APT 安装新版 Audit-Tools DEB，使用 dpkg-query 与 audit-tools 命令核对，然后再验证 S1-F01。真实 V11 主系统审核工具安装复验仍未执行。
+将公开空表头配置版本的 V26.1.4.0 amd64 DEB 复制到 VMware 配置的主机共享目录 F:\\VMware_share；源和目标 SHA-256 一致：84C75B34326FC23D1A6A9751B050F82929E7907604C4DAA54AAB22CD7DD1E247。Guest 是否已挂载此共享目录待用户确认。未复制 config-real、测试数据或构建日志。

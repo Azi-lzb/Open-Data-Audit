@@ -2086,7 +2086,8 @@ function renderLibreOfficeInstall(data){
   const installed=active.summary||(state.systemEnvironmentInfo||{}).libreoffice||active.display||(LO_INSTALL.available?'尚未取得检测结果':'仅在 Linux 环境检测 LibreOffice');
   const versions=Array.isArray(LO_INSTALL.installedVersions)?LO_INSTALL.installedVersions:[];
   const sourceName=LO_INSTALL.sourceName||'未选择';
-  const packageInfo=LO_INSTALL.packageVersion?('版本 '+LO_INSTALL.packageVersion+' · '+LO_INSTALL.architecture+' · '+LO_INSTALL.packageCount+' 个安装文件'):'支持 DEB 格式的 .tar.gz 安装包、解压目录或 DEBS 文件夹';
+  const sourceHelp='仅用于 LibreOffice（LO）：选择官方 Linux DEB 格式的 .tar.gz 安装包（也支持 .tgz），或解压后的 DEBS 文件夹；不支持其他软件的 DEB 包。';
+  const packageInfo=sourceHelp+(LO_INSTALL.packageVersion?(' 已检查：版本 '+LO_INSTALL.packageVersion+' · '+LO_INSTALL.architecture+' · '+LO_INSTALL.packageCount+' 个安装文件。'):'');
   const installStatus=!LO_INSTALL.available?'仅 Linux 版本支持 DEB 安装；当前系统不会执行安装。':(!LO_INSTALL.supported?(LO_INSTALL.message||'当前 Linux 缺少 DEB 安装所需的系统工具。'):(LO_INSTALL.message||'选择可信来源的 LibreOffice 安装包后，检查通过即可安装。'));
   const methods='<div class="updates-subtabs"><button class="btn tiny'+(LO_INSTALL_METHOD==='terminal'?' primary':'')+'" onclick="setLibreOfficeInstallMethod(\'terminal\')">方式一：终端安装</button><button class="btn tiny'+(LO_INSTALL_METHOD==='helper'?' primary':'')+'" onclick="setLibreOfficeInstallMethod(\'helper\')">方式二：辅助安装</button></div>';
   let maintenanceHtml='';
@@ -2105,8 +2106,8 @@ function renderLibreOfficeInstall(data){
     +versionRows+'</div>';
   let html=updatesHostInfoHtml()+methods+inventoryCard
     +'<div class="gen-card">'
-    +row('选择安装来源',packageInfo,'<button class="btn tiny" onclick="pickLibreOfficeSource(false)"'+(helperLocked?' disabled':'')+'>选择安装包</button><button class="btn tiny" style="margin-left:8px" onclick="pickLibreOfficeSource(true)"'+(helperLocked?' disabled':'')+'>选择文件夹</button>')
-    +row('已选文件',LO_INSTALL.source?'将安装此来源对应的 LibreOffice。':'选择安装包或解压目录。','<span style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(LO_INSTALL.source||'')+'">'+esc(sourceName)+'</span>')
+    +row('选择 LibreOffice 安装来源',packageInfo,'<button class="btn tiny" onclick="pickLibreOfficeSource(false)"'+(helperLocked?' disabled':'')+'>选择 LO .tar.gz 包</button><button class="btn tiny" style="margin-left:8px" onclick="pickLibreOfficeSource(true)"'+(helperLocked?' disabled':'')+'>选择 LO DEBS 文件夹</button>')
+    +row('已选来源',LO_INSTALL.source?'将安装此来源对应的 LibreOffice。':'请选择 LibreOffice 官方 Linux DEB .tar.gz 安装包，或解压后的 DEBS 文件夹。','<span style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(LO_INSTALL.source||'')+'">'+esc(sourceName)+'</span>')
     +row('安装状态',installStatus,'<button class="btn tiny primary'+(LO_INSTALL.phase==='installing'?' lo-install-running':'')+'" onclick="installLibreOffice()"'+((!LO_INSTALL.canInstall||locked||!installSupported)?' disabled':'')+'>'+(LO_INSTALL.phase==='installing'?'正在安装…':'开始安装')+'</button>')
     +'</div><p class="module-help-desc">请先保存并关闭正在编辑的 Office 文档。点击“开始安装”后，在系统授权窗口输入管理员密码。本页不会读取或保存密码。安装期间请保持审核工具打开。</p>'
     +'<p class="module-help-desc">仅支持使用 DEB 软件包的 Linux 系统。请选择 LibreOffice 官方来源的安装包；检查名称和架构不代表验证了发布者身份。离线安装若缺少系统依赖，请把安装日志交给管理员处理。</p>'
@@ -2162,7 +2163,7 @@ async function pickLibreOfficeSource(folder){
   try{
     let path='';
     if(usesBrowserPathPicker()){
-      const paths=await pickPathViaBrowser({title:folder?'选择 LibreOffice 解压目录':'选择 LibreOffice 安装包',select:folder?'dir':'file',mode:folder?'':'libreoffice_archive',start:LO_INSTALL.source||''});
+      const paths=await pickPathViaBrowser({title:folder?'选择 LibreOffice DEBS 文件夹':'选择 LibreOffice Linux DEB .tar.gz 安装包',select:folder?'dir':'file',mode:folder?'':'libreoffice_archive',start:LO_INSTALL.source||''});
       if(!paths.length)return;
       path=paths[0];
     }
@@ -2272,7 +2273,7 @@ function renderGeneral(){
   const s=state||{};
   const engine=String(s.calculationEngine||'自动');
   const summaryReader=String(s.summaryReadEngine||'纯 Python');
-  const summaryReaderOptions=(s.summaryReadEngines||[{value:'纯 Python',label:'纯 Python（推荐）',description:'直接读取已保存的数据，速度更快。'}]);
+  const summaryReaderOptions=(s.summaryReadEngines||[{value:'纯 Python',label:'读取已保存结果（openpyxl）',description:'读取已保存的数据或公式缓存，不重新计算公式。'}]);
   const engines=s.engines||[{value:'自动',label:'自动（推荐）'}];
   const issues=(s.configIssues||{});
   const toggle=(id,on)=>'<button type="button" class="gen-toggle'+(on?' on':'')+'" id="'+id+'" aria-pressed="'+(on?'true':'false')+'" onclick="toggleGenSetting(this)"></button>';
@@ -2318,6 +2319,8 @@ function renderGeneral(){
         '<button class="btn" onclick="openSummaryConfig()">打开</button> <button class="btn" onclick="askSetSummaryConfigDefault()">设为默认</button> <button class="btn danger" onclick="askResetSummaryConfig()">重置</button>')]:[]),
       ...(isSystemVisible('S2')?[row('报表采集系统配置',(issues.period?'<span class="cfg-warn">⚠ '+esc(issues.period)+'</span>；':'' )+'指标、机构、环比策略、校验与外部核对规则；指标参照含环比启用/策略组/最小变动值。'+configDefaultStatus('period'),
         '<button class="btn" onclick="openPeriodConfig()">打开</button> <button class="btn" onclick="askSetPeriodConfigDefault()">设为默认</button> <button class="btn danger" onclick="askResetPeriodConfig()">重置</button>')]:[]),
+      ...((isSystemVisible('S1')||isSystemVisible('S2'))?[row('大集中外部数据模板',(()=>{const path=String(s.externalReferenceConfig||'');return (path?'默认文件：<span title="'+esc(path)+'">'+esc(shortName(path))+'</span>；':'默认文件尚未登记；')+'第2行表头，B列机构、C列数值；参照表代码→报表项目优先。'+configDefaultStatus('externalReference');})(),
+        '<button class="btn" onclick="openExternalReferenceConfig()">打开</button> <button class="btn" onclick="askSetExternalReferenceConfigDefault()">设为默认</button> <button class="btn danger" onclick="askResetExternalReferenceConfig()">重置</button>')]:[]),
       ...(isSystemVisible('S3')?[row('大集中通用配置',centralConfigDescription('common'),
         '<button class="btn" onclick="openCentralConfig(\'common\')">打开</button> <button class="btn" onclick="askSetCentralConfigDefault(\'common\')">设为默认</button> <button class="btn danger" onclick="askResetCentralConfigProfile(\'common\')">重置</button>'),
       row('大集中执行比较配置',centralConfigDescription('comparison'),
@@ -2336,7 +2339,8 @@ function renderAdvanced(){
   const s=state||{};
   const engine=String(s.calculationEngine||'自动');
   const summaryReader=String(s.summaryReadEngine||'纯 Python');
-  const summaryReaderOptions=(s.summaryReadEngines||[{value:'纯 Python',label:'纯 Python（推荐）',description:'直接读取已保存的数据，速度更快。'}]);
+  const summaryReaderOptions=(s.summaryReadEngines||[{value:'纯 Python',label:'读取已保存结果（openpyxl）',description:'读取已保存的数据或公式缓存，不重新计算公式。'}]);
+  const nativePipeline=s.conditionalFormatNativeAvailable===false;
   const engines=s.engines||[{value:'自动',label:'自动（推荐）'}];
   const toggle=(id,on)=>'<button type="button" class="gen-toggle'+(on?' on':'')+'" id="'+id+'" aria-pressed="'+(on?'true':'false')+'" onclick="toggleGenSetting(this)"></button>';
   let pendingGroupLabel='';
@@ -2397,17 +2401,17 @@ function renderAdvanced(){
       +'</select>'),
   ].join('');
   const rowsAuditExcel=[
-    row('公式校验复制方式','选择将模板校验内容写入审核副本的方式。OOXML 性能更高，Office 用于兼容和结果对照。适用于逐笔统计审核的模板校验公式复制。',
-      '<select class="gen-select" id="setFormulaRegionWriter" onchange="setFormulaRegionWriter(this.value)">'
-      +'<option value="DIRECT_OOXML"'+(s.formulaRegionWriter==='DIRECT_OOXML'?' selected':'')+'>OOXML（推荐）</option>'
-      +'<option value="COM_RANGE"'+(s.formulaRegionWriter!=='DIRECT_OOXML'?' selected':'')+'>Office（兼容）</option>'
+    row('公式校验复制方式','直接写入使用 zipfile、ElementTree 和 XML 文本处理复制公式、样式及合并信息；结构化模板还会通过 openpyxl 复制“审核规则”页。区域复制通过 Excel/WPS 接口执行。两种方式写入后仍需办公软件重算；Linux 固定使用 openpyxl 复制、LibreOffice 重算。',
+      nativePipeline?'<span>复制公式（openpyxl，固定）</span>':'<select class="gen-select" id="setFormulaRegionWriter" onchange="setFormulaRegionWriter(this.value)">'
+      +'<option value="DIRECT_OOXML"'+(s.formulaRegionWriter==='DIRECT_OOXML'?' selected':'')+'>直接写入（Python 标准库）</option>'
+      +'<option value="COM_RANGE"'+(s.formulaRegionWriter!=='DIRECT_OOXML'?' selected':'')+'>区域复制（Office）</option>'
       +'</select>'),
-    row('外部文件添加方式','OOXML 仅复制外部表中的文本、数值和布尔值，不复制样式、批注、合并单元格或图片；外部表不属于纯数据时请使用 OPENPYXL。适用于逐笔统计审核的外部文件工作表复制。',
+    row('外部文件添加方式','仅添加数据：使用 zipfile＋ElementTree 添加文本、数值和布尔值，不复制样式、批注、合并或图片，遇到公式等不支持内容会报错。复制工作表内容：使用 openpyxl 复制值、公式文本、基本样式、批注、合并及行列设置，不保证完整保留所有 Excel 对象。',
       '<select class="gen-select" id="setExternalSheetWriter" onchange="setExternalSheetWriter(this.value)">'
-      +'<option value="DIRECT_OOXML"'+(s.externalSheetWriter!=='OPENPYXL'?' selected':'')+'>OOXML（推荐）</option>'
-      +'<option value="OPENPYXL"'+(s.externalSheetWriter==='OPENPYXL'?' selected':'')+'>OPENPYXL（兼容）</option>'
+      +'<option value="DIRECT_OOXML"'+(s.externalSheetWriter!=='OPENPYXL'?' selected':'')+'>仅添加数据（Python 标准库）</option>'
+      +'<option value="OPENPYXL"'+(s.externalSheetWriter==='OPENPYXL'?' selected':'')+'>复制工作表内容（openpyxl）</option>'
       +'</select>'),
-    row('汇总读取方式','OPENPYXL 直接读取已保存的数据，速度更快；Office 会使用当前选择的计算引擎刷新后读取。适用于汇总校验结果说明的汇总核查表读取。',
+    row('汇总读取方式','读取已保存结果：使用 openpyxl 读取数据或公式缓存，不重新计算，缓存过期可能导致结果过期。Office 方式：Windows 通过 Excel/WPS 读取；Linux 由 LibreOffice 在临时副本上重算，再通过 openpyxl 读取。适用于汇总校验结果说明。',
       '<select class="gen-select" id="setSummaryReadEngine" onchange="setSummaryReadEngine(this.value)">'
       +summaryReaderOptions.map(function(item){return '<option value="'+esc(item.value)+'"'+(summaryReader===String(item.value)?' selected':'')+' title="'+esc(item.description||'')+'">'+esc(item.label||item.value)+'</option>';}).join('')
       +'</select>'),
@@ -2415,10 +2419,10 @@ function renderAdvanced(){
   const rowsAuditCalc=[
     row('计算引擎','自动模式会选择当前可用的计算引擎；不可用项不可选择。指定引擎后不再自动切换。适用于逐笔统计审核公式重算、检查模板公式与汇总的 Office 刷新。',
       '<select class="gen-select" id="setEngine" onchange="setEngine(this.value)">'+engineOptions+'</select>'),
-    row('条件格式规则读取方式','选择读取条件格式公式、作用区域和优先级等规则信息的方式。适用于逐笔统计审核的条件格式问题提取。',
-      '<select class="gen-select" id="setConditionalFormatReader" onchange="setConditionalFormatReader(this.value)">'
-      +'<option value="DIRECT_OOXML"'+(s.conditionalFormatRuleReader==='DIRECT_OOXML'?' selected':'')+'>OOXML（推荐）</option>'
-      +'<option value="OPENPYXL"'+(s.conditionalFormatRuleReader==='OPENPYXL'?' selected':'')+'>OPENPYXL（兼容）</option>'
+    row('条件格式规则读取方式','直接读取使用 zipfile＋ElementTree 提取公式、作用区域、优先级和相关样式；工作簿读取使用 openpyxl 对象。此处只决定如何读规则，是否触发由“条件格式判定方式”决定。Linux 固定直接读取规则。',
+      nativePipeline?'<span>直接读取规则（Python 标准库，固定）</span>':'<select class="gen-select" id="setConditionalFormatReader" onchange="setConditionalFormatReader(this.value)">'
+      +'<option value="DIRECT_OOXML"'+(s.conditionalFormatRuleReader==='DIRECT_OOXML'?' selected':'')+'>直接读取规则（Python 标准库）</option>'
+      +'<option value="OPENPYXL"'+(s.conditionalFormatRuleReader==='OPENPYXL'?' selected':'')+'>通过工作簿读取规则（openpyxl）</option>'
       +'</select>'),
     row('条件格式判定方式','<span id="cfEvaluatorDesc"></span>',
       '<select class="gen-select" id="setConditionalFormatEvaluator" onchange="setConditionalFormatEvaluator(this.value)">'
@@ -2428,10 +2432,10 @@ function renderAdvanced(){
       +'</select>'),
   ].join('');
   const rowsCentralForm=[
-    row('生成文件方式','选择生成 Excel 文件时使用的处理方式。OOXML 性能更高，OPENPYXL 用于兼容和结果对照。适用于比较文件生成金融表单。',
+    row('生成文件方式','直接填充使用 zipfile、ElementTree 和 XML 文本处理修改金融表单模板，准备阶段可能配合 openpyxl；工作簿生成通过 openpyxl 对象填充数据、设置格式并保存。两种方式都不计算公式。适用于比较文件生成金融表单。',
       '<select class="gen-select" id="setXlsxRenderMode" onchange="setXlsxRenderMode(this.value)">'
-      +'<option value="FAST_OOXML"'+(s.xlsxRenderMode!=='OPENPYXL'?' selected':'')+'>OOXML（推荐）</option>'
-      +'<option value="OPENPYXL"'+(s.xlsxRenderMode==='OPENPYXL'?' selected':'')+'>OPENPYXL（兼容）</option>'
+      +'<option value="FAST_OOXML"'+(s.xlsxRenderMode!=='OPENPYXL'?' selected':'')+'>直接填充模板（Python 标准库）</option>'
+      +'<option value="OPENPYXL"'+(s.xlsxRenderMode==='OPENPYXL'?' selected':'')+'>通过工作簿生成（openpyxl）</option>'
       +'</select>'),
   ].join('');
   const rowsCentralExpr=[
@@ -2466,6 +2470,10 @@ function renderAdvanced(){
   pane.innerHTML= ''
     +'<div class="advanced-zone" id="advancedZone">'
     +cards.join('')
+    +((isSystemVisible('S1')||isSystemVisible('S3'))?advCard('处理工具与兼容性说明',
+      row('Python 标准库','主要指 zipfile 和 ElementTree，不代表整个流程完全不使用 openpyxl。','')
+      +row('openpyxl 与 lxml','openpyxl 的部分 XML 操作优先使用可用的 lxml，未使用 lxml 时采用标准库等替代实现，并非所有操作都由 lxml 处理。','')
+      +row('Linux 兼容性','Python 运行时及原生组件仍需兼容系统 glibc；移除 lxml 可能降低最低版本要求，但不能消除 glibc 依赖。','')):'')
     +'</div>';
   syncGeneralControls();
 }
@@ -3339,9 +3347,11 @@ function confirmRun(ok){
   else if(c.type==='reset'){doResetConfig();}
   else if(c.type==='resetSummary'){doResetSummaryConfig();}
   else if(c.type==='resetPeriod'){doResetPeriodConfig();}
+  else if(c.type==='resetExternalReference'){doResetExternalReferenceConfig();}
   else if(c.type==='resetCentralProfile'){doResetCentralConfigProfile(c.profile);}
   else if(c.type==='setSummaryDefault'){doSetSummaryConfigDefault();}
   else if(c.type==='setPeriodDefault'){doSetPeriodConfigDefault();}
+  else if(c.type==='setExternalReferenceDefault'){doSetExternalReferenceConfigDefault();}
   else if(c.type==='setCentralDefault'){doSetCentralConfigDefault(c.profile);}
   else if(c.type==='resetEditorPart'){doResetEditorPart(c.part);}
   else if(c.type==='templateMerge'){doCreateTemplateMerge();}
@@ -3449,6 +3459,11 @@ async function openPeriodConfig(){
   try{ await bridge.api.open_path(v); }
   catch(e){ alert('打开报表采集配置失败：'+((e&&e.message)?e.message:String(e))); }
 }
+async function openExternalReferenceConfig(){
+  try{ await bridge.api.open_external_reference_config(); }
+  catch(e){ alert('打开大集中外部数据模板失败：'+((e&&e.message)?e.message:String(e))); }
+  await refresh();
+}
 const CENTRAL_CONFIG_META={
   common:{key:'centralCommonConfig',name:'大集中通用配置',defaultName:'3.0大集中通用配置.xlsx'},
   comparison:{key:'centralComparisonConfig',name:'执行比较配置',defaultName:'3.1大集中执行比较_配置.xlsx'},
@@ -3517,6 +3532,19 @@ async function doResetPeriodConfig(){
   await refresh();
   if(CFG.tab==='general')renderGeneral();
 }
+function askResetExternalReferenceConfig(){
+  pendingConfirm={type:'resetExternalReference'};
+  document.getElementById('confirmTitle').textContent='重置大集中外部数据模板';
+  document.getElementById('confirmOk').textContent='重置并备份';
+  document.getElementById('confirmMsg').textContent='将用已保存的独立默认快照恢复整册工作簿，包含全部数据；当前文件会先备份到同目录“备份文件夹”。尚未保存独立默认快照时无法重置。是否继续？';
+  document.getElementById('confirmMask').style.display='flex';
+}
+async function doResetExternalReferenceConfig(){
+  try{ await bridge.api.reset_external_reference_config(); }
+  catch(e){ alert('重置大集中外部数据模板失败：'+((e&&e.message)?e.message:String(e))); }
+  await refresh();
+  if(CFG.tab==='general')renderGeneral();
+}
 async function doResetCentralConfigProfile(profile){
   try{ await bridge.api.reset_central_config_profile(profile); }
   catch(e){ alert('重置大集中配置失败：'+((e&&e.message)?e.message:String(e))); }
@@ -3555,6 +3583,18 @@ async function doSetPeriodConfigDefault(){
   catch(e){ alert('保存报表采集系统默认配置失败：'+((e&&e.message)?e.message:String(e))); }
   await refresh(); if(CFG.tab==='general')renderGeneral();
 }
+function askSetExternalReferenceConfigDefault(){
+  pendingConfirm={type:'setExternalReferenceDefault'};
+  document.getElementById('confirmTitle').textContent='设为大集中外部数据模板默认';
+  document.getElementById('confirmOk').textContent='设为默认';
+  document.getElementById('confirmMsg').textContent='将把当前大集中外部数据模板整册（包含全部数据）保存为独立默认快照；旧快照会自动备份。以后点击“重置”会恢复这份完整工作簿。是否继续？';
+  document.getElementById('confirmMask').style.display='flex';
+}
+async function doSetExternalReferenceConfigDefault(){
+  try{ await bridge.api.set_external_reference_config_default(); }
+  catch(e){ alert('保存大集中外部数据模板默认快照失败：'+((e&&e.message)?e.message:String(e))); }
+  await refresh(); if(CFG.tab==='general')renderGeneral();
+}
 async function doSetCentralConfigDefault(profile){
   try{ await bridge.api.set_central_config_default(profile); }
   catch(e){ alert('保存大集中默认配置失败：'+((e&&e.message)?e.message:String(e))); }
@@ -3564,7 +3604,7 @@ function askResetGeneralSettings(){
   pendingConfirm={type:'resetGeneral'};
   document.getElementById('confirmTitle').textContent='常规设置恢复默认';
   document.getElementById('confirmOk').textContent='恢复默认';
-  document.getElementById('confirmMsg').textContent='将还原计算引擎为“自动”、扫描深度为“最深处”、开启执行前检查，并关闭运行明细、运行日志 Excel 和性能与运行诊断信息；高级设置恢复为默认值（OOXML 生成与写入、OPENPYXL 汇总读取、Python 规则求值）。不会修改路径、报表采集系统、逐笔统计系统、配置文件或历史审核说明。是否继续？';
+  document.getElementById('confirmMsg').textContent='将还原计算引擎为“自动”、扫描深度为“最深处”、开启执行前检查，并关闭运行明细、运行日志 Excel 和性能与运行诊断信息；高级设置恢复为默认值（直接填充模板与写入、读取已保存结果、Python 规则求值；Linux 公式复制与规则读取采用平台固定方式）。不会修改路径、报表采集系统、逐笔统计系统、配置文件或历史审核说明。是否继续？';
   document.getElementById('confirmMask').style.display='flex';
 }
 async function doResetGeneralSettings(){
@@ -3960,7 +4000,7 @@ async function refresh(){
   showPerformanceDiagnostics=!!s.showPerformanceDiagnostics;
   renderCentral(s);
   const rm=document.getElementById('centralRenderMode');
-  if(rm)rm.textContent='当前渲染器：'+(String(s.xlsxRenderMode||'FAST_OOXML')==='FAST_OOXML'?'FAST_OOXML（高速）':'OPENPYXL（标准）');
+  if(rm)rm.textContent='当前生成方式：'+(String(s.xlsxRenderMode||'FAST_OOXML')==='FAST_OOXML'?'直接填充模板（Python 标准库）':'通过工作簿生成（openpyxl）');
   fields.forEach(x=>{
     const box=document.getElementById(x+'Name'),full=s[x]||'';
     if(!box)return;

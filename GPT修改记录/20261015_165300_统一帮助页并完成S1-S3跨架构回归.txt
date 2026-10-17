@@ -1,0 +1,54 @@
+【时间、执行者与 WIP】
+2026-10-15 16:53（Asia/Shanghai）；执行者 Codex，desktop 分支。保留原有未提交 WIP；未 commit、push、merge 或修改 main。dist 产物受 .gitignore 忽略。
+
+【目标】
+统一 Windows、Linux amd64、Linux arm64 Flask 发行包的“帮助与更新”布局，便于在本机核对 LibreOffice 安装说明及麒麟 V11 维护模式指引；用项目 2026-07-31 的真实业务数据实际执行 S1-F01 至 S3-F05，重点覆盖 ARM64；整理对应内部测试包。
+
+【实现】
+- `core/frontend/web/index.html` 让各发行平台都显示 LibreOffice 安装页和麒麟 V11 维护模式区域；平台不支持的操作仍显示说明，但控件禁用。页面共用，不在不同外壳复制实现。
+- `core/tests/test_libreoffice_install_api.py` 补页面资产跨平台一致性检查；`docs/LibreOffice安装说明.md` 补充布局一致性说明。
+- `shell-flask/Linux-5-通用离线安装.sh` 在安装前核验包内 `SHA256SUMS`；`shell-flask/Linux-6-组装通用离线交付.sh` 以 Linux LF 行尾生成内层清单、拷入安装说明，并生成外层 SHA-256 sidecar。
+- 产品版本从 V26.1.5.0 升至 V26.1.5.1；S1/S2/S3 功能和配置组件版本不变。
+
+【真实数据回归】
+使用 `2026-07-31` 下业务数据和优先配置 `config-real`。输入只读挂载，输出放在临时目录。AMD64 使用 Ubuntu WSL、LibreOffice 25.8.7.3；ARM64 使用 Docker/QEMU ARM64 环境及 ARM64 LibreOffice 25.8.7.3。
+
+| 流程 | AMD64 | ARM64 QEMU | 结果摘要 |
+|---|---|---|---|
+| S1-F01 | 通过 | 通过 | 7 个文件成功、0 失败 |
+| S1-F02 | 通过 | 通过 | 1 个汇总项并生成输出 |
+| S1-F03 | 通过 | 通过 | 7 个工作簿 |
+| S1-F04 | 通过 | 通过 | 7 个工作簿 |
+| S1-F05 | 通过 | 通过 | 个人贷款模板成功合并到单位贷款模板 |
+| S2-F01 | 通过 | 通过 | 7 家机构、1,088 条发现项 |
+| S3-F01 | 通过 | 通过 | 2,610 条比较结果 |
+| S3-F02 | 通过 | 通过 | 临时副本触发 1 行写入，1 条说明 |
+| S3-F03 | 通过 | 通过 | 导入 1 行、未匹配 0、冲突 0 |
+| S3-F04 | 通过 | 通过 | 167 行 |
+| S3-F05 | 通过 | 通过 | 8 张表，OPENPYXL 引擎 |
+
+每个平台流程累计 11 项通过、0 项失败。ARM64 的 S1-F01/F02 来自第一轮实际容器结果，F03 至 S3-F05 来自续跑容器；合并结果覆盖全部 11 项。为了触发既定路径，只在临时副本中给 S1-F02 汇总模板补充预期命名区域，并在 S3-F02 临时副本标记一行输出；未修改正式模板或业务源文件。
+
+输入哈希复核：715 个文件中 714 个一致、0 个缺失、1 个不同；不同项是 `config-real/1.逐笔统计系统_配置.xlsx`，文件时间为 2026-10-15 15:17:18，早于本轮实际数据流程（哈希基线约 15:06）。本轮未写入或恢复该文件；不要从旧哈希猜测回滚。
+
+【平台与包验收】
+- UI/API/版本清单定向测试：31 passed、6 skipped；`git diff --check` 通过，仅报告既有 CRLF 转 LF 提示。
+- Windows Flask x64、Win7 x86 EXE 均在本机启动并返回 HTTP 200；标题为“审核工具 V26.1.5.1”，页面含 LibreOffice 与麒麟 V11 区域。HTTP 预览 `http://127.0.0.1:8875/` 保持运行。
+- Linux amd64 与 arm64 应用 DEB、tar.gz 启动冒烟分别 2/2 通过（HTTP 200、标题及图标正常、端口释放）；ARM64 使用 QEMU，不能替代原生 ARM 设备验收。
+- amd64 和 arm64 离线包均含审核工具 DEB、LibreOffice 25.8.7 的 42 个 DEB、安装说明、`install.sh` 和 SHA256SUMS。两包外层 SHA-256 通过，重新解压后内层 43 个文件逐项校验通过，`install.sh --check` 通过；此检查不安装软件。之前 `_offline_20261015_164339` 两包因清单 CRLF 校验失败，已由 amd64 `_164825`、arm64 `_084828` 版本替代；请只用新时间戳包。构建目录中的旧失败副本仍留存，不要分发。
+- ARM64 Linux 应用包生成后通过独立冒烟，但构建脚本的末尾清理阶段曾返回 `dist/: Permission denied`；产物文件存在且通过启动检查，清理报错根因仍待查。
+- ARM64 单元回归：S1 462 passed / 6 skipped；S2 309 passed；S3 在 83% 时为优先跑真实数据而主动中断，已完成部分为 473 passed / 2 skipped，不能记作完整 S3 单元套件通过。
+
+【交付物】
+Windows Flask 内部测试目录：`shell-flask/dist/Windows-Flask_V26.1.5.1_内部测试/`（x64、Win7 x86，config-real）。
+Linux amd64 内部测试目录：`shell-flask/dist/Linux-amd64_V26.1.5.1_内部测试/`（Ubuntu 24.04 构建，DEB、应用 tar.gz、LO 离线 tar.gz，config-real）。
+Linux arm64 内部测试目录：`shell-flask/dist/Linux-arm64_V26.1.5.1_内部测试/`（Ubuntu 22.04 ARM64/QEMU 构建，DEB、应用 tar.gz、LO 离线 tar.gz，config-real）。
+完整文件清单见 `shell-flask/dist/内部测试包清单-V26.1.5.1.txt`。所有包仅供内部测试，禁止上传 GitHub 或外发；不要 Git dist。
+
+【组件版本】
+- 产品：V26.1.5.0 → V26.1.5.1（跨平台帮助与更新布局统一）。
+- S1、S2、S3 功能组件：保持版本清单登记值。
+- S1、S2、S3 配置组件：保持版本清单登记值；工作簿及配置语义未变。
+
+【Git】
+未暂存、未提交、未推送；未操作 main、laptop 或远端。

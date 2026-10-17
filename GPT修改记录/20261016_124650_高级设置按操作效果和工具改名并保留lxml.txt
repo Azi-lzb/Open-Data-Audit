@@ -1,0 +1,28 @@
+时间：2026-10-16 12:46:50（Asia/Shanghai）
+执行者：Codex
+修改前 commit：4ef855574ee41c64ebb39ee9d0c12f099a0e7bd6
+修改后 commit：未提交
+WIP：开始时已有本轮前序实验对 Linux-2/README 的修改，以及用户未跟踪文件；仅按用户最新决定调整实验策略，其余 WIP 保留。
+
+【目的与文件】
+按用户确认的“操作效果＋括号内工具”方案修改五项高级设置，注明工具、混合路径、平台差异与 glibc 边界；openpyxl 继续优先使用可用的 lxml。
+- core/frontend/web/index.html：五项下拉名称及备注、恢复默认提示、生成方式状态提示；新增折叠技术说明。Linux 公式复制与条件规则读取展示实际固定方式，不提供不会生效的选择；原保存值和执行路由不变。
+- core/src/base_audit/engines/__init__.py：汇总读取选项的名称和平台说明；枚举值不变。
+- shell-flask/Linux-2-打包DEB与TARGZ.sh：撤销先前 S1/S2 排除 lxml 的实验修改，所有 profile 恢复收集 lxml；构建信息说明 lxml 与标准库并存。
+- shell-flask/README.md：更新默认依赖策略；澄清 9 项 S3-F05 失败来自测试注入代码未兼容空节点空格写法，不能据此认定功能依赖 lxml；保留 AMD64 最低 glibc 2.25 和 ARM64 独立验收限制。
+- 本修改记录。
+
+【组件版本】
+不升级。仅文案、平台实际能力展示与恢复原打包依赖策略；没有修改 S1/S2/S3 业务算法、功能/配置协议。产品保持 V26.1.5.1，所有业务和配置组件版本不变。
+
+【验证】
+- python -m pytest -q --tb=short core/tests/test_distribution_profile.py core/tests/test_web_app.py core/tests/test_summary_read_engine.py：50 passed，0 skipped，0 failed。
+- Node 执行实际 renderAdvanced：Windows/Linux × 完整/S1S2 × 系统/功能布局，共 8 种组合通过；核对选项、原保存值、Linux 固定显示及状态不变。既有交付测试同时包含页面 JavaScript 语法检查。
+- Python 编译检查、Linux-2 bash -n、git diff --check：通过。
+- 此次为文案及显示调整，未新增重复文案断言测试；使用已有 API/交付测试与实际渲染检查验证。
+- 未重新构建发行包，未执行业务全量和 Office/ARM64 真机验收；不将之前的包视作包含本次页面更新。
+
+【影响与回滚】
+无配置、VBA、真实数据修改；无生产文件删除。此前 S1/S2 无 lxml 实验已停止作为默认策略，旧修改记录作为历史保留，以本记录为最新决定。
+可按本次 diff 恢复 UI/名称及说明；若再次采用无 lxml 发行策略，需明确目标 glibc 和架构并重新构建验证。不能因 glibc 依赖无法完全消除就忽略最低版本要求。
+未 commit、push、merge。

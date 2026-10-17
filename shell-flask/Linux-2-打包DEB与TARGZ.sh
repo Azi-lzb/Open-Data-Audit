@@ -388,22 +388,22 @@ if [ "$CONFIG_PROFILE" = internal-config ]; then
         done
     fi
 else
-    "$BUILD_PY" - "$CONFIG_SOURCE" "$PAYLOAD/config" <<'PY'
+    "$BUILD_PY" - "$CONFIG_SOURCE" "$PAYLOAD/config" "$ROOT/版本管理/VERSION_MANIFEST.json" <<'PY'
 import shutil
 import sys
+import json
 from pathlib import Path
 from openpyxl import load_workbook
 
-source, target = map(Path, sys.argv[1:])
-names = (
-    "1.逐笔统计系统_配置.xlsx", "2.报表采集系统_配置.xlsx",
-    "3.0大集中通用配置.xlsx", "3.1大集中执行比较_配置.xlsx",
-    "3.2大集中本期数值核对_配置.xlsx", "3.3大集中指标比较拆分_配置.xlsx",
-)
+source, target, manifest_path = map(Path, sys.argv[1:])
+components = json.loads(manifest_path.read_text(encoding="utf-8"))["configs"]
+names = tuple(Path(item["file"]).name for item in components.values())
+external_name = Path(components["S2-CFG-02"]["file"]).name
 private_sheets = {
-    names[0]: ("核查表校验结果", "本地校验结果", "业务说明", "任务说明"),
-    names[1]: ("机构参照",),
-    names[2]: ("机构地区参照",),
+    "1.逐笔统计系统_配置.xlsx": {s: 1 for s in ("核查表校验结果", "本地校验结果", "业务说明", "任务说明")},
+    "2.报表采集系统_配置.xlsx": {"机构参照": 1},
+    "3.0大集中通用配置.xlsx": {"机构地区参照": 1},
+    external_name: {"集中系统数据": 2, "参照表": 1},
 }
 for name in names:
     path = source / name
@@ -415,17 +415,17 @@ for name in names:
         continue
     book = load_workbook(path)
     try:
-        for sheet_name in private_sheets[name]:
+        for sheet_name, header_row in private_sheets[name].items():
             if sheet_name not in book.sheetnames:
                 raise SystemExit(f"[错误] {name} 缺少需清理的工作表：{sheet_name}")
             sheet = book[sheet_name]
-            if sheet.max_row > 1:
-                sheet.delete_rows(2, sheet.max_row - 1)
+            if sheet.max_row > header_row:
+                sheet.delete_rows(header_row + 1, sheet.max_row - header_row)
         for directory in (target, target / "默认配置"):
             book.save(directory / name)
     finally:
         book.close()
-print("[配置] 六册配置已复制；本机审核历史和机构参照已从发行副本清理。")
+print(f"[配置] {len(names)}册配置已复制；本机审核历史、机构参照及外部数值已从公开发行副本清理。")
 PY
 fi
 
@@ -570,6 +570,7 @@ GLIBC_VERSION=$(getconf GNU_LIBC_VERSION 2>/dev/null | sed 's/^glibc[[:space:]]*
     printf 'Application version (VERSION_MANIFEST.json): V%s\nDEB package version (epoch:product version): 1:%s\nBuild timestamp: %s\n' "$APP_VERSION" "$APP_VERSION" "$DEB_VERSION"
     printf 'Bundled Python: %s (python-build-standalone, %s)\n' "$PY_FULL_VERSION" "$INTERPRETER_SOURCE"
     printf 'Architecture: %s\nTk: %s\n' "$ARCH" "$TK_STATUS"
+    printf 'XML backend: lxml bundled; openpyxl selects it for supported operations (stdlib is also used)\n'
     printf 'PyInstaller: %s\n' "$PYINSTALLER_PIN"
     printf 'Build OS: %s (%s)\nBuild machine glibc: %s\n' "${PRETTY_NAME:-unknown}" "$BUILD_OS" "$GLIBC_VERSION"
     printf 'Audited min glibc of frozen app: %s (target <= %s)\n' "$MIN_GLIBC" "$GLIBC_TARGET"
@@ -592,7 +593,19 @@ FINISHED=
 if [ "$SKIP_DEB" -eq 0 ]; then
     echo '[DEB] 组装安装包 ...'
     DEB_OUT=$DIST/${ARTIFACT_BASE}.deb
-    dpkg-deb --build --root-owner-group "$STAGE" "$DEB_OUT"
+    if dpkg-deb --help 2>&1 | grep -q -- '--root-owner-group'; then
+        dpkg-deb --build --root-owner-group "$STAGE" "$DEB_OUT"
+    elif [ "$(id -u)" -eq 0 ]; then
+        # Xenial / glibc 2.23 builders have dpkg 1.18, before this option existed.
+        # Only normalize the disposable package stage, never the source tree.
+        chown -hR 0:0 "$STAGE"
+        dpkg-deb --build "$STAGE" "$DEB_OUT"
+    elif command -v fakeroot >/dev/null 2>&1; then
+        fakeroot dpkg-deb --build "$STAGE" "$DEB_OUT"
+    else
+        echo '[错误] 当前 dpkg-deb 不支持 --root-owner-group。请在隔离构建环境中以 root 构建，或安装 fakeroot 后重试。' >&2
+        exit 1
+    fi
     (cd "$DIST" && sha256sum "${DEB_OUT##*/}" > "${DEB_OUT##*/}.sha256")
     dpkg-deb --info "$DEB_OUT" >/dev/null
     cp "$PAYLOAD/build-info.txt" "$DIST/${ARTIFACT_BASE}.deb.build-info.txt"
