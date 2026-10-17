@@ -1,0 +1,27 @@
+【时间与执行者】
+2026-10-17 19:17（Asia/Shanghai），Codex。
+前后 commit：bf217097028a9aec6070851b93040f43df9d0962，desktop 分支；未提交、推送或合并。
+修改前已有未跟踪 WIP；本轮未触碰既有 WIP。
+
+【修改目的】
+将测试代码、测试分组说明与全量测试入口集中在 core/tests，便于用户从同一目录查看和运行测试。
+
+【文件变化】
+移动：项目根目录的运行全量测试.bat → core/tests/运行全量测试.bat。
+修改：core/tests/运行全量测试.bat 从自身路径定位仓库根目录；测试命令仍为 python -m pytest -q -rs core/tests。
+修改：core/tests/TEST_GROUPS.md 补充双击入口和命令行运行方法。
+新增：本修改记录。
+保留 core/pytest.ini 作为 core 测试配置；测试用例仍位于 core/tests，无需移动测试模块。
+
+【验证】
+从仓库外的 C:\Windows\Temp 调用：& 'C:\Users\AZI\Desktop\VibeCode\3.open-data-audit\core\tests\运行全量测试.bat' --no-pause。
+结果：934 passed，13 skipped，2 subtests passed；0 failed，0 errors；退出码 0；150.63 秒。
+git diff --check 通过。未新增 pytest 用例，因为本轮仅整理入口和说明。
+未使用真实业务文件；本轮未执行 Office/UOS/Linux/实体 Windows 7 平台验收。
+
+【配置、版本与回滚】
+无运行配置、业务配置或 VBA 影响；组件版本不升级。
+回滚时将 BAT 移回项目根目录并恢复其相对路径，再撤销 TEST_GROUPS.md 中新增的用法说明；本轮没有删除测试文件。
+
+【Git 与工作区】
+未执行 commit、push、merge。已有未跟踪 WIP 保持原样；本轮文件变更待后续 Git 前检查。

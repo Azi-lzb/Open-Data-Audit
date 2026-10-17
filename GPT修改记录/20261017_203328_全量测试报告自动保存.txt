@@ -1,0 +1,27 @@
+【时间与执行者】
+2026-10-17 20:33（Asia/Shanghai），Codex。
+前后 commit：bf217097028a9aec6070851b93040f43df9d0962，desktop 分支；未提交、推送或合并。
+修改前已有未跟踪 WIP；本轮未触碰既有 WIP。
+
+【修改目的】
+按用户确认，为根目录全量测试 BAT 增加自动保存的时间戳结果报告。
+
+【文件变化】
+修改：运行全量测试.bat。运行时创建 test-output/full-test-reports/FullTest_YYYYMMDD_HHMMSS.txt；实时将报告头、pytest 完整输出、通过/失败状态和退出码同时写入窗口及 UTF-8 文本报告。测试输出强制 UTF-8，避免中文跳过原因乱码；测试退出码会返回给调用方。
+修改：core/tests/TEST_GROUPS.md 说明报告保存目录。
+删除：调试时手动中断产生的残缺报告 test-output/full-test-reports/FullTest_20261017_202745.txt；其他完整测试报告保留。test-output/ 已被 .gitignore 排除。
+未修改或删除业务代码、pytest 用例、配置、VBA 或发行包。
+
+【验证】
+根目录 BAT 从仓库外 C:\Windows\Temp 调用：运行全量测试.bat --no-pause。
+最终全量结果：934 passed，13 skipped，2 subtests passed；0 failed，0 errors；退出码 0；132.24 秒。
+最终报告：test-output/full-test-reports/FullTest_20261017_203048.txt；已核对包含运行时间、命令、pytest 汇总及退出码，中文跳过原因可读。
+前一次全量运行有 1 项 Windows 临时目录重命名测试报 WinError 5；定向重跑该测试的两个参数场景均通过（2 passed），随后全量重跑通过。对应完整失败报告保留供追溯。
+未新增 pytest 用例；本次仅增强运行入口与报告保存。未使用真实业务文件，未执行 Office/UOS/Linux 实机验收。
+
+【配置、版本与回滚】
+无业务配置或 VBA 影响；组件版本不升级。
+回滚时撤销 BAT 与 TEST_GROUPS.md 中的报告保存变化即可；报告位于被忽略的 test-output/，按需单独清理。
+
+【Git 与工作区】
+未执行 commit、push、merge。既有未跟踪 WIP 保持原样；本轮源文件修改待后续 Git 前检查。

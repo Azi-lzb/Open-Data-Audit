@@ -1,0 +1,29 @@
+【时间与执行者】
+2026-10-17 15:20（Asia/Shanghai），Codex。
+前后 commit：bf217097028a9aec6070851b93040f43df9d0962，desktop 分支；未提交、推送或合并。
+
+【用户要求与范围】
+用户要求确认全量测试结果与上次一致，并测试现有 Windows 版；明确本轮不用重新打包。
+本轮未重建发行包，未修改业务代码、配置源或发行目录；只在系统临时目录复制 Windows 发行目录并运行两个 EXE，另新增本记录。
+
+【全量测试】
+命令：python -m pytest -q -rs core/tests
+结果与上次一致：934 passed，13 skipped，2 个子测试通过；0 failed、0 errors。跳过项属于平台限定或可选依赖场景。
+
+【Windows Flask 运行冒烟】
+测试对象：shell-flask/dist/Windows-Flask_V26.1.6.0_S1-S2 中的审核工具_Flask_V26.1.6.0.exe 与审核工具_Flask_Win7兼容_V26.1.6.0.exe。
+方法：将发行目录复制到系统临时目录的独立子目录，清除会覆盖包内资源定位的 BASE_AUDIT_* 环境变量，分别启动 EXE 并绑定独立本地端口；请求首页、应用图标和 favicon，随后结束进程并确认端口已释放。
+结果：
+- 现代 Windows EXE：通过；首页 HTTP 200，标题“审核工具 V26.1.6.0”，应用图标与 favicon HTTP 200，端口 57537 已释放。
+- Win7 兼容 EXE：通过；首页 HTTP 200，标题“审核工具 V26.1.6.0”，应用图标与 favicon HTTP 200，端口 59736 已释放。
+- 临时副本 EXE 与发行目录原文件 SHA-256 一致，确认实际启动的是当前发行包的同一二进制。
+  - 现代版：CEF0D1E3DBFCDEE620425E81EA58B22CC42B2A26A8F5DB24C801499ABE47D9B3
+  - Win7 兼容版：25E604CA1E8B81ADDBE4C9140EC658E4032FA646ACC29CA20FEBCC1B81A80A1B
+- Windows ZIP SHA-256 仍为 BE7E8CAEF3F20AADD3188B68DCA82D7E40246C1D22EDB5977D8D60302C92204F，且与 .sha256 侧车一致；本轮未重新生成 ZIP。
+
+【测试边界】
+本轮没有使用真实业务文件；没有在实体 Windows 7 SP1 机器上测试兼容版，因此只证明两个 EXE 可在当前 Windows 环境启动并提供基础页面及静态资源，不代表完成 Windows 7 实机验收。
+没有新增测试用例，因为本轮只验收既有发行包，未更改产品代码。
+
+【Git 与工作区】
+未执行 commit、push、merge。既有未跟踪 WIP 未触碰；dist 位于忽略目录。新增本记录供后续检查。

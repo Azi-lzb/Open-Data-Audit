@@ -1,9 +1,11 @@
 #!/bin/sh
-# Linux 发行包本机启动冒烟（UOS20/25、麒麟 V10 等 Debian 系通用）。
+# Linux 发行包本机启动冒烟（适用于匹配架构和 glibc/系统运行库的 Linux）。
 #
 # 用途：打包后、分发前在当前机器实测产物能否启动——解包到临时目录、启动冻结
 # 服务（不弹浏览器）、校验 HTTP 200 与页面标题、关闭并确认端口释放。把产物和
-# 本脚本拷到目标机直接运行，即可在安装前预检；测试机不需要 Python。
+# 本脚本拷到目标机直接运行，即可在安装前预检；发行包自带 Python，测试机无需安装。
+# DEB 解包需要 dpkg-deb；其它 Linux 可测试兼容的 tar.gz。HTTP 检查优先用 curl/wget，
+# 两者都没有时才回退到系统 Python（python3 或 python）。
 #
 # 用法：
 #   ./Linux-3-测试发行包启动.sh                          # 自动测 dist/ 下最新 .deb 与 .tar.gz
@@ -21,16 +23,33 @@ case "$START_TIMEOUT" in
 esac
 START_ATTEMPTS=$((START_TIMEOUT * 2))
 
-for tool in curl tar mktemp grep sed find; do
+for tool in tar mktemp grep sed find; do
     command -v "$tool" >/dev/null 2>&1 || { echo "[错误] 缺少 $tool。" >&2; exit 2; }
 done
+if command -v curl >/dev/null 2>&1; then
+    HTTP_CLIENT=curl
+elif command -v wget >/dev/null 2>&1; then
+    HTTP_CLIENT=wget
+elif command -v python3 >/dev/null 2>&1; then
+    HTTP_CLIENT=python3
+elif command -v python >/dev/null 2>&1; then
+    HTTP_CLIENT=python
+else
+    echo '[错误] HTTP 冒烟检查需要 curl、wget 或 Python（python3/python）之一；本机回环检查不会访问互联网。' >&2
+    exit 2
+fi
 
 PASS_COUNT=0
 FAIL_COUNT=0
 NEXT_PORT=8800
 
 if [ $# -eq 0 ]; then
-    NEWEST_DEB=$(cd "$DIST" 2>/dev/null && ls -t Audit-Tools-S1-S2_V*_*.deb Audit-Tools_V*_*.deb 审核工具_V*_*.deb 2>/dev/null | head -1 || true)
+    NEWEST_DEB=
+    if command -v dpkg-deb >/dev/null 2>&1; then
+        NEWEST_DEB=$(cd "$DIST" 2>/dev/null && ls -t Audit-Tools-S1-S2_V*_*.deb Audit-Tools_V*_*.deb 审核工具_V*_*.deb 2>/dev/null | head -1 || true)
+    else
+        echo '[提示] 未找到 dpkg-deb；自动发现时跳过 DEB，仅检查可用的 TAR.GZ。'
+    fi
     # UOS 源码验收包也带产品版本，但不属于本入口测试的冻结发行包。
     NEWEST_TGZ=$(cd "$DIST" 2>/dev/null && ls -t Audit-Tools-S1-S2_V*_*.tar.gz Audit-Tools_V*_*.tar.gz 审核工具_V*_*.tar.gz 2>/dev/null | grep -v '^审核工具_V[^_]*_UOS_' | head -1 || true)
     # set -- 为整体替换，追加用 "set -- "$@" 新项"，否则 tar.gz 会覆盖 .deb。
@@ -41,6 +60,60 @@ if [ $# -eq 0 ]; then
         exit 2
     fi
 fi
+
+http_get() {  # $1=URL $2=输出文件 $3=超时秒数；输出 HTTP 状态码，连接失败为 000
+    HTTP_URL=$1
+    HTTP_OUTFILE=$2
+    HTTP_TIMEOUT=$3
+    rm -f -- "$HTTP_OUTFILE"
+    case "$HTTP_CLIENT" in
+        curl)
+            HTTP_CODE=$(curl -sS --max-time "$HTTP_TIMEOUT" -o "$HTTP_OUTFILE" -w '%{http_code}' "$HTTP_URL" 2>/dev/null) || HTTP_CODE=000
+            printf '%s\n' "${HTTP_CODE:-000}"
+            ;;
+        wget)
+            if wget -q -T "$HTTP_TIMEOUT" -O "$HTTP_OUTFILE" "$HTTP_URL"; then
+                printf '200\n'
+            else
+                rm -f -- "$HTTP_OUTFILE"
+                printf '000\n'
+            fi
+            ;;
+        python3|python)
+            "$HTTP_CLIENT" - "$HTTP_URL" "$HTTP_OUTFILE" "$HTTP_TIMEOUT" <<'PY'
+from __future__ import print_function
+import sys
+
+try:
+    if sys.version_info[0] >= 3:
+        from urllib.request import urlopen
+        from urllib.error import HTTPError
+    else:
+        from urllib2 import urlopen, HTTPError
+    url, output_path, timeout = sys.argv[1], sys.argv[2], float(sys.argv[3])
+    response = None
+    try:
+        response = urlopen(url, timeout=timeout)
+        status = response.getcode()
+        body = response.read()
+    except HTTPError as error:
+        status = error.code
+        body = error.read()
+    with open(output_path, 'wb') as output_file:
+        output_file.write(body)
+    print(status)
+except Exception:
+    print('000')
+finally:
+    try:
+        if response is not None:
+            response.close()
+    except Exception:
+        pass
+PY
+            ;;
+    esac
+}
 
 test_one() {  # $1=产物绝对/相对路径
     ART=$1
@@ -153,7 +226,7 @@ test_one() {  # $1=产物绝对/相对路径
             break
         fi
 
-        CODE=$(curl -s --max-time 10 -o "$T/page.html" -w '%{http_code}' "http://127.0.0.1:$PORT/")
+        CODE=$(http_get "http://127.0.0.1:$PORT/" "$T/page.html" 10)
         TITLE=$(grep -oE '<title>[^<]{0,60}' "$T/page.html" 2>/dev/null | head -1 | cut -c8-)
         echo "       实际端口 $PORT，HTTP $CODE，页面标题「$TITLE」"
         if [ "$CODE" != "200" ]; then
@@ -164,12 +237,12 @@ test_one() {  # $1=产物绝对/相对路径
             FAILURE="页面标题异常：「$TITLE」（预期：审核工具 V$FROZEN_VERSION）"
             break
         fi
-        ASSET_CODE=$(curl -s --max-time 10 -o "$T/app-icon.png" -w '%{http_code}' "http://127.0.0.1:$PORT/assets/app-icon.png")
+        ASSET_CODE=$(http_get "http://127.0.0.1:$PORT/assets/app-icon.png" "$T/app-icon.png" 10)
         if [ "$ASSET_CODE" != "200" ] || [ ! -s "$T/app-icon.png" ]; then
             FAILURE="应用图标资源 HTTP $ASSET_CODE 或返回空文件"
             break
         fi
-        FAVICON_CODE=$(curl -s --max-time 10 -o "$T/favicon.ico" -w '%{http_code}' "http://127.0.0.1:$PORT/favicon.ico")
+        FAVICON_CODE=$(http_get "http://127.0.0.1:$PORT/favicon.ico" "$T/favicon.ico" 10)
         if [ "$FAVICON_CODE" != "200" ] || [ ! -s "$T/favicon.ico" ]; then
             FAILURE="favicon HTTP $FAVICON_CODE 或返回空文件"
             break
@@ -183,7 +256,7 @@ test_one() {  # $1=产物绝对/相对路径
             sleep 0.3
             i=$((i + 1))
         done
-        if curl -s --max-time 2 -o /dev/null "http://127.0.0.1:$PORT/"; then
+        if [ "$(http_get "http://127.0.0.1:$PORT/" /dev/null 2)" != 000 ]; then
             FAILURE="进程已结束但端口 $PORT 仍可访问，疑似残留实例"
             break
         fi

@@ -1,0 +1,24 @@
+时间：2026-10-17 23:13:36（Asia/Shanghai）
+执行者：Codex
+修改前 commit：bf217097028a9aec6070851b93040f43df9d0962
+修改后 commit：bf217097028a9aec6070851b93040f43df9d0962（未提交）
+WIP：工作区已有多项修改、未跟踪测试脚本和文件；均保留。本次只新增 Linux 桌面入口，并在既有 Linux runner 与测试说明中做相应补充。`core/tests/TEST_GROUPS.md`、`run_full_test_linux.sh` 在本轮前已有其他未提交内容，本次按当前内容局部修改。
+
+目的：让用户在 Linux/麒麟目标机上不依赖 Codex、Agent 或联网安装，即可从桌面运行本机测试，并自动生成带系统信息和时间戳的报告。
+
+修改/新增文件：
+- `运行Linux全量测试.sh`（新增）：Linux 桌面入口；尝试在桌面终端中运行，自动按 `uname -m` 从 `shell-flask/dist/`、`dist/` 或当前目录选择同架构最新 DEB/TAR.GZ。存在 Python 3.8+、pytest、项目依赖和完整 core 源码时运行 core 全量测试并检查发行包；否则在有发行包时运行包启动冒烟，并明确标出 core 未执行。支持 `--artifact`、`--package-only`、`--core-only`、`--no-pause`。
+- `run_full_test_linux.sh`：允许最小离线包验收目录缺少 `core/tests/TEST_GROUPS.md`，并在包测试报告中说明覆盖映射未随最小包携带。
+- `core/tests/TEST_GROUPS.md`：说明 Linux 桌面入口、离线依赖边界、麒麟 V10 Python 3.5 的测试范围，以及离线携带文件。
+
+逻辑与影响：入口不运行 pip、apt 或其他网络安装命令；包冒烟只访问本机回环地址。麒麟 V10 常见 Python 3.5.2 无法运行本项目 Python 3.8+ 源码测试，因此在该环境下脚本自动运行发行包启动验收，报告明确标出 core pytest 未执行；若需要在离线麒麟机器执行 core 全量 pytest，必须事先带入兼容的 Python 3.8+ 测试环境及其依赖。配置、VBA、业务功能和版本均未变更。【组件版本】不升级。
+
+验证：
+- `bash -n 运行Linux全量测试.sh` 和 `bash -n run_full_test_linux.sh` 通过；`--help` 输出正常；`git diff --check` 通过。
+- WSL Ubuntu 24.04 中执行 `bash ./运行Linux全量测试.sh --package-only --no-pause`：自动识别 amd64 DEB 与 TAR.GZ，两个发行包均启动成功，首页 HTTP 200、图标/favicon 可访问、测试后端口释放；通过 2，失败 0。报告：`test-output/full-test-reports/FullTest_linux-amd64_20261017_231128.txt`。
+- 用临时最小目录（仅 Linux 入口、runner、两个启动脚本和 DEB，不含 `core/`）执行包冒烟：通过 1，失败 0；报告验证了缺少测试覆盖说明时的独立包模式。临时目录已清理。
+- 同一最小目录再以默认自动模式运行：脚本因缺少 core 测试源码自动切换到包启动冒烟，并在报告/终端提示 core 未执行；DEB 启动通过，HTTP 200，端口释放正常。
+- 未在麒麟 V10 真机验证；当前验证为 WSL Ubuntu amd64。未运行完整 core pytest，因为本次只验证桌面入口和离线包冒烟分支。
+
+删除清单：无；临时最小测试目录已清理，工作区其他内容未删除。
+回滚提示：删除新增的 `运行Linux全量测试.sh`，恢复 `run_full_test_linux.sh` 与 `core/tests/TEST_GROUPS.md` 到本次修改前版本即可回滚；测试报告位于忽略目录 `test-output/`。

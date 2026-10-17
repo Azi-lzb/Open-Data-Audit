@@ -1,0 +1,28 @@
+时间：2026-10-17（Asia/Shanghai）
+执行者：Codex
+修改前 commit：bf217097028a9aec6070851b93040f43df9d0962
+修改后 commit：bf217097028a9aec6070851b93040f43df9d0962（未提交）
+WIP：开始前工作区已有多项未跟踪文件及既有测试入口；已保留。此次仅补充平台测试入口和说明。
+
+目的：让 Windows、Linux AMD64、Linux ARM64 都可运行全量测试，报告按平台和架构分别保存，并支持可选的 Linux 安装包启动冒烟测试。
+
+修改/新增文件：
+- 运行全量测试.bat：根目录 Windows 入口，报告文件名包含 Windows 架构和时间戳。
+- tools/run_full_test_report.ps1：Windows 报告增加系统版本、架构信息。
+- run_full_test_linux.sh：新增 Linux 入口，自动识别 amd64/arm64，记录发行版、内核、glibc、Python、LibreOffice、Node.js；运行详细 pytest；可选调用已有发行包冒烟脚本。支持 Python 3.5 目标机通过 --package-only 仅做安装包启动验证。
+- core/tests/TEST_GROUPS.md：补充三个平台的运行方式、依赖、报告位置和 package-only 的验收边界。
+
+配置/VBA/组件影响：无配置和 VBA 变更；不升级组件版本；不改变业务代码。
+
+验证：
+- Windows 11 AMD64：运行“运行全量测试.bat --no-pause”，934 passed、13 skipped、2 subtests passed，退出码 0。报告：test-output/full-test-reports/FullTest_windows-amd64_20261017_210035.txt。
+- WSL Ubuntu 24.04 AMD64，glibc 2.39：Linux 全量 pytest 937 passed、10 skipped、2 subtests passed，退出码 0。报告：test-output/full-test-reports/FullTest_linux-amd64_20261017_205643.txt。
+- Linux AMD64 DEB 启动冒烟：SHA-256、解包、冻结程序启动、HTTP 200、图标/favicon 获取及端口释放均通过，退出码 0。报告：test-output/full-test-reports/FullTest_linux-amd64_20261017_205952.txt。
+- Linux 脚本 bash -n 语法检查通过；Windows 实际运行覆盖 BAT 和 PowerShell 报告生成。
+- ARM64 Linux：未执行，当前没有原生 ARM64 Linux 主机。跨架构模拟不能代替目标机运行验证；需在 ARM64 机器上执行 bash run_full_test_linux.sh。麒麟 V10 若仅有 Python 3.5，可执行 bash run_full_test_linux.sh --package-only --artifact <ARM64安装包>，但这只验证安装包启动，不代表 S1/S2/S3 全量功能通过。
+- 本次 Linux 全量运行的 WSL 环境未安装 LibreOffice 和 Node.js，报告已记录；相应依赖用例按测试定义跳过。测试环境 glibc 为 2.39，因此这不是 glibc 2.23 的实机运行证明。
+- git diff --check 未发现文本空白差异；Git 对仓库根目录的 WSL venv 符号链接 lib64 报“Function not implemented”，完整检查受该临时文件影响。
+
+临时文件和清理：WSL 测试依赖准备时在仓库根目录创建了 bin/、lib/、lib64/、pyvenv.cfg（Python 3.12 虚拟环境，pyvenv.cfg 记录其由本次 WSL 命令创建）。清理这些确认为本次生成的临时文件时，终端执行策略拒绝了 Remove-Item 命令，未能清理；因此它们仍以未跟踪项存在，需在后续允许的清理操作中删除。未删除其他工作区文件。
+
+回滚提示：删除新增的 run_full_test_linux.sh 和本记录，并恢复运行全量测试.bat、tools/run_full_test_report.ps1、core/tests/TEST_GROUPS.md 即可回退本次代码改动；test-output 报告为忽略的本机产物。

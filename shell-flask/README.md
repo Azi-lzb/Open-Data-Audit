@@ -176,8 +176,10 @@ S1/S2 的外部数据参照保留。只调整交付显示范围，不拆分共�
   （S1/S2/S3 的 Excel 处理依赖；离线机用 LibreOffice 官方 deb 离线包安装，
   详见仓库根 README「运行依赖」一节——该安装包不入库，随介质分发）。
 - **Linux-3-测试发行包启动.sh**：打包后、分发前的本机实测（解包→启动→HTTP 200 与页面
-  标题校验→释放端口→汇总）；可随产物拷到 UOS/麒麟目标机做安装前预检，
-  测试机不需要 Python。
+  标题校验→释放端口→汇总）；可随产物拷到 UOS、麒麟、Ubuntu、Debian 等兼容的 glibc Linux
+  目标机做安装前预检。发行包自带 Python，测试机无需安装 Python；HTTP 检查优先使用
+  curl/wget，两者都没有时才回退到系统 Python。DEB 解包需要 dpkg-deb，其他发行版使用
+  同架构且运行库兼容的 TAR.GZ；Alpine/musl 不在当前兼容范围内。
   默认等待服务启动 30 秒；Docker/QEMU 的 ARM64 模拟检查可设置
   `FLASK_SMOKE_START_TIMEOUT=180` 延长等待时间，启动后的 HTTP、图标和端口释放检查保持一致。
 - **通用离线交付**：`Linux-6-组装通用离线交付.sh` 将同架构审核工具 DEB

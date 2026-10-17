@@ -1,0 +1,38 @@
+【时间与执行者】
+2026-10-17 14:01（Asia/Shanghai），Codex。
+前后 commit：bf217097028a9aec6070851b93040f43df9d0962，desktop 分支；未提交、推送或合并。当前工作区原有 WIP 未触碰。
+
+【用户要求与范围】
+用户要求在 Git 操作前进行全量测试，测试通过后重新构建 Linux 双架构 S1/S2 包和 Windows Flask S1/S2 包。
+本轮只运行测试、生成发行产物、更新 dist 内产物并新增本记录；未修改业务代码、配置源、版本清单或 CHANGELOG。
+
+【全量测试】
+命令：python -m pytest -q -rs core/tests
+结果：934 passed，13 skipped，2 个子测试通过；0 failed、0 errors；125.36 秒。跳过项属于平台限定或可选依赖场景。
+
+【构建结果】
+Linux：在 Ubuntu 16.04.6 / glibc 2.23 隔离 rootfs 中，以 Python 3.12.14、GLIBC_TARGET=2.23、GLIBCXX_TARGET=3.4.21、--profile s1s2 构建 amd64 和 arm64。两架构各输出 DEB 与便携 tar.gz；包内 Python 已冻结。ELF 审计：实际最低 glibc 符号要求 2.17，无 GLIBCXX 符号依赖。两架构 DEB 元数据分别为 amd64、arm64。
+Windows：python shell-flask/build_windows_all.py --profile s1s2；生成现代 Windows Flask EXE、Win7 兼容 EXE 和 S1/S2 配置目录，并重建 ZIP 与 SHA-256 侧车。distribution-profile.txt 为 s1s2，ZIP 完整性检查通过。两份配置工作簿与 config-real 源文件逐字节一致。未启动 Windows EXE 做 UI 运行验收。
+
+【发行包实测与配置】
+- Linux 启动冒烟：DEB/tar.gz × amd64/arm64，共 4 项通过、0 失败。glibc 2.23 rootfs 下首页 HTTP 200、标题和图标资源正常，测试进程退出后端口释放；ARM64 在 QEMU 下测试。
+- Linux 清单、SHA256SUMS.txt、各包 .sha256 侧车均与文件内容匹配；Windows ZIP 与其 .sha256 侧车匹配。
+- S2 报表配置 SHA256：86c5084689cfa7705b33b994cedf7201e549e8fc7599c24afd71c1eb1af5ee01；S2 外部数据模板 SHA256：e3c88cd02bb1d240b56d35c0b6478ba8c16e132a65856425e42a16c074814399。
+- 当前发行产物包含 config-real 真实配置，限内部使用，请勿外发或提交公开仓库；S3 配置工作簿已从 S1/S2 包排除。
+- Linux 包不含 LibreOffice；未在麒麟 V10 实机安装，也未验证桌面 LibreOffice 集成。glibc 2.23 隔离 rootfs 验证不能替代目标机器实测。
+- 本轮临时 WSL bind mount 与 qemu-aarch64 binfmt 注册已清理。
+
+【交付位置】
+shell-flask/dist/dual-arch-glibc223-20261017_S1-S2_V26.1.6.0/：AMD64、ARM64 各含 DEB/tar.gz、侧车、build-info、README、manifest 和 SHA256SUMS。
+shell-flask/dist/Windows-Flask_V26.1.6.0_S1-S2/：现代版与 Win7 兼容版、S1/S2 配置及运行环境说明。
+shell-flask/dist/Windows-Flask_V26.1.6.0_S1-S2.zip：Windows ZIP；同目录 .sha256 文件用于校验。SHA256：be7e8caef3f20aadd3188b68dca82d7e40246c1d22edb5977d8d60302c92204f。
+旧 Linux 与 Windows 发行包目录及旧 Windows ZIP 已保留在 shell-flask/dist/归档-旧发行包-20261017/，可从归档回滚。未永久删除旧发行物。
+
+【修改、删除与回滚】
+新增本记录；发行产物仅更新于被忽略的 shell-flask/dist/。无业务文件删除。需要回滚时，将归档内对应旧目录移回稳定目录，并还原归档中的旧 Windows ZIP 与侧车。
+
+【组件版本】
+不升级。产品版本仍 V26.1.6.0；组件版本以版本管理/VERSION_MANIFEST.json 为准。
+
+【Git】
+未执行 commit、push、merge。原有未跟踪 WIP 保持原样：external/、shell-flask/LibreOfficeDEB/、两个 QEMU core dump、地金工具/、两个根目录 DOCX；另新增本记录待后续 Git 前检查。

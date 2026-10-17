@@ -1,0 +1,26 @@
+【时间与执行者】
+2026-10-17 19:31（Asia/Shanghai），Codex。
+前后 commit：bf217097028a9aec6070851b93040f43df9d0962，desktop 分支；未提交、推送或合并。
+修改前已有未跟踪 WIP；本轮未触碰既有 WIP。
+
+【修改目的】
+按用户要求将全量测试 BAT 放回项目根目录，方便直接找到和双击运行。
+
+【文件变化】
+移动：core/tests/运行全量测试.bat → 项目根目录/运行全量测试.bat。
+修改：BAT 从脚本所在根目录执行标准命令 python -m pytest -q -rs core/tests。
+修改：core/tests/TEST_GROUPS.md 将 Windows 双击及命令行入口改为项目根目录 BAT。
+新增：本修改记录。未修改或删除 pytest 用例、业务代码、配置或发行包。
+
+【验证】
+从仓库外 C:\Windows\Temp 调用根目录 BAT：& 'C:\Users\AZI\Desktop\VibeCode\3.open-data-audit\运行全量测试.bat' --no-pause。
+结果：934 passed，13 skipped，2 subtests passed；0 failed，0 errors；退出码 0；162.75 秒。
+测试过程中打印一次 Windows COM 异步探测线程异常（0x80010001）；pytest 全量结果仍通过。该现象记录供后续观察。
+git diff --check 通过。未新增测试用例；本轮只调整入口位置与说明。
+
+【配置、版本与回滚】
+无运行配置、业务配置或 VBA 影响；组件版本不升级。
+回滚时将根目录 BAT 移回 core/tests，并恢复 TEST_GROUPS.md 中的入口说明。本轮没有删除测试数据或用例。
+
+【Git 与工作区】
+未执行 commit、push、merge。既有未跟踪 WIP 保持原样；本轮文件变更待后续 Git 前检查。

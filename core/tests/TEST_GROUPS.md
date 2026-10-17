@@ -11,6 +11,14 @@ python -m pytest -q -rs -m s3 core/tests
 python -m pytest -q -rs core/tests
 ```
 
+Windows 用户可以双击仓库根目录的 `运行全量测试.bat` 运行 Windows 全量回归，或使用 `运行全量测试.bat --no-pause`。若已安装并配置 WSL，可执行 `运行全量测试.bat --wsl-linux` 仅在 WSL 中运行 Linux 全量测试，或执行 `运行全量测试.bat --with-wsl-linux` 先测 Windows、再测 WSL Linux；多个发行版时可追加 `--wsl-distro Ubuntu` 指定发行版。WSL 发行版必须预先安装 Bash、Python 3.8+、项目运行依赖和 pytest；脚本不会自动安装依赖。Linux runner 会优先尝试 `$HOME/.venvs/open-data-audit-test/bin/python`，可在 WSL 中一次性创建环境：`python3 -m venv "$HOME/.venvs/open-data-audit-test" && "$HOME/.venvs/open-data-audit-test/bin/python" -m pip install -r shell-flask/requirements.txt pytest xlwt`。Windows AMD64 上的 WSL 通常只验证 Linux AMD64，不能替代 ARM64 实机测试。Windows 脚本会自动切换到仓库根目录，优先选择能导入 pytest 的项目虚拟环境，其次使用 PATH 中的 Python 或 `py -3`，并在报告中记录 Windows 版本和架构。
+
+ARM64 可通过 Docker/QEMU 纳入 Windows 全量测试：`运行全量测试.bat --arm64-qemu` 仅运行 ARM64 模拟，`--with-arm64-qemu` 在 Windows 全量测试后追加 ARM64 模拟，`--all-platforms` 依次运行 Windows、WSL 原生架构 Linux 和 ARM64 QEMU。所选 WSL 发行版需能访问 Docker Engine；首次运行会联网准备 ARM64 Ubuntu 22.04 测试镜像及依赖，并在 ARM64 环境执行 core 全量 pytest 和可用发行包启动测试；有 ARM64 glibc2.23 包时，还会在 Ubuntu 16.04 ARM64 用户空间执行包启动冒烟和 DEB 安装检查。报告标出 QEMU 模拟方式。QEMU 可验证 ARM64 用户态与发行包 ABI，不能替代麒麟 V10 真机的内核、桌面、LibreOffice 和真实业务工作簿验收。
+
+Linux 用户也可在目标机运行 `bash run_full_test_linux.sh`；应分别在原生 amd64 和 arm64 环境运行，报告会自动记录发行版、架构、glibc、Python、LibreOffice 和 Node.js 信息，并将 pytest 临时文件放在系统临时目录。Linux 源码全量 pytest 需要 Python 3.8+、项目运行依赖和 pytest；脚本优先使用项目 `.venv/bin/python` 或 `bin/python`，随后使用用户测试虚拟环境或系统 Python，不会为了包启动测试强制指定目标机 Python 版本。脚本可加 `--artifact 路径`（可重复）调用现有发行包启动冒烟测试，例如 `bash run_full_test_linux.sh --artifact shell-flask/dist/审核工具_V26.1.6.0_amd64.deb`；该冒烟会使用临时 HOME/XDG_DATA_HOME 并在完成后清理。麒麟 V10 上的 Python 3.5 不满足源码测试要求，但冻结发行包自带 Python 运行时，可在目标机使用 `bash run_full_test_linux.sh --package-only --artifact <目标架构的包>` 单独生成带系统信息的发行包启动报告；这只验证包启动和页面资源，不等同于 S1/S2/S3 全量功能验收。Windows 报告命名为 `FullTest_windows-<架构>_<时间戳>.txt`，Linux 报告命名为 `FullTest_linux-<架构>_<时间戳>.txt`，均保存在 `test-output/full-test-reports/`；全量报告包含按 S1/S2/S3 功能整理的验证目标、代表用例和本次逐用例状态（通过/跳过/失败）。
+
+Linux 桌面真机可双击仓库根目录 `运行Linux全量测试.sh`：脚本会尝试在桌面终端显示结果、自动选择当前架构最新的本地发行包；只有检测到 `dpkg-deb` 时才自动选择 DEB，否则只查找 TAR.GZ。有 Python 3.8+ 与 pytest/项目依赖时运行 core 全量测试，否则直接用发行包自带 Python 运行启动冒烟并在报告中标明 core 未执行。脚本不联网、不安装依赖。将脚本拷到目标机时，需同时带上 `run_full_test_linux.sh`、`shell-flask/Linux-1-启动审核工具.sh`、`shell-flask/Linux-3-测试发行包启动.sh` 和同架构发行包；完整源码 pytest 还需 `core/` 与兼容的 Python 测试环境。该包测试面向 UOS、麒麟、Ubuntu、Debian 等兼容的 glibc Linux；DEB 需 Debian 系包管理工具，其他系统使用 TAR.GZ。架构、glibc 和系统共享库必须兼容，不能据此承诺所有 Linux 发行版（如 Alpine/musl）。
+
 分组由 `core/tests/conftest.py` 给现有测试模块自动标记，标记定义在 `core/pytest.ini`。设置、Web API、路径、配置指引、应用身份和版本清单等公共测试同时进入三组；因此三组测试数之和大于全量测试数。新增测试模块必须在 `conftest.py` 归类，否则收集时明确报错。不要把某一组通过写成“全部功能通过”。
 
 `test_distribution_profile.py` 同时进入三组：执行共用前端的完整版/S1-S2 版显示逻辑，

@@ -1,0 +1,28 @@
+时间：2026-10-17 23:06:07（Asia/Shanghai）
+执行者：Codex
+修改前 commit：bf217097028a9aec6070851b93040f43df9d0962
+修改后 commit：bf217097028a9aec6070851b93040f43df9d0962（未提交）
+WIP：工作区在本次任务前已有未提交修改和大量未跟踪文件；保留全部既有内容。本次只更新全量测试入口、WSL 调用层、Linux 报告标记和测试说明，并新增 ARM64 QEMU runner。`core/tests/TEST_GROUPS.md` 原先已处于修改状态，本次只在现有文档中补充 ARM64 使用说明。Git 检查仍提示仓库根目录 `lib64/` 的 WSL 路径访问警告；未处理该既有环境状态。
+
+目的：把 ARM64 Linux 全量测试加入仓库根目录的一键测试 BAT，同时在 ARM64 Ubuntu 16.04 / glibc 2.23 用户空间验证现有 ARM64 发行包的 DEB 安装与启动兼容性。
+
+修改/新增文件：
+- `运行全量测试.bat`：新增 `--arm64-qemu`（仅运行 ARM64 QEMU）、`--with-arm64-qemu`（Windows 后运行 ARM64 QEMU）、`--all-platforms`（Windows、WSL 原生 Linux、ARM64 QEMU）选项；`--wsl-distro` 同时用于 ARM64 测试。
+- `tools/run_full_test_linux_wsl.ps1`：支持选择 ARM64 QEMU runner，并提示 Docker Engine 前置条件。
+- `tools/run_full_test_arm64_qemu.sh`（新增）：准备 ARM64 Ubuntu 22.04 测试镜像，在 QEMU 下运行 Linux core 全量 pytest 和发行包冒烟；发现 glibc2.23 ARM64 包时，下载并校验 Ubuntu 16.04 ARM64 rootfs，执行真实 `dpkg -i`，再对 DEB 与 tar.gz 做启动冒烟。报告明确标出 QEMU 模拟模式。
+- `run_full_test_linux.sh`：支持通过 `ODA_TEST_EXECUTION_MODE` 将 QEMU/系统环境写入测试报告。
+- `core/tests/TEST_GROUPS.md`：补充 BAT 参数、Docker 要求和 QEMU 与麒麟 V10 真机验证的边界说明。
+
+逻辑与影响：ARM64 QEMU 使用 Docker 的 ARM64 用户态模拟；Ubuntu 22.04 用于完整 pytest，Ubuntu 16.04 提供 glibc 2.23 用户空间。QEMU 容器共享 WSL2 x86_64 内核，因此测试能验证 ARM64 二进制和较旧 glibc 用户态兼容，不能代替麒麟 V10 真机内核、桌面环境、LibreOffice 或真实业务工作簿验收。配置、VBA、业务功能和发行包均未修改。【组件版本】不升级。
+
+验证：
+- 执行 `运行全量测试.bat --arm64-qemu --wsl-distro Ubuntu --no-pause`，整体退出码 0。
+- ARM64 Ubuntu 22.04 QEMU core 全量测试：937 passed、10 skipped、2 subtests passed，pytest 退出码 0。跳过项属于平台专属或可选运行环境测试；测试镜像不提供旧版 Node.js，要求较新 Node 版本的前端项目按环境规则跳过。
+- Ubuntu 22.04/glibc 2.35 ARM64 QEMU：DEB 与 tar.gz 冒烟均启动成功，HTTP 200，图标/favicon 可访问，退出后端口释放。
+- Ubuntu 16.04/glibc 2.23 ARM64 QEMU：`dpkg -i` 安装成功，包状态为 `install ok installed`、架构 `arm64`；DEB 与 tar.gz 冒烟均启动成功，HTTP 200，退出后端口释放。
+- BAT `--help`、PowerShell/Bash 语法检查和 `git diff --check` 均通过。
+- 最终总报告：`test-output/full-test-reports/FullTest_linux-arm64-qemu_20261017_224525.txt`。本轮较早的失败诊断报告保留在忽略的 `test-output/` 中；最终通过报告为更新的 22:45:25 版本。首次环境尝试暴露 Jammy Node 12 与项目测试最低 Node 版本不符、冒烟缺少 curl；测试镜像随后调整并在最终运行中通过。
+- 未执行麒麟 V10 真机验收；未执行 Windows 与原生 WSL Linux 的完整套件，本次目标为 ARM64 QEMU 测试及入口集成。
+
+删除清单：无。临时 Dockerfile 已清理；Docker 测试镜像为缓存，供后续测试复用。测试报告保存在被忽略的 `test-output/`。
+回滚提示：恢复 `运行全量测试.bat`、`tools/run_full_test_linux_wsl.ps1`、`run_full_test_linux.sh`、`core/tests/TEST_GROUPS.md` 到本次修改前版本，并删除新增的 `tools/run_full_test_arm64_qemu.sh` 和本记录即可撤销本次代码/文档改动；无需删除 Docker 缓存或历史测试报告。

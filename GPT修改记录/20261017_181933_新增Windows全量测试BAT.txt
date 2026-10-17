@@ -1,0 +1,29 @@
+【时间与执行者】
+2026-10-17 18:19（Asia/Shanghai），Codex。
+修改前后 commit：bf217097028a9aec6070851b93040f43df9d0962，desktop 分支；未提交、推送或合并。
+修改前已有未跟踪 WIP；本轮未触碰，详见执行前 git status。
+
+【修改目的】
+增加一个可由用户双击运行的 Windows BAT，用于自行执行 core 全量 pytest 并直接查看测试摘要与退出状态。
+
+【修改文件】
+新增：运行全量测试.bat
+新增：本修改记录。
+未修改、删除业务代码、测试用例、配置、发行包或组件版本文件。
+
+【脚本行为】
+从 BAT 所在目录切换到项目根目录；按 .venv、PATH 中的 python、py -3 顺序寻找能导入 pytest 的 Python；打印解释器和测试命令；运行 python -m pytest -q -rs core/tests；打印 PASS/FAIL 与退出码。默认暂停以便双击后查看，传入 --no-pause 时不暂停。不会自动安装依赖；缺少 pytest 时提示安装命令。运行时临时设置 UTF-8 代码页，结束时恢复原代码页。
+
+【测试结果】
+命令：& '.\运行全量测试.bat' --no-pause
+最终验证：934 passed，13 skipped，2 subtests passed，0 failed，0 errors；退出码 0；耗时 135.78 秒。
+脚本使用系统 Python 3.12.10；项目 .venv 中没有 pytest，因此按设计回退。工作目录为项目根目录。
+未新增测试用例：本次只添加全量测试入口，没有更改产品行为；用完整 core pytest 实际验证 BAT。
+未使用真实业务文件；Office/UOS/Linux/实体 Windows 7 的平台验收不属于本 BAT 的 pytest 范围。
+
+【回滚与版本】
+回滚时删除运行全量测试.bat 和本记录即可。无其他文件删除。
+【组件版本】不升级。
+
+【Git】
+未执行 commit、push、merge。既有未跟踪 WIP 保持原样；新增 BAT 与本记录待后续 Git 前检查。

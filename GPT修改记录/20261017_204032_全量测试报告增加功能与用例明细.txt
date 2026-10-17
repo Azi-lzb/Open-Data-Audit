@@ -1,0 +1,29 @@
+【时间与执行者】
+2026-10-17 20:40（Asia/Shanghai），Codex。
+前后 commit：bf217097028a9aec6070851b93040f43df9d0962，desktop 分支；未提交、推送或合并。
+修改前已有未提交 WIP；本轮只调整全量测试报告相关文件，其他 WIP 保持原样。
+
+【修改目的】
+按用户要求，让全量测试报告说明每项 S1/S2/S3 功能具体验证什么，并列出本次真实执行的 pytest 用例及状态，避免报告只有汇总数量。
+
+【文件变化】
+修改：运行全量测试.bat，继续生成带时间戳的报告，并将 pytest 输出改为逐用例详细模式。
+新增：tools/run_full_test_report.ps1。报告自动摘录 core/tests/TEST_GROUPS.md 中 S1-F01 至 S3-F05 的功能说明、主要测试模块、代表用例与断言目标，再记录本次 pytest -v -rs core/tests 的实际用例名称、通过/跳过/失败状态和最终退出码。
+修改：core/tests/TEST_GROUPS.md，说明 Windows 全量报告现在包含功能覆盖说明和逐用例结果。
+新增：本次运行报告 test-output/full-test-reports/FullTest_20261017_203814.txt；test-output/ 被 .gitignore 排除。
+未修改业务代码、pytest 测试、配置、VBA 或发行包；未新增测试用例，组件版本不升级。
+
+【验证】
+从仓库外 C:\Windows\Temp 运行：运行全量测试.bat --no-pause。
+完整结果：收集 947 项，934 passed、13 skipped、2 subtests passed；0 failed、0 errors；退出码 0；126.86 秒。
+跳过项是 Linux/UOS 分支以及需要 Flask 环境的路由验收，不代表这些平台验收通过。
+已检查报告包含 S1-F01 等功能章节、代表性 pytest 用例、本次逐用例 PASSED/SKIPPED 明细、汇总和退出码；文件大小约 236 KB。git diff --check 通过。
+首次启动时 Windows PowerShell 5.1 因脚本编码无 BOM 解析中文失败，尚未启动 pytest；已修复为带 BOM 的 UTF-8 脚本，随后完整运行通过。首次失败没有留下残缺报告。
+未使用真实业务文件，未执行 Office、UOS/Linux 实机验收。
+
+【配置、版本与回滚】
+无业务配置或 VBA 影响；不升级组件版本。
+回滚时撤销本次 BAT、TEST_GROUPS.md 和 PowerShell 辅助脚本改动即可；自动报告保存在被忽略的 test-output/ 目录。
+
+【Git 与工作区】
+未执行 commit、push、merge。既有未跟踪 WIP 保持原样；本轮相关变更待后续 Git 前检查。

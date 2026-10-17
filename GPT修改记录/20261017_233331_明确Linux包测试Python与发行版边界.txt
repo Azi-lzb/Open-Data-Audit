@@ -1,0 +1,29 @@
+时间：2026-10-17 23:35:26（Asia/Shanghai）
+执行者：Codex
+修改前 commit：bf217097028a9aec6070851b93040f43df9d0962
+修改后 commit：bf217097028a9aec6070851b93040f43df9d0962（未提交）
+WIP：工作区已有多项未提交修改、未跟踪测试入口、构建产物和本机文件；均保留。本次只调整 Linux 测试说明和启动冒烟脚本，不清理、不暂存、不提交其它文件。
+
+目的：明确 Linux 冻结发行包内置 Python 与 core 源码 pytest 的区别，并说明 DEB/TAR.GZ 对不同发行版的适用边界，避免把“Python 3.8+”误解成启动交付包的主机要求。
+
+修改文件：
+- `运行Linux全量测试.sh`：帮助文本说明发行包启动不依赖目标机 Python；自动发现仅在存在 `dpkg-deb` 时选择 DEB，否则查找 TAR.GZ。递归查找改用 `find -exec ls`，移除 GNU 专有的 `find -printf`。package-only 模式打印包内 Python 提示；源码测试候选环境加入项目根目录 `bin/python`。
+- `run_full_test_linux.sh`：帮助文本说明 Python 3.8+ 仅用于源码 pytest；发行包冒烟不要求主机 Python，并标出 DEB、兼容 glibc TAR.GZ 与 Alpine/musl 的边界；源码测试候选环境加入项目根目录 `bin/python`。
+- `shell-flask/Linux-3-测试发行包启动.sh`：移除 curl 硬依赖；HTTP 检查按 curl、wget、python3/python 顺序选择。无 `dpkg-deb` 时自动跳过 DEB，只查 TAR.GZ。明确需匹配 CPU 架构及 glibc/系统运行库。
+- `shell-flask/README.md`：补充发行包冒烟脚本的 HTTP 客户端、包格式和 Linux 兼容边界。
+- `core/tests/TEST_GROUPS.md`：同步桌面入口和 Linux runner 的 Python、DEB/TAR.GZ 与发行版适用说明。
+
+技术边界：PyInstaller 冻结应用所带 Python 用于运行审核工具，不是可直接调用的 Python/pytest 解释器。因此只做包启动验收时不检查主机 Python；直接对 `core/` 源码运行 pytest 时，仍需项目支持的 Python 3.8+、pytest 和运行依赖。DEB 需要 `dpkg-deb`；Ubuntu、Debian、UOS、麒麟等 glibc 系统可按架构与共享库兼容性选择 DEB 或 TAR.GZ。不能据此承诺所有 Linux 发行版，Alpine/musl 不在当前支持范围。
+
+验证：
+- WSL Ubuntu 24.04 amd64 中 `bash -n 运行Linux全量测试.sh`、`bash -n run_full_test_linux.sh`、`sh -n shell-flask/Linux-3-测试发行包启动.sh` 均通过。
+- 项目根目录现有 `bin/python` 为 Python 3.12.3；检查确认未安装 pytest，因此它不能运行源码 pytest。脚本会优先尝试这个项目解释器（若依赖齐全），再回退到其他测试环境；不会安装或替换 Python。
+- 执行 `./运行Linux全量测试.sh --package-only --no-pause`：自动递归找到 amd64 DEB 与 TAR.GZ；两个包的 SHA-256、冻结服务启动、首页 HTTP 200、页面标题、图标/favicon 和端口释放均通过，汇总通过 2、失败 0。报告：`test-output/full-test-reports/FullTest_linux-amd64_20261017_233319.txt`。
+- 在临时 PATH 中排除 curl/wget，保留 Python 3，直接测 DEB：HTTP 检查的 Python 回退通过，汇总通过 1、失败 0。
+- 在临时 PATH 中排除 curl 和 Python，保留 wget，直接测 DEB：HTTP 检查的 wget 回退通过，汇总通过 1、失败 0。
+- 在临时 PATH 中排除 Python/python3/wget，保留 curl，直接测 DEB：包启动及 HTTP 检查通过，汇总通过 1、失败 0，确认包冒烟本身不依赖目标机 Python。
+- 本次未在 UOS、麒麟真机或 ARM64 实机运行；未运行 core pytest。Ubuntu WSL amd64 结果不能替代目标机验收。
+
+【组件版本】不升级。
+
+删除清单：无。测试使用的临时目录已清理；既有构建包和其它 WIP 未改动。
