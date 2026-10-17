@@ -23,4 +23,4 @@
 - config-real 正式工作簿只读检查仍由 S2 配置测试覆盖；真实 Kylin V10/V11 实机安装不属于本次 Git 同步验收。
 
 【Git 同步结果】
-提交与推送按用户授权执行：先推 desktop，再快进 main 并推送 origin/main；不强推。最终提交号待本轮操作完成后记录于 Git 历史。
+本轮公开项目提交：1f83ef8a8c5758e6115bea42a62be19d926729ec（desktop）。按用户授权随后推送 desktop，并将 main 快进到该提交后推送 origin/main；不强推。远端同步结果以完成后的分支指针为准。
