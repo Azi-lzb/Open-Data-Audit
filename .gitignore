@@ -38,3 +38,16 @@ build-win7-venv-rebuilt/
 /LO_*_deb.tar.gz
 # 上述离线包的本地归档目录（多版本/多架构），同样不入 git
 /LODEB/
+
+# 本机 WSL 测试虚拟环境：绑定本机 Python/平台路径，不随源码入库。
+/bin/
+/lib/
+/lib64
+/pyvenv.cfg
+
+# 本地依赖包、崩溃转储及参考资料：保留在本机，不进入公开代码仓库。
+/shell-flask/LibreOfficeDEB/
+/shell-flask/qemu_ldconfig.real_*.core
+/地金工具/
+/基础数据审核工具使用说明.docx
+/审核工具安装与功能说明.docx

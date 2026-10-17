@@ -1,0 +1,19 @@
+【时间与执行者】
+2026-10-18 00:29（Asia/Shanghai），Codex。
+修改前 commit：354e080b97aba0effc835e0036551e9f89f59783，desktop 分支。
+工作区：上次测试工具同步后，仅保留外部图片目录等未跟踪内容；本机 WSL Python 环境、LibreOffice 离线包、QEMU core、地金资料和两份 Word 文档均为本地文件。
+
+【目的】
+避免把本机测试环境、崩溃转储、离线依赖包及用户明确指定的本地参考资料误提交到公开仓库；文件保留在本机，不删除。
+
+【修改文件】
+- `.gitignore`：新增根目录 Python 虚拟环境路径 `/bin/`、`/lib/`、`/lib64`、`/pyvenv.cfg`；忽略 `shell-flask/LibreOfficeDEB/`、`shell-flask/qemu_ldconfig.real_*.core`、`地金工具/`，以及 `基础数据审核工具使用说明.docx`、`审核工具安装与功能说明.docx`。
+- 新增本修改记录。
+
+【配置、版本与回滚】
+未修改业务代码、公开配置、真实配置或 VBA，不升级组件版本。忽略规则不删除本地文件。回滚时移除上述 `.gitignore` 条目并删除本记录即可。
+
+【验证】
+- `git check-ignore -v` 确认规则命中指定的本机环境、离线包、core、地金目录和两份 Word 文件。
+- 确认 `external/images.jpg` 未被新规则忽略，避免扩大到未确认的本地文件。
+- `git diff --check` 通过；本次仅调整 Git 忽略范围，无需运行 pytest。
