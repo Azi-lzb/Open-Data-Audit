@@ -5,7 +5,11 @@ import unittest
 from openpyxl import Workbook, load_workbook
 
 from src.base_audit.models import CopyRange, TemplateDefinition
-from src.base_audit.preflight_xlsx import validate_source_xlsx, write_structure_report_xlsx
+from src.base_audit.preflight_xlsx import (
+    summary_source_is_usable,
+    validate_source_xlsx,
+    write_structure_report_xlsx,
+)
 
 
 class PreflightXlsxTests(unittest.TestCase):
@@ -112,6 +116,116 @@ class PreflightXlsxTests(unittest.TestCase):
             self.assertEqual("贷款明细", detail["B3"].value)
             self.assertEqual("B1", detail["C3"].value)
             saved.close()
+
+    def test_summary_keeps_present_sheets_when_another_template_sheet_is_missing(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "机构甲.xlsx"
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = "有数据的表"
+            sheet.append(("编号", "名称", "金额"))
+            workbook.save(source)
+            workbook.close()
+
+            present = CopyRange("有数据的表", "A1:C1")
+            absent = CopyRange("缺少的表", "A1:C1")
+            definition = TemplateDefinition(
+                [],
+                [CopyRange("有数据的表", "A2:C10"), CopyRange("缺少的表", "A2:C10")],
+                False,
+                [present, absent],
+            )
+            expected = [
+                (present, [["编号", "名称", "金额"]]),
+                (absent, [["编号", "名称", "金额"]]),
+            ]
+
+            result = validate_source_xlsx(
+                source, definition, expected, allow_missing_sheets=True
+            )
+
+            self.assertTrue(result.matched)
+            self.assertEqual(("缺少的表",), result.missing_sheets)
+            self.assertEqual(3, result.checked_labels)
+            self.assertTrue(summary_source_is_usable(result, allow_missing_sheets=True))
+            self.assertIn("其余工作表继续汇总", result.details)
+
+    def test_summary_accepts_a_fallback_only_template(self):
+        with TemporaryDirectory() as folder:
+            source = Path(folder) / "机构甲.xlsx"
+            workbook = Workbook()
+            workbook.active.title = "新增业务表"
+            workbook.save(source)
+            workbook.close()
+
+            definition = TemplateDefinition([], [], False, [])
+            result = validate_source_xlsx(
+                source, definition, [], allow_fallback_only=True
+            )
+
+            self.assertTrue(result.matched)
+            self.assertTrue(summary_source_is_usable(result))
+            self.assertIn("模板仅配置“兜底模板”", result.details)
+
+    def test_summary_keeps_header_only_result_when_all_target_sheets_are_missing(self):
+        with TemporaryDirectory() as folder:
+            source = Path(folder) / "机构甲.xlsx"
+            workbook = Workbook()
+            workbook.active.title = "无关工作表"
+            workbook.save(source)
+            workbook.close()
+
+            first = CopyRange("表甲", "A1:B1")
+            second = CopyRange("表乙", "A1:B1")
+            definition = TemplateDefinition(
+                [], [CopyRange("表甲", "A2:B10"), CopyRange("表乙", "A2:B10")],
+                False, [first, second],
+            )
+            result = validate_source_xlsx(
+                source,
+                definition,
+                [(first, [["字段", "数值"]]), (second, [["字段", "数值"]])],
+                allow_missing_sheets=True,
+            )
+
+            self.assertFalse(result.matched)
+            self.assertEqual(("表乙", "表甲"), result.missing_sheets)
+            self.assertEqual(0, result.checked_labels)
+            self.assertTrue(summary_source_is_usable(result, allow_missing_sheets=True))
+
+    def test_summary_still_rejects_misaligned_existing_sheet_if_another_is_missing(self):
+        with TemporaryDirectory() as folder:
+            source = Path(folder) / "机构甲.xlsx"
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = "有数据的表"
+            sheet.append(("编号", "错误字段", "金额"))
+            workbook.save(source)
+            workbook.close()
+
+            present = CopyRange("有数据的表", "A1:C1")
+            absent = CopyRange("缺少的表", "A1:C1")
+            definition = TemplateDefinition(
+                [],
+                [CopyRange("有数据的表", "A2:C10"), CopyRange("缺少的表", "A2:C10")],
+                False,
+                [present, absent],
+            )
+            result = validate_source_xlsx(
+                source,
+                definition,
+                [
+                    (present, [["编号", "名称", "金额"]]),
+                    (absent, [["编号", "名称", "金额"]]),
+                ],
+                allow_missing_sheets=True,
+            )
+
+            self.assertFalse(result.matched)
+            self.assertEqual(("缺少的表",), result.missing_sheets)
+            self.assertGreater(result.checked_labels, 0)
+            self.assertFalse(summary_source_is_usable(result, allow_missing_sheets=True))
 
 
 if __name__ == "__main__":

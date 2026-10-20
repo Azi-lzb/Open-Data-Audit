@@ -1,0 +1,43 @@
+时间：2026-10-20 20:53开始（Asia/Shanghai，覆盖本轮修改和验证）。
+执行者：Codex主Agent，未委派子Agent。
+修改前/后commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca（未提交）。
+分支：desktop；origin=https://github.com/Azi-lzb/Open-Data-Audit.git。
+
+【WIP与目的】
+已读AGENTS和适用规则并核对Git状态/分支/远端/commit，保留全部前序WIP。8个可能相关文件的修改前快照在系统临时目录codex_s2_single_progress_xls_zvre9_sl。
+用户要求去掉S2页面新进度框，仅保留运行记录上方进度条，并研究XLS读取是否应转成XLSX及Linux是否需LibreOffice、其他更快读法。
+
+【文件】
+修改core/frontend/web/index.html、core/tests/test_distribution_profile.py、core/tests/test_version_manifest.py、core/tests/TEST_GROUPS.md、版本管理/VERSION_MANIFEST.json和S2-F01/CHANGELOG.md；新增本记录；删除文件：无。
+core/src/base_audit/systems/s2_report_collection/importer.py和core/tests/test_period_v2.py仅做修改前快照，正式文件未改。无配置或依赖文件变化。
+
+【界面变化】
+删除独立进度框、独立容器/样式及渲染函数。运行记录上方保留唯一进度条，在同一行显示阶段、当前/总数量及耗时，当前文件或错误详情留tooltip；不显示0/0。
+原后端进度快照、实际百分比、保存后才完成、失败保留进度、终态计时器单次触发及其他功能日志估算保持。隐藏进度条时同步清理同行详情。
+无业务规则/审核结果/输入文件/Office计算/配置或VBA迁移影响。
+
+【组件版本】
+S2-F01执行报表规则v10.4.0→v10.4.1（Bugfix / PATCH，按用户偏好简化进度展示，后端和业务语义不变）。
+S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0、S1/S3与产品整包版本均未变。
+
+【XLS读取实验】
+全部样例/转换文件/测量脚本在本轮系统临时目录；原始基准取自上一轮系统临时目录中的1098个XLS扩展样例（约10.812MiB，549对），没有在公开目录创建业务数据。输入前后SHA-256相同。
+本机Windows AMD64、Python3.12.10，xlrd2.0.2、openpyxl3.1.5。以下仅比较读取A:C和转换，不含审核/结果导出，不推断Linux真机耗时：
+1. xlrd现有cell_value读取，两轮2.6388/2.2527秒。
+2. xlrd row_values读取，两轮2.6766/2.3061秒；on_demand为2.5344/2.8765秒；ragged_rows为2.8097/3.0153秒。所有取值逐项相同，未见值得正式改引擎的稳定增益。
+3. 已读取XLS数据后，仅把A:C数值/文字用openpyxl写入1098个XLSX，再读回，写入19.2335秒、读取11.9328秒；计入最低XLS读取后下界33.4724秒。无Office/LibreOffice调用，数值/文字实质单元格差异为0（空字符串与空值按空白对待）。这是S2取值实验，不是保留完整格式/公式的通用格式转换器；正式流程不进行这一步。
+4. 另在临时目录calamine_test中用pip --target、--only-binary=:all:、--no-deps安装python-calamine==0.3.1，未安装到项目环境/requirements，也未加入打包。三次直接读取0.2960/0.2698/0.2182秒；使用skip_empty_area=False保留前置空行列，样例工作表/行数一致、实质取值差异0。未验证任意XLS日期/错误单元格语义、完整审核引擎对拍或Linux冻结运行，因此仅作为候选，不自动替换正式xlrd。
+5. 官方PyPI元数据查询：0.3.1支持Python>=3.8，并提供manylinux_2_17_x86_64的对应CPython轮子；最新0.9.0要求Python>=3.11。正式引入需按项目Python/发行包及glibc基线选择版本并验收，不以本机候选试验宣称Linux适配通过。
+资料：xlrd官方API https://xlrd.readthedocs.io/en/latest/api.html 与on_demand文档；Calamine官方项目 https://github.com/dimastbk/python-calamine ，PyPI 0.3.1元数据 https://pypi.org/pypi/python-calamine/0.3.1/json 。
+结论：本项目S2直接读取XLS不需LibreOffice；为了单次审核先转换XLSX明显更慢。xlrd读取已只占部分耗时，上轮最终导出约9.49秒；更快读库也不意味着整流程按读取倍数提速。
+
+【验证】
+1. python -X utf8 -m pytest -q --basetemp=<本轮系统临时目录/pytest-ui> core/tests/test_distribution_profile.py —— 20 passed / 0 skipped / 0 failed / 0 errors；包含JS语法检查，以及无独立框、单条进度详情、无0/0、真实百分比、终态计时器和其他作业隔离验证。
+2. 最终S2回归：python -X utf8 -m pytest -q -rs -m s2 --basetemp=<本轮系统临时目录/pytest-s2-final> core/tests —— 418 passed / 6 skipped / 2 failed / 0 errors，628 deselected，3 subtests passed，用时88.44秒；与前轮相同，无新增失败。本机现成配置路径解析到config-real/2.报表采集系统_配置.xlsx及config-real/默认配置/2.报表采集系统_配置.xlsx，只读。
+3. 浏览器实际预览最新前端：执行按钮旁不再有独立框，运行记录上方唯一进度条在同一行显示“读取本期报表 · 215 / 549 · 耗时10秒”及43%，没有挤占上方表单。临时预览页与HTTP服务已关闭。
+4. Python测试文件编译、Node完整JS语法和git diff --check通过。对照本轮快照复核界面/测试增量；哈希确认正式importer.py和test_period_v2.py未改，其他业务WIP保留；版本仅S2-F01变化，HEAD未变。
+前轮S2基线418 passed、6 skipped、2 failed；已知失败是校验规则缺少硬性/软性下拉，以及本机配置输出万元而测试固定要求元；缺少Flask造成6项跳过，不改配置迎合测试。
+未执行：用户当前549对原始文件复跑、Linux原生/Office/发行包验收、Calamine正式引擎接入/冻结、core全量pytest；未打包。
+
+【回滚与Git】
+无commit/push/merge/rebase/PR操作。仅撤销本轮界面、测试和版本记录增量恢复S2-F01 v10.4.0，不得整文件restore覆盖已有WIP。临时转换及包文件不纳入公开仓库。

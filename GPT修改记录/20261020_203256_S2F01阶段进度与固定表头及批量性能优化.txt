@@ -1,0 +1,48 @@
+时间：2026-10-20 20:32开始（Asia/Shanghai；记录覆盖本轮修改与验证）。
+执行者：Codex主Agent负责结构查证、性能基线、后端实现、版本及集成验收；依AGENTS对复杂任务的委派要求，s2_progress_frontend（gpt-6-luna / xhigh）仅修改共用前端和对应测试，主Agent审查全部增量。
+修改前commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca
+修改后commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca（未提交）
+分支：desktop；origin为公开Open-Data-Audit仓库。
+
+【WIP与范围】
+已读AGENTS及适用规则，核对Git状态、远端、分支、commit。保留此前S1/S2及配置等全部WIP；本轮12个受影响既有文件的修改前快照在系统临时目录 codex_s2_progress_perf_q5ww_otk，基准样例、输出和pytest临时目录也放在那里，未进入公开项目目录。
+用户要求S2-F01有明确进度、改善549对文件约30秒的耗时，并固定对比对象表头。
+
+【修改/新增/删除】
+修改 core/frontend/web/index.html、core/src/base_audit/web_app.py、core/src/base_audit/systems/s2_report_collection/service.py、importer.py、exporter.py，core/tests/test_distribution_profile.py、test_period_v2.py、test_web_app.py、test_version_manifest.py、TEST_GROUPS.md，版本管理/VERSION_MANIFEST.json及S2-F01/CHANGELOG.md。
+新增本记录；删除文件：无。未改配置工作簿、原始业务文件、平台外壳或打包脚本。
+
+【实现与边界】
+1. 编排层新增可选on_progress回调，发出config/current/previous/validate/period/rules/external_read/external/export/save/complete阶段。导入按实际工作簿计数，导出按实际结果行计数并每250行上报；仅保存成功后发出complete。
+2. WebApi新增periodProgress运行时快照：status/stage/label/percent/current/total/message/elapsedSeconds。每次阶段回调一次替换快照，get_state刷新运行耗时；运行中最高99%，完成100%，失败保留已有完成量；finally释放busy。配置阻断和启动异常也明确失败。
+3. 阶段间百分比是工作量刻度，非剩余时间预测。导入显示文件数，写表显示结果行数，不知道总量的阶段隐藏0/0。当前工作簿只显示文件名、完整信息留tooltip。成功/失败卡片保留，其他任务忙时隐藏旧S2卡片；底栏只在S2运行时使用后端进度，终态单次设置收起计时器。
+4. 对比对象表头增加sticky和主题背景。列表按数据/筛选签名缓存，800ms轮询不重建未变化的DOM；变化时保留scrollTop。筛选、信用代码、单边/空表含义、转义和点击打开保持。
+5. 每个导入工作簿只resolve一次路径，所有指标复用结果；xlsx只读取既有A:C协议列，未改变正文取值及文件名/表名识别身份的规则。导出复用Font/Fill/Alignment对象，不改变格式及数值。
+6. 后台任务已有配对清单时不重复扫描元数据；此前为空时仍在完成前重试。规则启停、缺数、真实0、金额精度、机构映射、审核说明及三张分类表协议不变。没有配置/VBA迁移。
+
+【组件版本】
+S2-F01 执行报表规则 v10.3.1 → v10.4.0（Feature / MINOR，向后兼容的进度能力及性能优化）。
+S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0未变；S1/S3组件和产品整包版本未变。
+
+【性能基线与输出对拍】
+当前Windows本机，将2026-07-31/报表采集系统中既有21个单表样例按表单只读复制扩展为183家样例机构、549对、两期1098个.xls文件；加配置及外部数据约10.93MiB。本期19032指标；共28182审核结果，其中21777异常。该扩展样例不是用户当前549对原始文件，不推断Linux耗时。
+配置：config-real/2.报表采集系统_配置.xlsx及config-real/外部文件-大集中相关数据.xlsx，只读；全部基准输入前后SHA-256相同。
+基线普通运行29.940秒：本期导入7.6881秒、上期7.7200秒、导出11.9186秒。采样分析器额外一次运行48.758秒，热点显示39668次Path.resolve和重复样式构造，分析器耗时不用于速度对比。
+优化普通运行18.407秒；最终普通运行15.694秒：本期导入2.1445秒、上期1.6160秒、导出9.4869秒。当前观测耗时减少约39%至48%，受缓存/系统负载影响，不承诺任意文件都达到同一速度。
+输出对拍：优化前before_plain与最终after_final的28182条finding、summary、所有导出单元格、Sheet顺序、冻结/筛选区域及隐藏行逐项相同。ZIP中部件集合一致，逐部件比较只有docProps/core.xml文档时间戳不同；全部工作表XML、styles.xml、关系及包结构完全一致。最终基准全部输入SHA-256不变。
+
+【测试与验收】
+定向命令：python -X utf8 -m pytest -q --basetemp=<本轮系统临时目录/pytest-target> core/tests/test_period_v2.py core/tests/test_web_app.py core/tests/test_s2_units.py core/tests/test_distribution_profile.py -k 'not shipped_s2_configs'
+结果：211 passed / 0 skipped / 0 failed / 0 errors，1 deselected，3 subtests passed；仅排除已知本机输出单位与测试固定单位不一致项。
+前端独立复核20 passed，覆盖完整脚本Node语法、日志估算回退、实际阶段进度、终态重复轮询不重挂计时器、旧作业隔离、筛选/列表DOM缓存及滚动位置。
+早期定向尝试186 passed / 1 deselected / 1 error，错误来自与前端子任务同时使用pytest固定临时目录造成WinError32占用；改用各自独立系统临时basetemp后重跑为上述211通过，不修改业务代码规避测试。
+新增/增强测试理由：新增回调不能改变审核结果，导入/导出阶段及失败状态必须可靠；验证数值、来源、输入哈希、保存后完成、busy释放、空清单重试和前端状态行为。
+浏览器验收：本机in-app浏览器使用本地临时静态预览页和549个虚构配对，实际读取最新前端；验证阶段/数量/耗时显示，完成100%，失败保留43%，夜间主题，列表由样例机构1滚至7后表头仍固定。预览页与临时HTTP服务已关闭；没有连接用户真实审核会话。
+最终S2回归：python -X utf8 -m pytest -q -rs -m s2 --basetemp=<本轮系统临时目录/pytest-s2-final> core/tests —— 418 passed / 6 skipped / 2 failed / 0 errors，628 deselected，3 subtests passed，用时82.75秒。两项失败仍为下述既有配置差异，没有新增失败。
+本机测试配置路径优先解析到config-real/2.报表采集系统_配置.xlsx和config-real/默认配置/2.报表采集系统_配置.xlsx，只读。
+Python编译、Node完整JS语法、git diff --check通过；主Agent对照本轮临时快照审查全部源代码/测试增量，前序WIP保留。清单比较仅S2-F01变化，其他功能/配置及产品版本不变；HEAD仍为上述commit。
+前轮S2基线413 passed、6 skipped、2 failed。已知两项失败是校验规则缺少硬性/软性下拉，以及本机输出单位万元与测试要求元不一致；6项缺少Flask跳过，不改真实配置迎合测试。
+未执行：用户当前549对原始文件性能复跑、core全量pytest、麒麟/UOS原生GUI及Office/发行包验收；未打包。
+
+【回滚与Git】
+无commit/push/merge/rebase/PR操作。按本轮快照只撤销进度回调、缓存/样式复用、前端固定表头及相应测试/版本记录增量，恢复S2-F01 v10.3.1；不得整文件restore覆盖前序WIP。系统临时基准含业务样例副本，不纳入公开仓库。

@@ -1,0 +1,73 @@
+【时间与执行者】
+2026-10-20 08:27:05（Asia/Shanghai），Codex。
+修改前后 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca。保留原有 Git/WIP，未提交、推送、合并。
+
+【用户要求与范围】
+打包 Linux AMD64、Linux ARM64 与 Windows Flask 的 S1/S2 交付版。
+仅使用当前 core 业务代码和 config-real 配置；未实施刚讨论的机构参照统一方案。
+
+【修改/新增/删除文件】
+新增本记录；发行产物位于被忽略的 shell-flask/dist/。
+执行脚本、源码快照和证据位于被忽略的 test-output/release-20261020/ 和 *.log。
+未修改业务代码、源配置、MANIFEST、CHANGELOG；未删除业务文件。
+旧 Windows 稳定目录、ZIP与侧车保留到 shell-flask/dist/归档-旧发行包-20261020/，可回滚。
+
+【实际测试及已知问题】
+S1/S2 构建与验证报告
+时间：2026-10-20 08:27:05（Asia/Shanghai）
+产品版本：V26.1.6.0；配置来源：当前 config-real；当前代码 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca，包含原有未提交 WIP。
+
+【产物】
+Linux：shell-flask/dist/dual-arch-glibc223-20261020_S1-S2_V26.1.6.0
+AMD64、ARM64 各一份 DEB 与便携 TAR.GZ，附 SHA256 侧车、build-info、manifest、SHA256SUMS。
+Windows：shell-flask/dist/Windows-Flask_V26.1.6.0_S1-S2.zip
+ZIP 内含现代 Windows 64 位 EXE、Win7 32 位兼容 EXE、core 和三份 S1/S2 配置。
+Windows ZIP SHA256：307fae2bcc6dfcd8739329b3cc4d4c7cbb3d7f5915a33819b36eb5f2fafaeebc
+
+【构建与发行包验证】
+Linux 两架构均在 Ubuntu 16.04.6 / glibc 2.23 rootfs 中构建；ARM64 经 QEMU 执行。
+目标 GLIBC_TARGET=2.23、GLIBCXX_TARGET=3.4.21；逐 ELF 审计实际最低 glibc 2.17，无 GLIBCXX 符号依赖。
+Python 3.12.14 冻结入包；保留 lxml；目标机无需另外安装 Python。
+Linux DEB/TAR.GZ × 两架构：4 项启动冒烟通过，0 失败。检查首页、产品标题、图标、退出后端口释放。
+Windows 两个 EXE：在本机 Windows 上均通过首页、图标、状态 API、S1/S2 页面配置和端口释放检查。
+Windows ZIP 完整性和 SHA256 校验通过；Linux 四份包的内容与侧车哈希校验通过。
+Windows 包中的源码、各平台包的前端资源与三份 config-real 配置均与构建快照逐字节一致（HTML 打包范围注入除外）。Linux 业务代码从同一只读源码快照冻结，发行包不另带源码目录。
+207 个原始源码、配置、说明文件构建前后 SHA256 未变。
+交付范围为 S1/S2，S3/S4 导航受发行方案限制，S3 配置已排除。
+
+【回归测试】
+python -m pytest -q -rs -m "s1 or s2" core/tests
+616 passed，13 skipped，2 failed，0 errors；333 deselected；123.05 秒。
+失败1：test_s2_config_check.py::test_formal_and_default_s2_configs_pass_read_only_check
+本机正式配置“校验规则”没有测试要求的硬性/软性下拉验证，未修改用户工作簿。
+失败2：test_s2_units.py::test_shipped_s2_configs_keep_global_unit_settings_in_main_workbook
+本机输出单位为“万元”，测试固定预期为“元”；运行时实际按用户配置读取，未改单位。
+S2 正式配置只读检查 passed=True，issues=[]。
+补充使用现有 Flask 构建环境和现有 pytest 包运行 core/tests/test_libreoffice_install_api.py：29 passed，0 skipped，0 failed，0 errors；包含最初因缺 Flask 跳过的6项接口验收。
+
+【范围与限制】
+本轮只构建、验证、归档旧 Windows 产物和新增执行记录，不修改业务代码、配置源、版本清单。
+ARM64 首次冻结时发生 /dev/null 不可用并伴随 WSL 发行版停止；恢复 WSL、改用独立设备目录后重试，最终验证结果以成功重建产物为准。
+重试构建完成后的收尾包装器额外执行了两条未展开的空路径检查，退出码非零；两份真实 ARM64 产物当时均已启动通过。之后使用独立固定脚本复跑两份真实产物并确认退出码0，结果见 arm64-final-smoke.log。
+机构参照统一迁移仅处于讨论阶段，本次未实施；包仍使用当前读取逻辑。
+Linux 包不含 LibreOffice；本轮未执行麒麟/UOS 桌面实机、Windows 7 真机或 Office 真实业务验收。
+这不是全绿回归报告；上述两项配置预设断言仍未通过。
+未执行 commit、push、merge。
+
+【执行证据】
+artifacts/release-20261020/windows-build.log
+artifacts/release-20261020/windows-verify.log
+artifacts/release-20261020/linux-build.log
+artifacts/release-20261020/linux-verify.log
+artifacts/release-20261020/arm64-final-smoke.log
+artifacts/release-20261020/s1s2-tests.log
+artifacts/release-20261020/flask-api-tests.log
+test-output/release-20261020/source-hashes.json
+
+
+【组件版本】
+本轮为按现有清单构建，不升级。产品仍 V26.1.6.0，各功能/配置组件版本未改。
+
+【回滚】
+新 Linux 产物使用日期独立目录，不覆盖旧版。Windows 可从当日归档恢复旧发行目录、ZIP和侧车。
+WSL 临时 source/output/proc/dev 挂载和本次 QEMU binfmt 注册已清理。

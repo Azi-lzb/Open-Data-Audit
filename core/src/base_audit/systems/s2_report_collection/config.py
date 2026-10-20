@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 from .models import (
     ExternalCheckRule, IndicatorConfig, InstitutionProfile, PeriodBandConfig, ReportAuditConfig, UnitSettings,
@@ -50,8 +52,12 @@ _RULE = {
     "取反": "invert", "取反标识": "invert", "级别": "severity", "禁用": "disabled", "备注": "note",
 }
 
-# V2 面向 UI 的风险词为“提示/关注/严重”，但必须兼容现有 Excel 配置。
-_SEVERITY_MAP = {"错误": "严重", "核实": "关注", "提示": "提示", "严重": "严重", "关注": "关注"}
+# 新版仅使用“硬性/软性”；读取旧配置时按原风险程度兼容映射。
+LEGACY_SEVERITY_MAP = {
+    "错误": "硬性", "严重": "硬性",
+    "核实": "软性", "提示": "软性", "关注": "软性",
+}
+_SEVERITY_MAP = {**LEGACY_SEVERITY_MAP, "硬性": "硬性", "软性": "软性"}
 
 GENERAL_SETTINGS_SHEET_NAME = "通用设置"
 UNIT_SETTING_FIELDS = {
@@ -63,17 +69,45 @@ BOOLEAN_SETTING_FIELDS = {
     "是否隐藏无变动指标": "hide_unchanged_period_rows",
     "是否隐藏与大集中一致指标": "hide_matching_external_rows",
 }
+ENUM_SETTING_FIELDS = {
+    "文字变动默认级别": "text_change_severity",
+    "本期缺失默认级别": "current_missing_severity",
+    "上期缺失默认级别": "previous_missing_severity",
+}
 OPTIONAL_VALUE_SETTINGS = ("换算范围",)
+# 可缺省的枚举设置：旧配置不写该行时按默认值执行，出现后取值必须合法。
+OPTIONAL_ENUM_SETTINGS = {
+    name: ("硬性", "软性") for name in ENUM_SETTING_FIELDS
+}
+DEFAULT_ENUM_SETTINGS = {
+    "text_change_severity": "硬性",
+    "current_missing_severity": "硬性",
+    "previous_missing_severity": "硬性",
+}
 GENERAL_SETTINGS_FIELDS = (
     *UNIT_SETTING_FIELDS,
     *OPTIONAL_VALUE_SETTINGS,
     *BOOLEAN_SETTING_FIELDS,
+    *ENUM_SETTING_FIELDS,
 )
+
+
+@dataclass(frozen=True)
+class GeneralSettingsResult:
+    """通用设置解析结果；缺失的设置行按默认执行并附提示。"""
+
+    units: UnitSettings
+    hide_unchanged_period_rows: bool
+    hide_matching_external_rows: bool
+    text_change_severity: str
+    current_missing_severity: str
+    previous_missing_severity: str
+    missing_row_warnings: list[str] = field(default_factory=list)
 
 
 def _load_general_settings_from_book(
     book, config_path: Path,
-) -> tuple[UnitSettings, bool, bool]:
+) -> GeneralSettingsResult:
     if GENERAL_SETTINGS_SHEET_NAME not in book.sheetnames:
         raise V2ConfigError(
             f"报表采集配置“{Path(config_path).name}”缺少必需工作表“{GENERAL_SETTINGS_SHEET_NAME}”；"
@@ -107,14 +141,24 @@ def _load_general_settings_from_book(
             raise V2ConfigError(f"“{GENERAL_SETTINGS_SHEET_NAME}”工作表设置项重复：{key}")
         configured[key] = (row_number, value)
 
-    missing = [name for name in GENERAL_SETTINGS_FIELDS if name not in configured]
-    if missing:
-        raise V2ConfigError(
-            f"“{GENERAL_SETTINGS_SHEET_NAME}”工作表缺少设置项：{'、'.join(missing)}"
-        )
+    # 设置行允许缺失：按默认执行并在结果中提示补齐，不阻断运行；
+    # 换算范围是纯说明行，缺行不提示。提示文案避开“不存在/无效/已跳过/
+    # 暂不支持”字样，保持配置检查中的 warning 级别，不升级为阻断。
+    default_display = {
+        **{name: "元" for name in UNIT_SETTING_FIELDS},      # 与 UnitSettings 字段默认一致
+        **{name: "否" for name in BOOLEAN_SETTING_FIELDS},   # 与 False 默认一致
+        **{name: DEFAULT_ENUM_SETTINGS[field] for name, field in ENUM_SETTING_FIELDS.items()},
+    }
+    missing_row_warnings = [
+        f"通用设置缺少设置项“{name}”，已按默认“{default_display[name]}”执行；请补齐该行后重跑。"
+        for name in GENERAL_SETTINGS_FIELDS
+        if name not in configured and name not in OPTIONAL_VALUE_SETTINGS
+    ]
 
     unit_settings: dict[str, str] = {}
     for name, field in UNIT_SETTING_FIELDS.items():
+        if name not in configured:
+            continue
         row_number, value = configured[name]
         if value not in UNIT_TO_YUAN:
             raise V2ConfigError(
@@ -125,6 +169,8 @@ def _load_general_settings_from_book(
 
     boolean_settings: dict[str, bool] = {}
     for name, field in BOOLEAN_SETTING_FIELDS.items():
+        if name not in configured:
+            continue
         row_number, value = configured[name]
         if value not in {"是", "否"}:
             raise V2ConfigError(
@@ -133,9 +179,29 @@ def _load_general_settings_from_book(
             )
         boolean_settings[field] = value == "是"
 
-    return UnitSettings(**unit_settings), boolean_settings[
-        "hide_unchanged_period_rows"
-    ], boolean_settings["hide_matching_external_rows"]
+    enum_settings: dict[str, str] = {}
+    for name, field in ENUM_SETTING_FIELDS.items():
+        if name not in configured:
+            enum_settings[field] = DEFAULT_ENUM_SETTINGS[field]
+            continue
+        row_number, value = configured[name]
+        allowed = OPTIONAL_ENUM_SETTINGS[name]
+        if value not in allowed:
+            raise V2ConfigError(
+                f"“{GENERAL_SETTINGS_SHEET_NAME}”工作表第{row_number}行“{name}”"
+                f"必须为{'或'.join(allowed)}：{value or '空白'}"
+            )
+        enum_settings[field] = value
+
+    return GeneralSettingsResult(
+        units=UnitSettings(**unit_settings),
+        hide_unchanged_period_rows=boolean_settings.get("hide_unchanged_period_rows", False),
+        hide_matching_external_rows=boolean_settings.get("hide_matching_external_rows", False),
+        text_change_severity=enum_settings["text_change_severity"],
+        current_missing_severity=enum_settings["current_missing_severity"],
+        previous_missing_severity=enum_settings["previous_missing_severity"],
+        missing_row_warnings=missing_row_warnings,
+    )
 
 
 def load_unit_settings(config_path: Path) -> UnitSettings:
@@ -145,7 +211,7 @@ def load_unit_settings(config_path: Path) -> UnitSettings:
         raise V2ConfigError(f"V2 比较配置不存在：{path}")
     book = load_workbook(path, read_only=True, data_only=True)
     try:
-        unit_settings, _hide_unchanged, _hide_matching = _load_general_settings_from_book(book, path)
+        unit_settings = _load_general_settings_from_book(book, path).units
         return unit_settings
     finally:
         book.close()
@@ -227,12 +293,17 @@ def load_config(path: Path) -> ReportAuditConfig:
         raise V2ConfigError(f"V2 比较配置不存在：{path}")
     book = load_workbook(path, read_only=True, data_only=True)
     try:
-        unit_settings, hide_unchanged, hide_matching = _load_general_settings_from_book(book, path)
+        general = _load_general_settings_from_book(book, path)
         config = ReportAuditConfig(
-            unit_settings=unit_settings,
-            hide_unchanged_period_rows=hide_unchanged,
-            hide_matching_external_rows=hide_matching,
+            unit_settings=general.units,
+            hide_unchanged_period_rows=general.hide_unchanged_period_rows,
+            hide_matching_external_rows=general.hide_matching_external_rows,
+            text_change_severity=general.text_change_severity,
+            current_missing_severity=general.current_missing_severity,
+            previous_missing_severity=general.previous_missing_severity,
         )
+        # 缺失的设置行按默认执行的提示：运行时进校验规则表，配置检查里保持 warning 级。
+        config.warnings.extend(general.missing_row_warnings)
         indicator_sheet = _sheet(book, "指标参照")
         if indicator_sheet is None:
             raise V2ConfigError("比较配置缺少“指标参照”")
@@ -316,8 +387,8 @@ def load_config(path: Path) -> ReportAuditConfig:
                 config.warnings.append(f"外部核对规则第{index}行 {rule_id} 仅“等于”使用容差；其他比较方式容差必须为0，已跳过")
                 continue
             if severity not in SEVERITIES:
-                config.warnings.append(f"外部核对规则 {rule_id} 级别无效：{severity}，按严重处理")
-                severity = "严重"
+                config.warnings.append(f"外部核对规则 {rule_id} 级别无效：{severity}，按硬性处理")
+                severity = "硬性"
             config.external_rules.append(ExternalCheckRule(
                 rule_id=rule_id, indicator_code=indicator_code, external_system="大集中",
                 external_indicator_name=external_indicator_name, comparison_method=method,
@@ -368,8 +439,8 @@ def load_config(path: Path) -> ReportAuditConfig:
                     config.warnings.append(f"环比规则 {band.rule_id} 上限必须大于下限，已跳过")
                     continue
                 if band.severity and _severity(band.severity) not in SEVERITIES:
-                    config.warnings.append(f"环比规则 {band.rule_id} 级别无效：{band.severity}，按提示处理")
-                    band = PeriodBandConfig(**{**band.__dict__, "severity": "提示"})
+                    config.warnings.append(f"环比规则 {band.rule_id} 级别无效：{band.severity}，按软性处理")
+                    band = PeriodBandConfig(**{**band.__dict__, "severity": "软性"})
                 elif band.severity:
                     band = PeriodBandConfig(**{**band.__dict__, "severity": _severity(band.severity)})
                 config.bands.append(band)
@@ -394,10 +465,10 @@ def load_config(path: Path) -> ReportAuditConfig:
                 if not expression:
                     continue
                 rule_id = _text(_get(row, mapping, "id")) or f"ROW{index}"
-                severity = _severity(_get(row, mapping, "severity")) or "提示"
+                severity = _severity(_get(row, mapping, "severity")) or "软性"
                 if severity not in SEVERITIES:
-                    config.warnings.append(f"规则 {rule_id} 级别无效：{severity}，按提示处理")
-                    severity = "提示"
+                    config.warnings.append(f"规则 {rule_id} 级别无效：{severity}，按软性处理")
+                    severity = "软性"
                 rule_type = _text(_get(row, mapping, "type")) or "表达式"
                 if rule_type not in {"表达式", "累计不降(当年)", "累计不降(历史)"}:
                     config.warnings.append(f"规则 {rule_id} 类型暂不支持：{rule_type}")
@@ -427,18 +498,18 @@ _DEFAULT_HEADERS = {
     GENERAL_SETTINGS_SHEET_NAME: ["设置项", "设置值", "说明"],
 }
 _DEFAULT_BANDS = [
-    (None, -96.0, "降幅低于-96%", "严重"),
-    (-96.0, -90.0, "降幅(-96%,-90%]", "严重"),
-    (-90.0, -80.0, "降幅(-90%,-80%]", "关注"),
-    (-80.0, -50.0, "降幅(-80%,-50%]", "关注"),
-    (-50.0, -30.0, "降幅(-50%,-30%]", "提示"),
-    (-30.0, 0.0, "降幅[30%以内]", "提示"),
-    (0.0, 30.0, "增幅[0,30%)", "提示"),
-    (30.0, 50.0, "增幅[30%,50%)", "提示"),
-    (50.0, 100.0, "增幅[50%,1倍)", "关注"),
-    (100.0, 500.0, "增幅[1倍,5倍)", "关注"),
-    (500.0, 1000.0, "增幅[5倍,10倍)", "严重"),
-    (1000.0, None, "增幅10倍以上，请核实", "严重"),
+    (None, -96.0, "降幅低于-96%", "硬性"),
+    (-96.0, -90.0, "降幅(-96%,-90%]", "硬性"),
+    (-90.0, -80.0, "降幅(-90%,-80%]", "软性"),
+    (-80.0, -50.0, "降幅(-80%,-50%]", "软性"),
+    (-50.0, -30.0, "降幅(-50%,-30%]", "软性"),
+    (-30.0, 0.0, "降幅[30%以内]", "软性"),
+    (0.0, 30.0, "增幅[0,30%)", "软性"),
+    (30.0, 50.0, "增幅[30%,50%)", "软性"),
+    (50.0, 100.0, "增幅[50%,1倍)", "软性"),
+    (100.0, 500.0, "增幅[1倍,5倍)", "软性"),
+    (500.0, 1000.0, "增幅[5倍,10倍)", "硬性"),
+    (1000.0, None, "增幅10倍以上，请核实", "硬性"),
 ]
 
 
@@ -468,10 +539,10 @@ def write_default_config(path: Path) -> Path:
         for index, (lower, upper, desc, severity) in enumerate(_DEFAULT_BANDS, start=1):
             book["环比策略"].append(["BAL01", f"B{index:03d}", "余额", lower, upper, severity, desc, "否"])
         book["校验规则"].append([
-            "R001", "表达式", "示例：按需改写规则内容", "[示例指标（请替换）] <> 0", "提示", "是",
+            "R001", "表达式", "示例：按需改写规则内容", "[示例指标（请替换）] <> 0", "软性", "是",
             "示例行：[代码]取当期、{代码}取上期，也可写指标名称；确认后把“禁用”清空即可启用",
         ])
-        book["外部核对规则"].append(["D001", "20201001", "等于", "示例外部指标（请替换）", 0, "关注", "否"])
+        book["外部核对规则"].append(["D001", "20201001", "等于", "示例外部指标（请替换）", 0, "软性", "否"])
         general_settings = book[GENERAL_SETTINGS_SHEET_NAME]
         general_settings.append(["源数据单位", "元", "本期和上期报表中的余额、累发金额单位。"])
         general_settings.append(["外部文件单位", "元", "外部核对文件中的余额、累发金额单位。"])
@@ -479,6 +550,9 @@ def write_default_config(path: Path) -> Path:
         general_settings.append(["换算范围", "", "仅换算余额和累发；百分数、个数、文字不换算；换算不做四舍五入。"])
         general_settings.append(["是否隐藏无变动指标", "否", "选择“是”：隐藏结果工作簿“环比规则”中审核说明为“无变动”的整行；数据保留，可取消隐藏。"])
         general_settings.append(["是否隐藏与大集中一致指标", "否", "选择“是”：隐藏结果工作簿“外部核对规则”中审核说明为“与大集中系统数据一致”的整行；数据保留，可取消隐藏。"])
+        general_settings.append(["文字变动默认级别", "硬性", "文字指标的默认审核级别：两期不一致（审核说明“文字指标变化”）或单侧缺失（本期无，上期有/本期有，上期无）时使用。可选硬性或软性，此行可不填，缺省按硬性执行。"])
+        general_settings.append(["本期缺失默认级别", "硬性", "非文字指标（余额、累发、百分数、个数）审核说明为“本期无，上期有”的环比行的默认审核级别：本期整行缺少指标、本期无数值，或本期值为0按无处理（不计算变动幅度）均属此类；文字指标不由此项控制。可选硬性或软性，此行可不填，缺省按硬性执行。"])
+        general_settings.append(["上期缺失默认级别", "硬性", "非文字指标（余额、累发、百分数、个数）审核说明为“本期有，上期无”的环比行的默认审核级别：上期整行缺少指标、上期无数值，或上期值为0按无处理（不计算变动幅度）均属此类；文字指标不由此项控制。可选硬性或软性，此行可不填，缺省按硬性执行。"])
         write_guide_sheet(book, "period", index=0)
 
         header_font = Font(bold=True, color="FFFFFF")
@@ -521,6 +595,15 @@ def write_default_config(path: Path) -> Path:
         visibility_validation.showInputMessage = True
         general_settings.add_data_validation(visibility_validation)
         visibility_validation.add("B6:B7")
+        general_severity_validation = DataValidation(type="list", formula1='"硬性,软性"', allow_blank=True)
+        general_severity_validation.error = "审核级别只能选择硬性或软性。"
+        general_severity_validation.errorTitle = "审核级别无效"
+        general_severity_validation.showErrorMessage = True
+        general_severity_validation.prompt = "文字变动与本期/上期缺失的默认级别；未填写的设置行按硬性执行。"
+        general_severity_validation.promptTitle = "选择默认审核级别"
+        general_severity_validation.showInputMessage = True
+        general_settings.add_data_validation(general_severity_validation)
+        general_severity_validation.add("B8:B10")
         comparison_validation = DataValidation(
             type="list", formula1='"等于,不等于,大于,大于等于,小于,小于等于"', allow_blank=False,
         )
@@ -532,6 +615,22 @@ def write_default_config(path: Path) -> Path:
         comparison_validation.showInputMessage = True
         book["外部核对规则"].add_data_validation(comparison_validation)
         comparison_validation.add("C2:C1000")
+        for sheet_name, header_name in (("环比策略", "审核级别"), ("校验规则", "级别"), ("外部核对规则", "级别")):
+            sheet = book[sheet_name]
+            column = next(cell.column for cell in sheet[1] if cell.value == header_name)
+            used_row_count = sheet.max_row
+            last_column = get_column_letter(sheet.max_column)
+            severity_validation = DataValidation(type="list", formula1='"硬性,软性"', allow_blank=True)
+            severity_validation.error = "审核级别只能选择硬性或软性。"
+            severity_validation.errorTitle = "审核级别无效"
+            severity_validation.showErrorMessage = True
+            severity_validation.prompt = "硬性对应旧严重/错误；软性合并旧提示/关注/核实。该级别用于筛选，不改变流程是否阻断。"
+            severity_validation.promptTitle = "选择审核级别"
+            severity_validation.showInputMessage = True
+            sheet.add_data_validation(severity_validation)
+            column_letter = get_column_letter(column)
+            severity_validation.add(f"{column_letter}2:{column_letter}1000")
+            sheet.auto_filter.ref = f"A1:{last_column}{used_row_count}"
         book.save(target)
     except PermissionError as exc:
         raise V2ConfigError(f"无法写入报表采集配置：请先关闭“{target.name}”后重试") from exc

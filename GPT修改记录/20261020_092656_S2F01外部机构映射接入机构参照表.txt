@@ -1,0 +1,46 @@
+时间：2026-10-20 09:26（Asia/Shanghai）
+执行者：Codex
+修改前 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca
+修改后 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca（未提交）
+WIP：开始前工作区已有多项未提交改动，包含 S2 配置、引擎、测试、版本清单和修改记录。本轮仅对下列文件做增量修改，未覆盖或清理其他 WIP。
+
+目的：让 S2-F01 外部核对优先读取所选大集中工作簿的“机构参照表”，并保留旧表兼容和 CF2 回退。
+
+修改文件：
+- `core/src/base_audit/systems/s2_report_collection/importer.py`
+- `core/tests/test_period_v2.py`
+- `core/tests/test_s2_units.py`
+- `core/tests/test_version_manifest.py`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md`
+- `GPT修改记录/20261020_092656_S2F01外部机构映射接入机构参照表.txt`
+
+逻辑变化：
+- 存在“机构参照表”时优先读取“社会信用代码”与“报表项目”，并忽略“禁用”为是的行。
+- 新表不存在时继续读取旧“参照表”；新旧表同时存在时新表优先。
+- 新表有但必要表头缺失时明确报错，不用旧表掩盖配置错误。
+- 外部映射没有该机构时，S2 外部核对继续回退到 S2-CFG-01“机构参照”的“报表项目”。
+- S1 继续使用自己的外部工作簿处理方式，本轮没有修改 S1，也没有修改或保存 config-real 中的工作簿。
+
+【组件版本】
+系统：S2 报表采集系统
+影响功能：S2-F01 执行报表规则 v9.0.0 → v9.1.0
+影响配置：S2-CFG-01 v8.3.0 → v8.3.0（未变）；S2-CFG-02 v1.0.0 → v1.0.0（未变）
+未修改的相关组件：S1-*、S3-*（均未动）
+版本升级原因：MINOR，增加对“机构参照表”的兼容读取，保持旧“参照表”工作簿兼容。
+
+测试：
+- `python -m pytest -q core/tests/test_period_v2.py -k external_import`：3 passed，42 deselected。
+- `python -m pytest -q -rs -m s2 core/tests`：331 passed、6 skipped、2 failed、628 deselected。
+- `python -m pytest -q core/tests/test_version_manifest.py`：8 passed。
+- `python -m compileall -q core/src/base_audit/systems/s2_report_collection/importer.py`：通过。
+- `git diff --check`：通过。
+- 使用本机 `config-real/` 外部工作簿进行只读导入：成功读取 1,464 个数值和 188 条机构映射；未写入该工作簿。
+
+未执行项与既有问题：
+- S2 组的两项失败与本轮代码无关：本机正式配置的“校验规则”缺少硬性/软性下拉验证；本机输出单位为“万元”，而现有测试固定断言为“元”。六项因缺少 Flask 跳过。
+- 未使用真实报送目录跑完整 S2 业务并对拍审核结果。
+
+删除清单：无。
+回滚提示：如需回滚，仅撤销本记录涉及的 diff hunk；不要整文件还原，以免覆盖开始前已有的未提交改动。
+Git：未提交，未推送。

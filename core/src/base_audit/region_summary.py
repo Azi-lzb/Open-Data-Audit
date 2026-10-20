@@ -22,6 +22,7 @@ from .history import (
     _composite_key,
     history_append_rule,
 )
+from .summary_fallback import split_summary_fallback_ranges
 
 
 def _bounds(address: str) -> tuple[int, int, int, int]:
@@ -430,8 +431,11 @@ def run_region_summaries(
                     if on_step is not None:
                         on_step(f"完成：{feature.name}")
                     continue
-                data_ranges = excel._named_ranges_for_features(template, [feature])
-                headers = excel._named_ranges_for_features(template, [_header_mapping(feature)])
+                all_data_ranges = excel._named_ranges_for_features(template, [feature])
+                all_headers = excel._named_ranges_for_features(template, [_header_mapping(feature)])
+                data_ranges, headers, fallback = split_summary_fallback_ranges(
+                    excel._worksheet_names(template), all_data_ranges, all_headers,
+                )
                 global_extras = _sort_extra_fields(
                     excel._named_ranges_with_prefix(template, "全局单元格区域.")
                 )
@@ -440,11 +444,11 @@ def run_region_summaries(
                     extras_by_sheet.setdefault(cell_range.sheet_name, []).append((field_name, cell_range))
                 for sheet_name, fields in extras_by_sheet.items():
                     extras_by_sheet[sheet_name] = _sort_extra_fields(fields)
-                if not data_ranges:
+                if not data_ranges and fallback is None:
                     raise ValueError(
                         f"汇总功能“{feature.name}”未找到命名区域：" + "、".join(feature.range_names)
                     )
-                if not headers:
+                if not headers and fallback is None:
                     raise ValueError(
                         f"汇总功能“{feature.name}”缺少命名区域“表头区域”，"
                         "请在模板名称管理器中框选表头后补充该名称"
@@ -516,6 +520,11 @@ def run_region_summaries(
                             try:
                                 source_sheet = source.Worksheets(data_range.sheet_name)
                             except Exception:
+                                if on_step is not None:
+                                    on_step(
+                                        f"跳过源文件 {source_path.name} 的工作表 {data_range.sheet_name}："
+                                        "源文件缺少该工作表。"
+                                    )
                                 continue
                             if feature.feature_type == USED_RANGE_SUMMARY_FUNCTION:
                                 used = source_sheet.UsedRange
@@ -529,14 +538,18 @@ def run_region_summaries(
                             metadata_values: dict[str, object] = {}
                             for field_name, cell_range in extra_fields:
                                 try:
-                                    metadata_values[_field_key(field_name)] = source.Worksheets(
-                                        cell_range.sheet_name
-                                    ).Range(cell_range.address).Value2
-                                except Exception as exc:
-                                    raise ValueError(
-                                        f"源文件“{source_path.name}”缺少单元格区域字段“{field_name}”"
-                                        f"所在工作表“{cell_range.sheet_name}”"
-                                    ) from exc
+                                    metadata_sheet = source.Worksheets(cell_range.sheet_name)
+                                except Exception:
+                                    metadata_values[_field_key(field_name)] = None
+                                    if on_step is not None:
+                                        on_step(
+                                            f"汇总提示：源文件 {source_path.name} 缺少字段 {field_name} "
+                                            f"所在工作表 {cell_range.sheet_name}，该字段留空。"
+                                        )
+                                    continue
+                                metadata_values[_field_key(field_name)] = metadata_sheet.Range(
+                                    cell_range.address
+                                ).Value2
                             extra_values = [metadata_values[_field_key(name)] for name in extra_names]
                             for value_row in values:
                                 if any(value not in (None, "") for value in value_row):
@@ -545,6 +558,127 @@ def run_region_summaries(
                                         lookup, _fields, keys = history_context
                                         key = _composite_key(base_headers, row, keys)
                                         history_values = lookup.get(key, [""] * len(_fields))
+                                        group["rows"].append([*row, *history_values])
+                                    else:
+                                        group["rows"].append(row)
+                        finally:
+                            excel.close_workbook(source)
+                if fallback is not None:
+                    fallback_data_top, fallback_data_left, fallback_data_bottom, fallback_data_right = _bounds(
+                        fallback.data_range.address
+                    )
+                    _, fallback_header_left, _, fallback_header_right = _bounds(
+                        fallback.header_range.address
+                    )
+                    fallback_left = max(fallback_data_left, fallback_header_left)
+                    fallback_right = min(fallback_data_right, fallback_header_right)
+                    fallback_template_sheet = template.Worksheets(fallback.sheet_name)
+                    fallback_header_values = _read_header_values(
+                        fallback_template_sheet, fallback.header_range,
+                        fallback_left, fallback_right,
+                    )
+                    configured_names = {
+                        item.sheet_name.casefold() for item in data_ranges
+                    }
+                    fallback_local = extras_by_sheet.get(fallback.sheet_name, [])
+                    for source_path in sources:
+                        source = excel.open_workbook(source_path, read_only=True)
+                        try:
+                            source_only = [
+                                name for name in excel._worksheet_names(source)
+                                if name.casefold() not in configured_names
+                            ]
+                            if source_only and on_step is not None:
+                                on_step(
+                                    f"兜底汇总：{source_path.name} 的未匹配工作表："
+                                    f"{'、'.join(source_only)}"
+                                )
+                            for source_sheet_name in source_only:
+                                source_sheet = source.Worksheets(source_sheet_name)
+                                if feature.feature_type == USED_RANGE_SUMMARY_FUNCTION:
+                                    used = source_sheet.UsedRange
+                                    first_row = max(fallback_data_top, int(used.Row))
+                                    last_row = int(used.Row) + int(used.Rows.Count) - 1
+                                else:
+                                    first_row, last_row = fallback_data_top, fallback_data_bottom
+                                if last_row < first_row:
+                                    continue
+                                values = _value_matrix(source_sheet.Range(
+                                    source_sheet.Cells(first_row, fallback_left),
+                                    source_sheet.Cells(last_row, fallback_right),
+                                ).Value2)
+                                nonempty_rows = [
+                                    row for row in values
+                                    if any(value not in (None, "") for value in row)
+                                ]
+                                if not nonempty_rows:
+                                    if on_step is not None:
+                                        on_step(
+                                            f"兜底模板：工作表“{source_sheet_name}”没有有效数据行，"
+                                            "不生成汇总表。"
+                                        )
+                                    continue
+
+                                fallback_local_fields = [
+                                    (name, CopyRange(source_sheet_name, area.address))
+                                    for name, area in fallback_local
+                                ]
+                                extra_fields, _ = _metadata_plan(
+                                    global_extras, fallback_local_fields,
+                                    fallback_header_values, source_sheet_name,
+                                )
+                                extra_names = [item[0] for item in extra_fields]
+                                metadata_values: dict[str, object] = {}
+                                for field_name, cell_range in extra_fields:
+                                    try:
+                                        metadata_sheet = source.Worksheets(cell_range.sheet_name)
+                                    except Exception:
+                                        metadata_values[_field_key(field_name)] = None
+                                        if on_step is not None:
+                                            on_step(
+                                                f"汇总提示：源文件 {source_path.name} 缺少字段 {field_name} "
+                                                f"所在工作表 {cell_range.sheet_name}，该字段留空。"
+                                            )
+                                        continue
+                                    metadata_values[_field_key(field_name)] = metadata_sheet.Range(
+                                        cell_range.address
+                                    ).Value2
+                                extra_values = [
+                                    metadata_values[_field_key(name)] for name in extra_names
+                                ]
+                                base_headers = [
+                                    "来源文件", "来源工作表", *extra_names,
+                                    *fallback_header_values,
+                                ]
+                                history_context = history_context_for(
+                                    source_sheet_name, base_headers
+                                )
+                                expected_headers = (
+                                    [*base_headers, *history_context[1]]
+                                    if history_context else base_headers
+                                )
+                                group = groups.setdefault(
+                                    source_sheet_name.casefold(),
+                                    {
+                                        "headers": expected_headers,
+                                        "rows": [],
+                                        "source_sheets": [],
+                                    },
+                                )
+                                source_sheets = group["source_sheets"]
+                                if source_sheet_name not in source_sheets:
+                                    source_sheets.append(source_sheet_name)
+                                for value_row in nonempty_rows:
+                                    row = [
+                                        normalize_template_name(source_path.stem),
+                                        source_sheet_name, *extra_values, *value_row,
+                                    ]
+                                    if history_context:
+                                        lookup, _fields, keys = history_context
+                                        key = _composite_key(base_headers, row, keys)
+                                        history_values = lookup.get(
+                                            key, [""] * len(_fields)
+                                        )
                                         group["rows"].append([*row, *history_values])
                                     else:
                                         group["rows"].append(row)

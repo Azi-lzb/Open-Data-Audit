@@ -1,5 +1,398 @@
 # S2-F01 执行报表规则
 
+## v10.6.0 — 2026-10-20 23:52
+
+变更类型：Feature / MINOR
+
+前版本：v10.5.0；新版本：v10.6.0。
+
+- 新增 python-calamine 0.3.1（Rust 扩展）作为两期报表文件的快速读取引擎：`importer._open` 优先走 calamine，整包缺失（兼容构建未打包）时静默回退 xlrd/openpyxl，单个文件读取失败时逐文件提示“快速读取引擎处理失败，已用兼容引擎重读”并回退，最坏情况只是回到原速，不影响结果。
+- 值形态与行号逐值对齐传统引擎：.xls 对齐 xlrd（整型与布尔还原为 xlrd 的 float/int 形态），.xlsx 对齐 openpyxl（整型 float 还原 int、空串对齐 None、date 补零点 datetime）；calamine `to_python` 会裁掉前导空行，已按 `sheet.start` 补回等量空行，保证 `rows[3:]` 表头跳过与 SourceRef 行号与旧引擎逐行一致（该问题由既有用例 test_v2_importer_preserves_percentage_data_type 捕获后修复，并把前导空行写入对拍夹具防回归）。
+- 已知有意的边界差异：.xls 值列的日期单元格 xlrd 读作序列数 float 参与数值计算，快速引擎读作 date 走非数值路径（更符合业务语义）；报表值列不含日期，实际不受影响。
+- 性能（本机 549 对/1098 文件合成样例，预热后两轮）：两期读取 4.26s → 1.02s（4.2x），记录数与警告两引擎完全一致（16470/0）；结合 v10.4.2 的 Direct OOXML 导出，同规模全程预计从 7.5s 降到约 4.6s。注：冷启动首轮会慢（新写文件触发 Defender 首扫），基准以预热后为准。
+- 打包：requirements.txt 新增 `python-calamine==0.3.1`（钉版：新版要求 Python≥3.11，Win7 兼容包用 32 位 Python 3.8）；Windows build_exe.py COMMON_HIDDEN 与 Linux-2 脚本 `--collect-all python_calamine`、依赖导入检查均已登记；Win7 32 位构建 venv 已装入 cp38-win32 wheel 验证可用。Linux wheel 为 manylinux_2_17（glibc≥2.17），覆盖统信 UOS 2.28、麒麟 V10 SP1 2.31 及 ARM64 glibc 2.23 冒烟目标；每包增重约 1.5~2MB。
+
+影响文件：`core/src/base_audit/systems/s2_report_collection/importer.py`、`core/tests/{test_fast_reader,conftest,TEST_GROUPS}`、`shell-flask/{requirements.txt,build_exe.py,Linux-2-打包DEB与TARGZ.sh}`、`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：无（S2-CFG-01 v8.4.0 不变）。打包影响：新增运行依赖 python-calamine==0.3.1（约 1.5~2MB/包），各平台打包脚本已接入；Linux DEB/tar.gz 与 Win7 包需重打包验证。
+
+测试：S2 定向新增 test_fast_reader.py 6 项（xlsx/xls 逐值逐类型对拍、缺包静默回退、单文件失败提示回退、两引擎导入全量一致，夹具含前导空行/空值/整数/小数/布尔/日期/尾部空行）；S2 回归组 431 passed / 2 failed / 6 skipped（Flask 跳过），两项失败仍为本机既有“输出文件单位=万元 vs 测试断言元”口径差异。
+
+提交前复核（2026-10-21）：按用户授权修正两处将输出单位写死为元的测试，保留合法单位及配置解析一致性验证，真实配置继续使用万元。S2 433 passed/6 skipped，core 全量 1054 passed/13 skipped/0 failed/0 errors；真实两期报表的单 Sheet、按机构和按报表三种布局分别使用两引擎运行，审核结论、汇总及全部工作簿值一致，输入哈希未变。未执行 UOS/麒麟、ARM64 或 Office 实机验收。
+
+GPT修改记录：`GPT修改记录/20261020_235228_S2接入calamine快速读取引擎.txt`、`GPT修改记录/20261021_004437_S2输出单位测试按配置验证并同步主分支.txt`。
+
+Git提交：未提交。
+
+## v10.5.0 — 2026-10-20 22:47（23:05 补缺失级别设置，23:16 补缺行默认执行）
+
+变更类型：Feature / MINOR
+
+前版本：v10.4.2；新版本：v10.5.0。
+
+- 结果工作簿“环比规则”表在“指标代码”与“指标名称”之间新增“数据属性”列，取值来自指标参照配置（文字/余额/累发/百分数/个数），未配置指标时回落记录值类型，与策略组匹配口径一致；“外部核对规则”“校验规则”两表列不变。
+- 通用设置新增可选设置项“文字变动默认级别”（硬性/软性，缺省按硬性执行）：文字指标两期不一致（“文字指标变化”）与文字指标单侧缺失（“本期无，上期有”/“本期有，上期无”）行按该设置定级。
+- 通用设置新增可选设置项“本期缺失默认级别”“上期缺失默认级别”（硬性/软性，缺省按硬性执行）：仅控制非文字指标（余额/累发/百分数/个数），按审核说明方向分别生效——“本期无，上期有”（本期整行缺指标、本期无数值或本期为 0 按无处理）跟随“本期缺失默认级别”，“本期有，上期无”（上期整行缺指标、上期无数值或上期为 0 按无处理）跟随“上期缺失默认级别”。此前非文字单侧缺失固定软性，现默认输出硬性（用户定稿口径）。
+- 通用设置全部设置行（单位、隐藏、三项级别）缺失时不再报“缺少设置项”阻断：按默认执行（源/外部/输出单位=元、隐藏=否、级别=硬性），运行结果“校验规则”表与配置检查中逐项提示补齐（warning 级，不升阻断）；“换算范围”为纯说明行，缺行不提示；填写了非法值的行仍明确报错（含工作表与行号）。两期表单不一致仍恒为硬性。
+- 使用说明（period 指南）补充三项设置、缺行默认口径与新输出列说明，CONFIG_VERSION 2.2 → 2.3 触发现有工作簿说明页刷新。
+
+影响文件：`core/src/base_audit/systems/s2_report_collection/{models,config,period_engine,exporter}.py`、`core/src/base_audit/config_guide.py`、`core/tests/{test_period_v2,test_s2_units,test_s2_config_check,test_version_manifest}.py`、`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：S2-CFG-01 v8.3.0 → v8.4.0（通用设置新增三行可选设置，B8:B10 带硬性/软性下拉，全部设置行可缺省按默认执行）；本机正式/默认配置已同步加行（均=硬性）；正式配置“校验规则”级别下拉范围 E2:E998 对齐为 E2:E1000。产品整包及其他系统版本不变。
+
+测试：S2 定向（test_period_v2、test_s2_units、test_s2_config_check）165 passed / 2 failed；S2 回归组 426 passed / 2 failed / 6 skipped（Flask 环境跳过）。两项失败均为既有本机配置差异（正式配置输出文件单位为万元而测试断言元，用户已知，见 v10.4.2 记录）；硬性/软性下拉范围差异已随本次配置修正消失。
+
+GPT修改记录：`GPT修改记录/20261020_224706_S2环比数据属性列与文字变动默认级别.txt`、`GPT修改记录/20261020_230533_S2本期与上期缺失默认级别设置.txt`、`GPT修改记录/20261020_231657_S2通用设置缺行按默认执行.txt`。
+
+Git提交：未提交。
+
+## v10.4.2 — 2026-10-20 21:42
+
+变更类型：Bugfix / PATCH
+
+前版本：v10.4.1；新版本：v10.4.2。
+
+- 运行记录现在按审核阶段说明正在处理的内容；本期/上期文件读取和结果表写入按约10%进度记录计数，并附当前文件名，避免每个文件都刷屏。
+- 记录导入指标数、环比/校验/外部核对结果数、工作簿保存阶段，以及最终机构/表单/指标/异常汇总和结果文件。
+- 进度与运行记录使用同一后端事件，不另行重复读取源文件；审核结果与输出结构不变。
+- 固定三张审核结果表改用 Python 标准库 zipfile + XML 直接写 OOXML，避免 openpyxl 为每个单元格建立对象；异常日期/自定义数据类型仍回退 openpyxl。读取和其他通用工作簿操作不变，不需要 LibreOffice。
+- 在 549 对/1098 个样例文件、19032 条指标、28182 条审核结果上，完整运行从 15.694 秒降至 7.534 秒；导出阶段从 9.4869 秒降至 2.042 秒。finding、summary、三张表的全部单元格、冻结窗格、筛选、隐藏行和样式均与原结果一致；输出约小 3.7%，输入 SHA-256 未变。该扩展样例不是用户当前原始数据或 Linux 实机承诺值。
+
+影响文件：`core/src/base_audit/web_app.py`、`core/src/base_audit/systems/s2_report_collection/{service,exporter}.py`、`core/tests/{test_period_v2,test_web_app,test_version_manifest}.py`、`core/tests/TEST_GROUPS.md`、`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：无；S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0、产品整包及其他系统版本不变。未改真实配置、原始业务工作簿或打包依赖。
+
+测试：S2-F01 定向 97 passed，S2 回归组 419 passed / 6 skipped / 2 failed / 0 errors，628 deselected、3 个子场景 passed。两项失败为既有本机真实配置差异：“校验规则”缺少硬性/软性下拉、输出单位为万元而测试要求元；6 项因缺少 Flask 跳过。Direct OOXML 输出由 openpyxl 重新打开并逐格比较，值、数据类型、样式 ID、列宽、冻结窗格、筛选、隐藏行均无差异。Python 编译与 `git diff --check` 通过；未执行 Office/Linux 实机测试或平台打包。
+
+GPT修改记录：`GPT修改记录/20261020_211421_S2F01运行记录增加阶段与进度细节.txt`。
+
+Git提交：未提交。
+
+## v10.4.1 — 2026-10-20 20:53
+
+变更类型：Bugfix / PATCH
+
+前版本：v10.4.0；新版本：v10.4.1。
+
+- 按用户要求移除执行按钮旁的独立进度框及其样式/渲染逻辑，只保留运行记录上方的一条进度条。
+- 阶段、完成数量和耗时合并显示在该进度条同一行，当前文件或错误详情留tooltip；无计数阶段不显示0/0。实际百分比、失败完成量、终态收起计时器及其他任务旧值隔离保持。
+- 比较了1098个XLS的直接读、xlrd取行/按需/稀疏选项、Python纯数值转换XLSX后读取，以及临时安装的Calamine候选。直接xlrd约2.25–2.64秒，转写并读XLSX下界约33.47秒，Calamine约0.22–0.30秒。正式读取引擎和依赖不变；仅将独立试验作为后续优化参考。
+
+影响文件：`core/frontend/web/index.html`、`core/tests/test_distribution_profile.py`、`core/tests/test_version_manifest.py`、`core/tests/TEST_GROUPS.md`、`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：无；S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0、产品整包及其他系统版本不变。未改配置、原始文件或打包依赖，未打包。
+
+测试：前端定向20 passed、0 skipped、0 failed、0 errors（含完整JS语法检查）；最终S2回归418 passed、6 skipped、2 failed、0 errors，628 deselected及3个subtests passed。失败仍为既有硬性/软性下拉和输出单位配置差异，6项因缺少Flask跳过，无新增失败。浏览器已确认仅一条底部进度、详情在同一行；编译和 `git diff --check` 通过。
+
+GPT修改记录：`GPT修改记录/20261020_205332_S2F01仅保留底部进度条并比较XLS读取方案.txt`。
+
+Git提交：未提交。
+
+## v10.4.0 — 2026-10-20 20:32
+
+变更类型：Feature / MINOR
+
+前版本：v10.3.1；新版本：v10.4.0。
+
+- S2 页面新增阶段进度条，显示读取本期/上期文件数、环比/校验/外部核对阶段、三张结果表写入行数、保存阶段和耗时。保存并完成后才显示100%，失败保留已有进度；其他系统运行时隐藏旧的S2进度。
+- 底部通用进度在S2运行时采用后端进度快照，其他任务继续使用原逻辑；终态按既有停留时间收起，避免800ms轮询反复延后计时器。
+- 对比对象表头在列表内滚动时固定；数据及筛选条件未变时复用DOM，重建时保留滚动位置。后台已有配对列表不再于每次审核结束重扫，空清单仍重试元数据扫描。
+- 每个工作簿的绝对路径只解析一次，xlsx导入限定既有A:C取数范围，导出复用相同样式对象，业务规则及输出协议不变。
+
+影响文件：`core/frontend/web/index.html`、`core/src/base_audit/web_app.py`、`core/src/base_audit/systems/s2_report_collection/{service,importer,exporter}.py`、`core/tests/{test_distribution_profile,test_period_v2,test_web_app,test_version_manifest}.py`、`core/tests/TEST_GROUPS.md`、`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：无；S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0、产品整包版本不变。未修改真实配置或原始业务工作簿，未打包。
+
+性能：由现有样例扩展的549对/1098个文件（约10.93MiB），19032条本期指标、28182条审核结果；无采样分析器的同机基线29.940秒，优化后18.407秒和15.694秒。结果模型、汇总和全部工作簿单元格一致；工作表、样式、关系和包结构逐部件一致，仅文档时间戳不同，输入SHA-256不变。该结果来自扩展样例，不代表用户当前549对原始文件或Linux实机的保证耗时。
+
+测试：定向211 passed、0 skipped、0 failed、0 errors，1 deselected及3个subtests passed；前端独立20 passed，含Node脚本语法和进度/筛选行为。最终S2回归418 passed、6 skipped、2 failed、0 errors，628 deselected及3个subtests passed；失败仍为校验规则缺少硬性/软性下拉、本机输出单位万元与测试要求元不一致，6项因缺少Flask跳过，无新增失败。Python编译与 `git diff --check` 通过。已在浏览器验证运行/完成/失败进度、夜间主题及列表内滚动固定表头。
+
+GPT修改记录：`GPT修改记录/20261020_203256_S2F01阶段进度与固定表头及批量性能优化.txt`。
+
+Git提交：未提交。
+
+## v10.3.1 — 2026-10-20 20:23
+
+变更类型：Bugfix / PATCH
+
+前版本：v10.3.0；新版本：v10.3.1。
+
+- 外部核对缺数且报表项目不为空时，审核说明改为“大集中系统数据未找到该报表项目，请先完善大集中数据的报表定义”。
+- 报表项目为空时，审核说明改为“请完善报表采集系统配置或外部文件中的机构参照映射”。普通和时序数据使用同一口径，结果工作簿同步显示。
+- 普通格式的计算过程补充已选报表项目与指标；时序格式已有的具体日期、项目及指标缺数信息继续保留。缺数仍留空并提示异常，真实0、缺少机构标签列时的既有按0兜底及比较逻辑不变。
+
+影响文件：`core/src/base_audit/systems/s2_report_collection/external_engine.py`、`core/tests/test_s2_units.py`、`core/tests/test_period_v2.py`、`core/tests/test_version_manifest.py`、`core/tests/TEST_GROUPS.md`、`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：无；S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0、产品整包版本不变。未修改配置或原始工作簿，未打包。
+
+测试：外部核对及版本定向 68 passed、0 skipped、0 failed、0 errors，80 deselected；最终 S2 回归 413 passed、6 skipped、2 failed、0 errors，628 deselected。失败仍为既有配置差异（校验规则缺少硬性/软性下拉、本机输出单位万元与测试要求元不一致），6项因缺少Flask跳过，没有新增失败。Python 编译、WIP 增量复核和 `git diff --check` 通过；未执行真实业务文件、Office 或 Linux 实机验收。
+
+GPT修改记录：`GPT修改记录/20261020_202339_S2F01外部缺数说明区分报表项目与机构映射.txt`。
+
+Git提交：未提交。
+
+## v10.3.0 — 2026-10-20 20:18
+
+变更类型：Feature / MINOR
+
+前版本：v10.2.0；新版本：v10.3.0。
+
+- 对比对象筛选新增“配对状态”：全部报表、单边报表、本期缺少、上期缺少、两期齐全；可与机构名称、信用代码、表单条件组合，统一清空并在常规刷新时保留。
+- 本期缺少对应仅上期存在，上期缺少对应仅本期存在；缺失列直接标明“本期缺少”或“上期缺少”，方便定位。
+- 仍按现有工作簿/工作表存在性判断，空表算存在；不读取正文或更改后台配对、审核范围与结果输出。页面补充单边定义，保持显示筛选的范围说明。
+
+影响文件：
+- `core/frontend/web/index.html`
+- `core/tests/test_distribution_profile.py`
+- `core/tests/test_version_manifest.py`、`core/tests/TEST_GROUPS.md`
+- `版本管理/VERSION_MANIFEST.json`
+
+配置影响：无；S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0、产品整包版本不变。没有改写配置或原始工作簿，未打包。
+
+测试：前端行为和版本定向 27 passed、0 skipped、0 failed、0 errors；最终 S2 回归 412 passed、6 skipped、2 failed、0 errors。两项失败仍为既有配置差异（校验规则缺少硬性/软性下拉、本机输出单位万元与测试要求元不一致），6项因缺少Flask跳过，没有新增功能失败。Node.js 完整脚本语法、各状态筛选和四条件组合/清空检查通过，测试 Python 编译和 `git diff --check` 通过；未执行浏览器视觉或 Linux 实机验收。
+
+GPT修改记录：`GPT修改记录/20261020_201828_S2F01单边报表与缺少期别筛选.txt`。
+
+Git提交：未提交。
+
+## v10.2.0 — 2026-10-20 20:07
+
+变更类型：Feature / MINOR
+
+前版本：v10.1.0；新版本：v10.2.0。
+
+- 在“文件列表与对比对象”标题右侧增加“筛选”按钮，可展开/收起筛选面板。支持机构名称、统一社会信用代码关键词和表单下拉条件，多个条件同时生效；名称和代码忽略首尾空格及大小写。
+- 提供清空筛选、已启用条件数量、筛选后/全部对象数和无匹配提示。表单选项由当前清单去重生成，常规刷新保留条件；表单集合变化时清除失效选择，选项及显示文本正确转义。
+- 筛选只作用于当前配对清单的显示，不重新读取工作簿或正文，不改变正式审核范围、源配对数据或 Excel 输出。页面明确说明正式审核仍处理所选目录中的全部报表。
+
+影响文件：
+- `core/frontend/web/index.html`
+- `core/tests/test_distribution_profile.py`
+- `core/tests/test_version_manifest.py`、`core/tests/TEST_GROUPS.md`
+- `版本管理/VERSION_MANIFEST.json`
+
+配置影响：无；S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0 及产品整包版本未变。没有修改配置或原始工作簿，没有打包。
+
+测试：前端行为和版本定向 22 passed、0 skipped、0 failed、0 errors；S2 回归 407 passed、6 skipped、2 failed、0 errors。失败仍为既有配置差异：缺硬性/软性下拉、输出单位万元与测试要求元不一致；6项因缺少Flask跳过。Node.js 完整脚本语法、交付范围显示及筛选交互检查通过，测试 Python 编译和 `git diff --check` 通过；未执行浏览器视觉验收或 Linux 实机验收。
+
+GPT修改记录：`GPT修改记录/20261020_200716_S2F01对比对象组合筛选.txt`。
+
+Git提交：未提交。
+
+## v10.1.0 — 2026-10-20 19:57
+
+变更类型：Feature / MINOR
+
+前版本：v10.0.0；新版本：v10.1.0。
+
+- 文件配对清单的“对比对象”在机构名称下增加信用代码，保留原表单行；代码可选中复制、自动换行，悬停显示完整“统一社会信用代码”。
+- 配对数据独立传递 `socialCreditCode`，仅来自标准导出文件名或 banks 工作表名。空表、单边以及未取得机构名称的 banks 子表均保留代码；没有识别出代码时显示“未识别”，不用机构名称代替代码。
+- 配对键、数量、正文读取边界、banks 提醒、正式审核和 Excel 输出保持原有行为；不增加机构参照读取，不依赖名称映射是否成功。
+
+影响文件：
+- `core/src/base_audit/period_compare.py`
+- `core/frontend/web/index.html`
+- `core/tests/test_period_compare.py`、`core/tests/test_distribution_profile.py`、`core/tests/test_web_app.py`
+- `core/tests/test_version_manifest.py`、`core/tests/TEST_GROUPS.md`
+- `版本管理/VERSION_MANIFEST.json`
+
+配置影响：无；S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0 不变。原始工作簿和产品整包版本未修改；未打包。
+
+测试：配对、前端行为、Web API 和版本定向 113 passed、0 skipped、0 failed、0 errors；S2 回归 406 passed、6 skipped、2 failed、0 errors。失败仍为既有配置差异：缺少硬性/软性下拉、输出单位万元与测试要求元不一致；6项因缺少Flask跳过。Python 编译、Python 3.8 语法及 `git diff --check` 通过；未执行浏览器视觉验收或 Linux 实机验收。
+
+GPT修改记录：`GPT修改记录/20261020_195747_S2F01对比对象显示统一社会信用代码.txt`。
+
+Git提交：未提交。
+
+## v10.0.0 — 2026-10-20 19:50
+
+变更类型：Feature / Breaking / MAJOR
+
+前版本：v9.3.1；新版本：v10.0.0。
+
+- “外部核对规则”结果表在“社会信用代码”右侧插入“报表项目”，展示引擎本次选定的机构映射标签；只改变该结果表，由 15 列变为 16 列，原“表单”及后续列右移一列。
+- 保持外部文件机构参照映射优先、CF2 机构参照回退的取数顺序。已选项目但缺少日期或指标数值时仍显示该项目供核对；没有机构映射时留空。标签列缺失按0兜底的原有说明继续保留。
+- 新字段由外部核对引擎随审核发现传递，导出器直接展示；不从机构名称、审核说明或其他字段猜测项目，不改比较公式、金额换算、审核结论或配置业务数据。
+- 报表项目自动换行并按文本保留，等号开头的标签不会被写成公式。更新列位变化后的隐藏行回归及普通/时序端到端断言。
+
+版本说明：插入列改变固定列坐标，按 rules/11 的输出契约规则升 MAJOR；按列名读取结果的逻辑可继续识别。配置工作簿结构未变。
+
+影响文件：
+- `core/src/base_audit/systems/s2_report_collection/models.py`
+- `core/src/base_audit/systems/s2_report_collection/external_engine.py`
+- `core/src/base_audit/systems/s2_report_collection/exporter.py`
+- `core/src/base_audit/config_guide.py`
+- `core/tests/test_period_v2.py`、`core/tests/test_s2_units.py`
+- `core/tests/TEST_GROUPS.md`、`core/tests/test_version_manifest.py`
+- `版本管理/VERSION_MANIFEST.json`
+
+配置影响：无；S2-CFG-01 仍为 v8.3.0，S2-CFG-02 仍为 v1.0.0。整包产品版本不变；未打包或修改原始工作簿。
+
+测试：外部核对/导出、版本与说明定向 85 passed、0 skipped、0 failed、0 errors；S2 回归 402 passed、6 skipped、2 failed、0 errors。两项失败仍为既有本机配置差异：校验规则缺硬性/软性下拉、输出单位万元与测试要求元不一致；6项因缺少Flask跳过。Python 编译、Python 3.8 语法及 `git diff --check` 通过；未执行 Python 3.8.10 运行时或 Linux 实机验收。
+
+GPT修改记录：`GPT修改记录/20261020_195038_S2F01外部核对结果显示报表项目.txt`。
+
+Git提交：未提交。
+
+## v9.3.1 — 2026-10-20 19:42
+
+变更类型：Bugfix / PATCH
+
+前版本：v9.3.0；新版本：v9.3.1。
+
+- 两期文件配对和正式导入共用文件名、工作表名身份协议；正文的机构名称、机构代码仅作为指标值审核，空值、`--` 或误填内容不再覆盖文件身份。
+- 配对预览只读取工作表目录，xlsx 不扫描正文或共享字符串，xls 按需读取工作表清单；完全空白的工作表也保留。数据日期继续不参与跨期配对。
+- 标准逐机构逐表及 reports 文件从文件名保留机构代码和名称；banks 从工作表名取得机构代码，由机构参照补充名称，没有参照时显示代码。按名称备用匹配配置不能覆盖文件名中的另一机构代码。
+- 页面推荐使用包含机构名称的两种文件名格式；任一期选择 banks 文件后，在文件列表上方及执行确认中提示改用“默认单sheet”或“按报表单sheet”重新导出。更换目录或清除选择后同步更新提醒；保留已有 banks 兼容。
+- 指标值、空值和真实0的审核含义保持不变；缺报数继续给出相应提示，结果的机构字段来自稳定文件身份。补充说明及回归测试。
+
+影响文件：
+- `core/src/base_audit/report_source.py`（新增）
+- `core/src/base_audit/period_compare.py`（配对预览）
+- `core/src/base_audit/systems/s2_report_collection/importer.py`
+- `core/src/base_audit/web_app.py`
+- `core/frontend/web/index.html`
+- `core/src/base_audit/config_guide.py`
+- `core/tests/test_period_compare.py`、`core/tests/test_period_v2.py`
+- `core/tests/test_web_app.py`、`core/tests/test_distribution_profile.py`
+- `core/tests/TEST_GROUPS.md`、`core/tests/test_version_manifest.py`
+- `版本管理/VERSION_MANIFEST.json`
+
+配置影响：无；S2-CFG-01 保持 v8.3.0，S2-CFG-02 保持 v1.0.0。未修改公开或真实配置工作簿，原始业务文件未写入。整包版本未变，未重新打包。
+
+测试：定向 204 passed（含 xls/xlsx、三种导出、空表/正文占位符、结果机构字段、只读哈希、banks 选择/清除与 Node.js 前端行为）；S2 回归 395 passed、6 skipped、2 failed、0 errors。两项失败仍为既有本机配置差异：校验规则缺少硬性/软性下拉，输出单位万元与测试要求元不一致；6 项因缺少 Flask 跳过。Python 3.8 语法检查、编译及 `git diff --check` 通过；未执行 Python 3.8.10 运行时或 Linux 实机验收。
+
+GPT修改记录：`GPT修改记录/20261020_194259_S2F01按文件名表名配对空表并提示banks导出.txt`。
+
+Git提交：未提交。
+
+## v9.3.0 — 2026-10-20 19:10
+
+变更类型：Feature / MINOR
+
+前版本：v9.2.0；新版本：v9.3.0。
+
+- 同一“集中系统数据”工作表按表头自动兼容普通布局与时序布局；在前 20 行识别“数据日期”与“行名称”，允许前置空行/说明行和字段调序，不按第一行是否非空猜格式。
+- 时序数据以本期报送文件的完整日期、机构报表项目、外部指标名称取数；同一机构多个日期互不覆盖，不借用最新日期或跨期合计。
+- 时序日期/机构存在性与数值分别保存，真实 0 正常比较；缺日期、缺机构行或空值继续输出未匹配说明，不能进入普通格式的“标签列缺失按0”兜底。
+- 时序表头不完整/重复、同日同机构重复行、非法日期或数值明确报告工作表和行/字段，不静默覆盖或降级。
+- 仍只读取正式数据表“集中系统数据”；样例或其他数据表不混用。保留普通布局、外部机构参照优先级与金额单位换算；补充使用说明。
+
+影响文件：
+- `core/src/base_audit/systems/s2_report_collection/importer.py`
+- `core/src/base_audit/systems/s2_report_collection/external_engine.py`
+- `core/src/base_audit/config_guide.py`
+- `core/tests/test_period_v2.py`
+- `core/tests/TEST_GROUPS.md`
+- `core/tests/test_version_manifest.py`
+- `版本管理/VERSION_MANIFEST.json`
+
+配置影响：无；S2-CFG-01 保持 v8.3.0，S2-CFG-02 保持 v1.0.0；原始工作簿未修改。
+
+测试：导入/导出、使用说明与版本清单定向回归 88 passed；S2 组 358 passed、6 skipped、2 failed。失败为既有本机配置差异：校验规则缺少硬性/软性下拉；本机输出单位为万元而测试固定断言元。6 项因缺少 Flask 跳过。真实样例结构只读解析及 SHA-256 保护通过；样例时序数值区为空，未完成真实数值端到端对拍。受影响 Python 编译、Python 3.8 语法解析及 `git diff --check` 通过；未执行 Python 3.8.10 运行时或麒麟/UOS 实机验收。
+
+GPT修改记录：`GPT修改记录/20261020_191005_S2F01兼容大集中时序格式并按本期日期匹配.txt`。
+
+Git提交：未提交。
+
+## v9.2.0 — 2026-10-20 16:11
+
+变更类型：Feature / MINOR
+
+前版本：v9.1.0；新版本：v9.2.0。
+
+- “集中系统数据”未能识别机构行标签列时不再中止 S2-F01；外部核对继续执行，并将对应大集中数按 0 参与比较。
+- 审核说明明确标注“机构行标签列未识别，外部数按0参与比较”；计算过程仍使用原有差异绝对值格式。
+- 该兜底仅由导入器明确标记的“机构行标签列缺失”场景触发；普通机构映射缺失或指标数值缺失仍按未匹配处理，不自动当作 0。
+
+影响文件：
+- `core/src/base_audit/systems/s2_report_collection/importer.py`
+- `core/src/base_audit/systems/s2_report_collection/external_engine.py`
+- `core/tests/test_period_v2.py`
+- `core/tests/test_s2_units.py`
+- `core/tests/test_version_manifest.py`
+- `版本管理/VERSION_MANIFEST.json`
+
+配置影响：无；S2-CFG-01 保持 v8.3.0，S2-CFG-02 保持 v1.0.0。
+
+测试：导入定向测试 4 passed；零值兜底与普通缺数测试 2 passed；版本清单测试 8 passed；S2 组 333 passed、6 skipped、2 failed。两项失败与本次修改无关：本机配置缺少“校验规则”硬性/软性下拉验证；本机输出单位为“万元”，而现有测试固定断言“元”。6 项因缺少 Flask 跳过。受影响 Python 文件编译及 `git diff --check` 通过；未执行真实报表数据端到端对拍。
+
+GPT修改记录：`GPT修改记录/20261020_161115_S2F01机构标签列缺失时外部数按0继续执行.txt`。
+
+Git提交：未提交。
+
+## v9.1.0 — 2026-10-20 09:26
+
+变更类型：Feature / MINOR
+
+前版本：v9.0.0；新版本：v9.1.0。
+
+- 外部核对机构映射优先读取所选大集中工作簿的“机构参照表”，按“社会信用代码”匹配“报表项目”，并跳过标记为禁用的行。
+- 保留旧工作簿兼容：缺少“机构参照表”时读取“参照表”；两个工作表同时存在时，以“机构参照表”为准。
+- 外部映射没有对应机构时，继续使用 S2-CFG-01“机构参照”的“报表项目”作为回退值；S1 工作簿处理未变。
+- 新参照表表头不完整时明确报错，不静默退回旧表。
+
+影响文件：
+- `core/src/base_audit/systems/s2_report_collection/importer.py`
+- `core/tests/test_period_v2.py`
+- `core/tests/test_s2_units.py`
+- `core/tests/test_version_manifest.py`
+- `版本管理/VERSION_MANIFEST.json`
+
+配置影响：无，S2-CFG-01 与 S2-CFG-02 不变。
+
+测试：`test_period_v2.py -k external_import` 3 passed；S2 组 331 passed、6 skipped、2 failed；版本清单测试 8 passed；Python 编译及 `git diff --check` 通过。两项失败是既有配置差异：本机“校验规则”没有硬性/软性下拉验证；本机输出单位为“万元”，而测试固定断言“元”。本机外部工作簿读取成功，解析 1,464 个数值和 188 条机构映射。未执行真实报表端到端对拍。
+
+GPT修改记录：`GPT修改记录/20261020_092656_S2F01外部机构映射接入机构参照表.txt`。
+
+Git提交：未提交。
+
+## v9.0.0 — 2026-10-19 23:15
+
+变更类型：Breaking
+
+前版本：v8.0.0；新版本：v9.0.0。
+
+- 环比结果表删除“规则编号”列；环比规则身份仍在引擎内部用于匹配，不再作为审核输出内容。
+- 环比结果表删除“取数说明”列；外部核对结果表删除“规则编号”和“取数说明”列。
+- 未触发环比规则、未达到最小变动门槛或命中规则未配置说明时，“审核说明”留空；命中且配置了分类说明时只显示该说明。
+- 环比计算过程只保留计算公式，不附带策略组、规则命中或门槛说明；数值统一保留两位小数，百分数指标显示百分点差公式。
+- 外部核对计算过程统一只显示“差异绝对值= abs(报表值 - 大集中值) = 差异值”，金额附输出单位；公式中的数值保留两位小数，不再显示容差比较或“成立/不成立”。规则比较方式、容差和审核状态计算不变。
+- 校验规则的“取值明细”和“计算过程”中指标值统一保留两位小数；配置表达式原样显示，原始数值精度继续用于规则判断。
+- 校验规则的“计算过程”同时显示配置原表达式与指标值代入后的表达式，便于对照公式和取数。
+- 不改变规则匹配、最小变动门槛、审核级别或现有异常计算逻辑；是否通过由人工判断。
+
+影响文件：
+- `core/src/base_audit/systems/s2_report_collection/period_engine.py`
+- `core/src/base_audit/systems/s2_report_collection/external_engine.py`
+- `core/src/base_audit/systems/s2_report_collection/exporter.py`
+- `core/src/base_audit/systems/s2_report_collection/rule_engine.py`
+- `core/tests/test_period_v2.py`
+- `core/tests/test_s2_units.py`
+- `core/tests/test_s2_config_check.py`
+- `版本管理/VERSION_MANIFEST.json`
+
+配置影响：无；S2-CFG-01 保持 v8.3.0。
+
+验证：`test_period_v2.py` 与 `test_s2_units.py`（排除读取本机配置并固定断言“元”的用例）86 passed、1 deselected。S2 组回归 328 passed、6 skipped、2 failed；失败分别是本机 `config-real/` 的“校验规则”缺少硬性/软性下拉验证，以及配置输出单位为“万元”而测试断言“元”，均属真实配置与测试固定值不一致；6 项因本机缺少 Flask 跳过。相关 Python 语法检查、`VERSION_MANIFEST.json` 解析及 `git diff --check` 均通过。
+
+GPT修改记录：`GPT修改记录/20261019_221933_S2F01环比审核说明去规则编号和门槛判定.txt`、`GPT修改记录/20261019_222534_S2F01精简环比外部列并显示校验原表达式.txt`、`GPT修改记录/20261019_231515_S2F01环比计算过程仅保留公式并保留两位小数.txt`、`GPT修改记录/20261019_231824_S2F01外部核对差异绝对值公式精简.txt`、`GPT修改记录/20261019_232138_S2F01校验规则取值与计算展示两位小数.txt`。
+
+Git提交：未提交。
+
+## v8.0.0 — 2026-10-19 22:05
+
+变更类型：Breaking
+
+前版本：v7.2.0；新版本：v8.0.0。
+
+- 三类审核结果统一只输出“硬性/软性”：原“严重/错误”映射为硬性，原“提示/关注/核实”合并为软性。
+- 旧 S2 配置仍可读取；结果级别只用于分类和筛选，不改变规则执行、审核状态或流程阻断。
+- 导出层拒绝写出旧级别，避免同一份新结果中重新出现三档值。
+
+配置影响：S2-CFG-01 v8.2.1 → v8.3.0。
+验证：`test_period_v2.py`、`test_s2_units.py`、`test_s2_config_check.py`；完整验证结果见 GPT修改记录。Git提交：未提交。
+
 ## v7.2.0 — 2026-10-16 16:04
 
 变更类型：Feature / MINOR（外部数据模板维护）

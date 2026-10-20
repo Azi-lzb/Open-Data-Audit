@@ -330,16 +330,24 @@ body.distribution-ui-unlocked .sidenav-item[data-system]{display:flex!important}
 .collect-output-field{grid-column:3;grid-row:1}
 .collect-central-field{grid-column:2;grid-row:2}
 .collect-execute-cell{display:flex;align-items:flex-end;justify-content:flex-end;margin-bottom:0!important}
+.pair-list .pair-header{position:sticky;top:0;z-index:2;background:var(--surface-2);box-shadow:0 1px 0 var(--border)}
 .collect-card{min-width:0}
 .collect-card h2{margin:0 0 6px;font-size:15px}
 .collect-card p{margin:4px 0;color:var(--text-2);font-size:13px;line-height:1.7}
 .collect-tip{margin:8px 0 0;font-size:11.5px;color:var(--text-3);line-height:1.6}
+.pair-filter-panel{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:10px;align-items:end;margin-bottom:12px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2)}
+.pair-filter-panel[hidden]{display:none}
+.pair-filter-field{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:12px;color:var(--text-2)}
+.pair-filter-note{grid-column:1/-1;margin:0}
+@media(max-width:980px){.pair-filter-panel{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.pair-filter-panel{grid-template-columns:1fr}}
 /* 两期配对清单：按“工作簿 → 工作表 → 机构 + 表单”同行展示 */
 .pair-list{margin-top:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden;max-height:320px;overflow-y:auto}
 .pair-row{display:grid;grid-template-columns:minmax(170px,.9fr) minmax(0,1.4fr) 26px minmax(0,1.4fr);align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px}
 .pair-row:last-child{border-bottom:none}
 .pair-target{min-width:0;display:flex;flex-direction:column;gap:3px;font-weight:600;color:var(--text);overflow:hidden}
 .pair-target-org,.pair-target-form{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pair-target-code{font-size:11px;font-weight:400;color:var(--text-2);white-space:normal;overflow-wrap:anywhere;user-select:text}
 .pair-target-form{font-size:11px;font-weight:400;color:var(--text-3)}
 .pair-source{min-width:0;display:flex;flex-direction:column;gap:3px;overflow:hidden}
 .pair-source-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2)}
@@ -685,6 +693,7 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 /* ---------- 进度条：运行记录 与 黑框 之间，按任务事件衰减推进 ---------- */
 .progress{display:flex;align-items:center;gap:10px;margin:0 0 8px}
 .progress[hidden]{display:none}
+.progress-detail{flex:0 1 auto;max-width:48%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--text-2)}
 .progress-track{flex:1;height:6px;border-radius:999px;background:var(--border);overflow:hidden}
 .progress-fill{height:100%;width:0%;border-radius:999px;background:var(--accent);transition:width .45s ease;position:relative;overflow:hidden}
 .progress-fill.working::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.4),rgba(255,255,255,0));animation:shimmer 1.4s ease-in-out infinite}
@@ -854,14 +863,14 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
           <div class="field-head"><label>本期待处理</label></div>
           <div class="input-group">
             <div class="path-name empty link" id="pcCurName" onclick="openPcPath('pcCurDir')" title="">未选择</div>
-            <button class="btn" onclick="pickPc('pcCurDir')" title="选择当期（本期）报送数据目录，支持逐机构逐表、按报表划分、按机构划分三种导出方式">选择</button>
+            <button class="btn" onclick="pickPc('pcCurDir')" title="选择本期报送数据目录；建议默认单sheet或按报表单sheet，使用包含机构代码和机构名称的文件名，也支持 reports 格式">选择</button>
           </div>
         </div>
         <div class="field">
           <div class="field-head"><label>上期待处理</label></div>
           <div class="input-group">
             <div class="path-name empty link" id="pcPreName" onclick="openPcPath('pcPreDir')" title="">未选择</div>
-            <button class="btn" onclick="pickPc('pcPreDir')" title="选择上期报送数据目录；两期按机构名称和指标编号自动配对">选择</button>
+            <button class="btn" onclick="pickPc('pcPreDir')" title="选择上期报送数据目录；两期按文件名、工作表名识别机构代码及表单，空表也参与配对">选择</button>
           </div>
         </div>
         <div class="field collect-central-field">
@@ -894,7 +903,17 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
       </div>
     </div>
     <div class="card collect-card">
-      <div class="field-head"><label>文件列表与对比对象</label></div>
+      <div class="field-head"><label>文件列表与对比对象</label><button class="btn soft micro" id="pairFilterToggle" onclick="togglePairFilters()" aria-expanded="false" aria-controls="pairFilters" title="按机构、统一社会信用代码、表单代码和配对状态筛选">筛选</button></div>
+      <div class="pair-filter-panel" id="pairFilters" hidden>
+        <label class="pair-filter-field">机构名称<input id="pairOrgFilter" type="text" placeholder="输入机构名称关键词" autocomplete="off" oninput="refreshPairFilters()"></label>
+        <label class="pair-filter-field">统一社会信用代码<input id="pairCreditFilter" type="text" placeholder="输入完整或部分代码" autocomplete="off" oninput="refreshPairFilters()"></label>
+        <label class="pair-filter-field">表单代码<select id="pairFormFilter" onchange="refreshPairFilters()"><option value="">全部表单</option></select></label>
+        <label class="pair-filter-field">配对状态<select id="pairSideFilter" onchange="refreshPairFilters()"><option value="">全部报表</option><option value="single">单边报表</option><option value="pre">本期缺少</option><option value="cur">上期缺少</option><option value="both">两期齐全</option></select></label>
+        <button class="btn soft" onclick="resetPairFilters()">清空筛选</button>
+        <div class="collect-tip pair-filter-note">支持组合筛选。单边指某一期缺少对应工作表，空表仍算存在。筛选仅用于查看列表，执行报表规则仍处理所选目录内的全部报表。</div>
+      </div>
+      <div class="collect-tip" style="margin-bottom:10px">建议导出“默认单sheet”或“按报表单sheet”，保留带机构代码和机构名称的原始文件名；也支持 reports 格式。</div>
+      <div id="periodSourceWarning" role="status" style="display:none;margin-bottom:10px;padding:10px 12px;border:1px solid var(--warn-border);border-radius:var(--radius-sm);background:var(--warn-soft);color:var(--warn);font-size:12px;line-height:1.7"></div>
       <div class="pair-list" id="pairList"></div>
       <div class="collect-tip" id="periodSummary" style="display:none;margin-top:10px"></div>
     </div>
@@ -1123,6 +1142,7 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     <button class="btn tiny" onclick="openAbout()">关于</button>
   </div>
   <div class="progress" id="progress" hidden>
+    <span class="progress-detail" id="progressDetail" hidden></span>
     <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
     <span class="progress-pct" id="progressPct"></span>
   </div>
@@ -1230,14 +1250,33 @@ function hideProgress(){
   const el=document.getElementById('progress'),fill=document.getElementById('progressFill'),p=document.getElementById('progressPct');
   if(!el)return;
   el.hidden=true;fill.style.width='0%';p.textContent='';
+  renderProgressDetail(null);
 }
 function applyProgress(s){
   const arr=s.log||[],busy=!!s.busy;
-  if(busy){
-    if(!run||run.done){clearTimeout(runTimer);run={n:0}}
+  const periodProgress=s.periodProgress&&typeof s.periodProgress==='object'?s.periodProgress:null;
+  const periodStatus=periodProgress&&periodProgress.status;
+  if(busy&&periodStatus==='running'){
+    renderProgressDetail(periodProgress);
+    clearTimeout(runTimer);
+    run={n:0,done:false,period:true};
+    const value=Number(periodProgress.percent);
+    const pct=Math.max(0,Math.min(100,Number.isFinite(value)?value:0));
+    setProgress(pct,' working');
+  }else if(busy){
+    renderProgressDetail(null);
+    if(!run||run.done||run.period){clearTimeout(runTimer);run={n:0}}
     run.n+=countNew(arr,prevLogTail);
     const pct=Math.min(PROGRESS.maxPct,100*(1-Math.pow(PROGRESS.decay,run.n)));
     setProgress(pct,' working');
+  }else if(run&&run.period&&!run.done&&(periodStatus==='completed'||periodStatus==='failed')){
+    renderProgressDetail(periodProgress);
+    clearTimeout(runTimer);
+    const value=Number(periodProgress.percent);
+    const pct=periodStatus==='completed'?100:Math.max(0,Math.min(99,Number.isFinite(value)?Math.round(value):0));
+    setProgress(pct,periodStatus==='failed'?' error':' success');
+    run.done=true;
+    runTimer=setTimeout(()=>{run=null;hideProgress()},PROGRESS.holdMs);
   }else if(run){
     if(!run.done){ /* 本次运行结束：补满后淡出，只挂一次计时器 */
       run.done=true;
@@ -1958,7 +1997,7 @@ async function validateSaveDag(){let payload;try{payload=JSON.parse(document.get
 /* ---- 操作指引：纯静态说明，不调用后端、不修改配置 ---- */
 const GUIDE_FLOWS=[
   {n:'1',editionSystem:'S1',name:'汇总核查表校验',scenario:'审核同一种基础数据报表，生成“本期审核结果”和各机构审核副本。',source:'逐笔统计系统 → 待办：筛选对应任务后，使用“批量导出核查表”取得源文件。',prep:'选择源数据目录；确认模板目录已存放对应模板；如模板公式依赖集中数据/参照表，再选择外部文件。',steps:'① 选择源数据目录；② 首次选择后核对自动识别的模板，必要时手动选择；③ 在待审核文件中取消本次不需处理的文件；④ 点击“汇总核查表校验”。',output:'执行结果目录下的本期审核结果、需要保留时的审核副本、流程运行日志。',tip:'原始报送文件不会修改；通常不需要勾选“递归子文件夹”。'},
-  {n:'2',editionSystem:'S1',name:'汇总校验结果说明',scenario:'汇总机构报送的任务说明、业务说明、本地校验结果等文件；机构文件放在子文件夹时尤其适用。',source:'逐笔统计系统 → 待办：筛选对应任务后，使用“批量导出校验结果说明”取得源文件。',prep:'选择包含校验结果及报送说明的源数据目录，并选择对应的汇总模板。',steps:'① 选择源数据目录；② 勾选“递归子文件夹”（文件分散在机构子目录时）；③ 核对待处理文件；④ 点击“汇总校验结果说明”。',output:'执行结果目录下的“校验结果与报送说明汇总”工作簿，以及可选运行日志。',tip:'模板表结构不匹配的文件会跳过，并在运行记录中提示。'},
+  {n:'2',editionSystem:'S1',name:'汇总校验结果说明',scenario:'汇总机构报送的任务说明、业务说明、本地校验结果等文件；机构文件放在子文件夹时尤其适用。',source:'逐笔统计系统 → 待办：筛选对应任务后，使用“批量导出校验结果说明”取得源文件。',prep:'选择包含校验结果及报送说明的源数据目录，并选择对应的汇总模板。',steps:'① 选择源数据目录；② 勾选“递归子文件夹”（文件分散在机构子目录时）；③ 核对待处理文件；④ 点击“汇总校验结果说明”。',output:'执行结果目录下的“校验结果与报送说明汇总”工作簿，以及可选运行日志。',tip:'缺少的模板工作表会按表跳过；模板含“兜底模板”且配置了汇总区域和表头区域时，额外汇总未匹配且有数据的源工作表；已有表头错位的文件仍会跳过。'},
   {n:'3',editionSystem:'S2',name:'执行报表规则',scenario:'对两期报送数据执行环比、校验规则和外部核对，生成三张分类审核表。',source:'金融基础数据报表采集 → 业务处理 → 报表数据查看：勾选机构和 20201、20202、20203 报表，使用默认“单 Sheet”导出。',prep:'在“报表采集系统”中选择本期目录、上期目录；需要大集中核对时再选择大集中数据，并确认比较配置。',steps:'① 打开“报表采集系统”；② 选择本期、上期目录和输出目录；③ 点击“检查配置”确认环比策略无阻断问题；④ 需要时选择大集中数据与比较配置；⑤ 点击“执行报表规则”。',output:'输出目录下的“报表审核清单_时间戳.xlsx”，包含“环比规则”“外部核对规则”“校验规则”三张表。',tip:'原始文件不会被修改；规则由“2.报表采集系统_配置.xlsx”维护，指标参照中的环比启用、策略组和最小变动值决定环比执行。'},
   {n:'4',editionSystem:'S3',name:'两期数据 ⇨ 比较文件',scenario:'比较两期大集中导数，按配置执行环比、警戒和指标校验。',source:'大集中系统 → 指标查询：选择机构及所有指标，分别导出本期和上期数据，不要混在同一份文件中。',prep:'打开“大集中统计系统”，选择本期数据文件、上期数据文件和输出目录。',steps:'① 选择两期 CSV/XLSX 导数；② 核对输出目录；③ 点击“两期数据 ⇨ 比较文件”。',output:'输出目录下的“比较结果_时间戳.xlsx”，并自动带入“比较文件.xlsx”。',tip:'规则由大集中通用配置和“3.1大集中执行比较_配置.xlsx”共同维护。'},
   {n:'5',editionSystem:'S3',name:'比较文件 ⇨ 说明文件',scenario:'将比较文件中需要机构说明的指标整理为简化说明文件。',prep:'先打开比较文件，在最右侧“输出说明”列对需说明的行填写“是”。',steps:'① 选择或确认“比较文件.xlsx”；② 填写“输出说明”；③ 点击“比较文件 ⇨ 说明文件”。',output:'输出目录下的“指标说明_时间戳.xlsx”，并自动带入“说明文件.xlsx”。',tip:'此操作只导出选中行，不改写比较文件。'},
@@ -3698,6 +3737,7 @@ function renderCollect(state){
     if(v)appendPathClear(el,key);
   }
   renderPairList(state.periodPairs||[]);
+  renderPeriodSourceWarning(state.periodSourceWarning||'');
   renderPeriodSummary(state.periodSummary||null);
   const pcPin=document.getElementById('pcOutputPin');
   if(pcPin){
@@ -3718,6 +3758,24 @@ function renderPeriodSummary(summary){
   el.innerHTML='审核完成：'+esc(String(summary.institutions||0))+' 家机构、'+esc(String(summary.forms||0))+' 张表、异常 '+esc(String(summary.abnormal||0))+' 条（'+esc(typeText)+'）。'
     +' <a href="#" onclick="openPeriodResult(\'result\');return false;">打开分类审核表</a>';
 }
+function periodElapsedLabel(value){
+  const raw=Number(value);
+  const seconds=Math.max(0,Number.isFinite(raw)?raw:0);
+  if(seconds<60)return '耗时 '+Math.round(seconds)+' 秒';
+  const whole=Math.floor(seconds);
+  return '耗时 '+Math.floor(whole/60)+' 分 '+(whole%60)+' 秒';
+}
+function renderProgressDetail(progress){
+  const detail=document.getElementById('progressDetail');
+  if(!detail)return;
+  detail.hidden=!progress;
+  if(!progress){detail.textContent='';detail.title='';return;}
+  const label=String(progress.label||'报表处理')+(progress.status==='failed'?'（失败）':'');
+  const total=Math.max(0,Math.trunc(Number(progress.total)||0));
+  const count=total?' · '+Math.max(0,Math.trunc(Number(progress.current)||0))+' / '+total:'';
+  detail.textContent=label+count+' · '+periodElapsedLabel(progress.elapsedSeconds);
+  detail.title=String(progress.message||detail.textContent);
+}
 function openPeriodResult(kind){
   const summary=state&&state.periodSummary;
   const path=summary&&summary[kind];
@@ -3733,35 +3791,102 @@ function shortPairBook(name){
   if(parts.length<2)return String(name||'');
   return parts.slice(1).join(' · ');
 }
+function renderPeriodSourceWarning(message){
+  const box=document.getElementById('periodSourceWarning');
+  if(!box)return;
+  box.textContent=message||'';
+  box.style.display=message?'block':'none';
+}
+function pairListFilters(){
+  const value=id=>{const input=document.getElementById(id);return input?String(input.value||'').trim():'';};
+  return {org:value('pairOrgFilter'),credit:value('pairCreditFilter'),form:value('pairFormFilter'),side:value('pairSideFilter')};
+}
+function togglePairFilters(){
+  const panel=document.getElementById('pairFilters');
+  if(!panel)return;
+  panel.hidden=!panel.hidden;
+  const button=document.getElementById('pairFilterToggle');
+  if(button)button.setAttribute('aria-expanded',String(!panel.hidden));
+}
+function refreshPairFilters(){
+  renderPairList((state&&state.periodPairs)||[]);
+}
+function resetPairFilters(){
+  ['pairOrgFilter','pairCreditFilter','pairFormFilter','pairSideFilter'].forEach(id=>{
+    const input=document.getElementById(id);if(input)input.value='';
+  });
+  refreshPairFilters();
+}
+let pairFormOptionsElement=null,pairFormOptionsSignature=null;
+let pairListRenderElement=null,pairListRenderSignature=null;
+function syncPairFormOptions(pairs){
+  const select=document.getElementById('pairFormFilter');
+  if(!select)return;
+  const forms=[...new Set(pairs.map(row=>String(row.form||'')).filter(Boolean))].sort();
+  const signature=JSON.stringify(forms);
+  if(select===pairFormOptionsElement&&pairFormOptionsSignature===signature)return;
+  const selected=select.value||'';
+  select.innerHTML='<option value="">全部表单</option>'+forms.map(form=>'<option value="'+esc(form)+'">'+esc(form)+'</option>').join('');
+  select.value=forms.indexOf(selected)>=0?selected:'';
+  pairFormOptionsElement=select;
+  pairFormOptionsSignature=signature;
+}
+function filteredPairList(pairs,filters){
+  const org=filters.org.toLowerCase(),credit=filters.credit.toLowerCase();
+  return pairs.filter(row=>
+    (!org||String(row.orgName||row.org||'').toLowerCase().includes(org))&&
+    (!credit||String(row.socialCreditCode||'').toLowerCase().includes(credit))&&
+    (!filters.form||String(row.form||'')===filters.form)&&
+    (!filters.side||(filters.side==='single'?(row.side==='cur'||row.side==='pre'):row.side===filters.side)));
+}
 function renderPairList(pairs){
   const box=document.getElementById('pairList');
   if(!box)return;
+  syncPairFormOptions(pairs);
+  const filters=pairListFilters();
+  const signature=JSON.stringify([pairs,filters]);
+  const active=Object.values(filters).filter(Boolean).length;
+  const button=document.getElementById('pairFilterToggle');
+  const buttonText='筛选'+(active?'（'+active+'）':'');
+  if(button&&button.textContent!==buttonText)button.textContent=buttonText;
+  if(box===pairListRenderElement&&signature===pairListRenderSignature)return;
+  const scrollTop=typeof box.scrollTop==='number'?box.scrollTop:null;
   if(!pairs.length){
+    box.innerHTML='';
     box.style.display='none';
+    if(scrollTop!==null)box.scrollTop=scrollTop;
+    pairListRenderElement=box;
+    pairListRenderSignature=signature;
     return;
   }
   box.style.display='block';
-  const both=pairs.filter(p=>p.side==='both').length;
-  const missing=pairs.length-both;
-  const head='<div class="pair-row" style="background:var(--surface-2)">'
-    +'<span class="pair-target">对比对象（'+both+' 对齐全'+(missing?'，'+missing+' 项单边':'')+'）</span>'
+  const visible=filteredPairList(pairs,filters);
+  const both=visible.filter(p=>p.side==='both').length;
+  const missing=visible.length-both;
+  const head='<div class="pair-row pair-header">'
+    +'<span class="pair-target">对比对象（'+(active?'筛选 '+visible.length+'/'+pairs.length+' 项，':'')+both+' 对齐全'+(missing?'，'+missing+' 项单边':'')+'）</span>'
     +'<span style="font-weight:600;color:var(--text-2)">本期：工作簿 → 工作表</span>'
     +'<span class="pair-vs">比</span><span style="font-weight:600;color:var(--text-2)">上期：工作簿 → 工作表</span></div>';
-  box.innerHTML=head+pairs.map(r=>{
+  box.innerHTML=head+(visible.length?visible.map(r=>{
     const org=r.orgName||r.org||'未识别机构';
+    const credit=String(r.socialCreditCode||'');
     const form=r.form||'未识别表单';
-    const target=org+' · '+form;
+    const creditLabel='统一社会信用代码：'+(credit||'未识别');
+    const target=org+' · '+creditLabel+' · '+form;
     const curIdentity='本期-'+(r.curDate||'未识别日期')+'-'+org+'-'+form;
     const preIdentity='上期-'+(r.preDate||'未识别日期')+'-'+org+'-'+form;
     const cur=r.curName?'<span class="pair-source" title="点击打开：'+esc(r.curPath)+'"><span class="pair-source-name">'+esc(curIdentity)+'</span><span class="pair-source-book" data-open="'+esc(r.curPath)+'">工作簿：'+esc(shortPairBook(r.curName))+'</span><span class="pair-source-sheet">工作表：'+esc(r.curSheet||'未识别')+'</span></span>'
-      :'<span class="pair-source missing"><span class="pair-source-name">— 缺失</span></span>';
+      :'<span class="pair-source missing"><span class="pair-source-name">— 本期缺少</span></span>';
     const pre=r.preName?'<span class="pair-source" title="点击打开：'+esc(r.prePath)+'"><span class="pair-source-name">'+esc(preIdentity)+'</span><span class="pair-source-book" data-open="'+esc(r.prePath)+'">工作簿：'+esc(shortPairBook(r.preName))+'</span><span class="pair-source-sheet">工作表：'+esc(r.preSheet||'未识别')+'</span></span>'
-      :'<span class="pair-source missing"><span class="pair-source-name">— 缺失</span></span>';
+      :'<span class="pair-source missing"><span class="pair-source-name">— 上期缺少</span></span>';
     return '<div class="pair-row">'
-      +'<span class="pair-target" title="'+esc(target)+'"><span class="pair-target-org">'+esc(org)+'</span><span class="pair-target-form">'+esc(form)+'</span></span>'
+      +'<span class="pair-target" title="'+esc(target)+'"><span class="pair-target-org">'+esc(org)+'</span><span class="pair-target-code" title="'+esc(creditLabel)+'">信用代码：'+esc(credit||'未识别')+'</span><span class="pair-target-form">'+esc(form)+'</span></span>'
       +cur+'<span class="pair-vs">vs</span>'+pre
       +'</div>';
-  }).join('');
+  }).join(''):'<div class="collect-tip" role="status" style="padding:12px">没有符合筛选条件的对比对象，请调整或清空筛选。</div>');
+  if(scrollTop!==null)box.scrollTop=scrollTop;
+  pairListRenderElement=box;
+  pairListRenderSignature=signature;
 }
 function openPcPath(key){
   const v=state?state[key]:'';
@@ -3820,7 +3945,7 @@ function runPeriodAudit(){
   if(missing.length){alert('请先选择：'+missing.join('、'));return;}
   const pairs=state.periodPairs||[], missingPairs=pairs.filter(item=>item.side!=='both').length;
   showRunConfirm('执行报表规则',doCreatePeriodAudit,
-    '执行前检测：本期、上期目录与报表采集系统配置已选择。\n对比对象：'+pairs.length+' 项'+(missingPairs?'，其中 '+missingPairs+' 项缺少对应报表':'，两期报表均已配对')+'\n大集中核对：'+(state.pcCentral?'已启用':'未启用')+'\n输出：报表审核清单_时间戳.xlsx（三张分类审核表）',[]);
+    '执行前检测：本期、上期目录与报表采集系统配置已选择。\n对比对象：'+pairs.length+' 项'+(missingPairs?'，其中 '+missingPairs+' 项缺少对应报表':'，两期报表均已配对')+(state.periodSourceWarning?'\n导出格式提醒：'+state.periodSourceWarning:'')+'\n大集中核对：'+(state.pcCentral?'已启用':'未启用')+'\n输出：报表审核清单_时间戳.xlsx（三张分类审核表）',[]);
 }
 async function doCreatePeriodCompare(){
   try{

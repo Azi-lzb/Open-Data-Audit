@@ -1,0 +1,38 @@
+时间：2026-10-20 20:18（Asia/Shanghai，按用户时区生成时间戳）
+执行者：Codex 主 Agent，未委派子 Agent。
+修改前 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca
+修改后 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca（未提交）
+分支：desktop；origin 为 Open-Data-Audit 公开代码仓库。
+
+【WIP 与目的】
+已核对 AGENTS、Git 状态、分支、commit 和远端。保留全部前序 WIP；本轮修改前快照位于系统临时目录 codex_s2_pair_side_60igdeke，没有在项目增加备份。
+用户要求增加单边报表筛选，以明确哪一期缺少对应报表。
+
+【文件】
+修改 core/frontend/web/index.html、core/tests/test_distribution_profile.py、core/tests/test_version_manifest.py、core/tests/TEST_GROUPS.md、版本管理/VERSION_MANIFEST.json、版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md。
+新增本记录；删除文件：无。
+
+【行为与边界】
+筛选面板增加配对状态选择，默认全部报表；single 只显示 cur/pre，pre 对应本期缺少（只有上期），cur 对应上期缺少（只有本期），both 对应两期齐全。
+状态与原机构/信用代码/表单条件为同时满足关系，参与已启用条件计数，可统一清空；面板布局扩展为四条件，保留窄窗口两列/一列适配。
+列表本期/上期缺失位置分别明确标注期别，原来通用的“缺失”文字不再含糊。
+仍使用现有 periodPairs.side 的文件/工作表存在性，不按单元格数值判定；空表继续算存在，页面已解释单边含义。没有增加后端接口、读取工作簿/正文、写配置或改变正式审核范围/结果的逻辑。
+config/、config-real/ 和原始业务工作簿未修改；两个外壳共用同一 core 前端。
+
+【组件版本】
+S2-F01 执行报表规则 v10.2.0 → v10.3.0。
+S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0 未变；S1/S3 功能配置及产品整包版本未变。
+原因：Feature / MINOR，增加可选的状态筛选，默认行为、接口及输出契约不变。
+
+【验证】
+1. 定向：python -m pytest -q core/tests/test_distribution_profile.py core/tests/test_version_manifest.py —— 27 passed / 0 skipped / 0 failed / 0 errors。
+2. 最终 S2 回归：python -m pytest -q -rs -m s2 core/tests —— 412 passed / 6 skipped / 2 failed / 0 errors，628 deselected。失败仍为下述两项既有配置差异；6项因缺少Flask跳过，没有新增功能失败。
+3. 新增5项参数化 Node.js 行为用例：全部、单边、本期缺少、上期缺少、两期齐全；检查实际可见机构、缺少期别文字、下拉标签与 pre/cur 映射、一键清空恢复全部及源数据不变。
+4. 增强既有组合用例，验证四条件同时匹配、条件数为4、刷新保留状态、统一清空状态；正式执行确认仍显示原始全部5项，不被显示筛选改为1项。
+5. Node.js 完整脚本语法、交付范围及筛选行为、测试 Python 编译、git diff --check 通过。
+前轮 S2 基线407 passed、6 skipped、2 failed。两项既有失败是校验规则缺少硬性/软性下拉，以及本机输出单位万元与测试要求元不一致；6项因缺少Flask跳过。本轮不为迎合测试修改用户配置。
+S2 回归实际只读 config-real/2.报表采集系统_配置.xlsx 及 config-real/默认配置/2.报表采集系统_配置.xlsx。
+未执行：core 全量 pytest、浏览器视觉、麒麟/UOS 实机和发行包验收；本轮未打包。
+
+【回滚及 Git】
+没有 commit、push、merge、rebase 或 PR 操作。只撤销本轮状态选择、缺少期别文案、测试和版本留痕增量，恢复 S2-F01 v10.2.0；不可整文件 restore 覆盖前序 WIP，可用本轮临时快照核对差异。

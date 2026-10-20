@@ -1,6 +1,9 @@
 import sys
 import unittest
 from pathlib import Path
+from zipfile import ZipFile
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -378,7 +381,8 @@ class PeriodCompareTests(unittest.TestCase):
         pairs = pc.list_period_pairs(cur_dir, pre_dir)
 
         self.assertEqual(len(pairs), 2)
-        self.assertEqual({row["orgName"] for row in pairs}, {"甲银行", "乙银行"})
+        # banks 文件名不含机构名称；清单只从表名取得代码，不读取正文名称。
+        self.assertEqual({row["orgName"] for row in pairs}, {"91440000AA", "91440000BB"})
         self.assertTrue(all(row["form"] == "20201" for row in pairs))
         self.assertTrue(all(row["curDate"] == "2026-06-30" for row in pairs))
         self.assertTrue(all(row["preDate"] == "2026-03-31" for row in pairs))
@@ -713,6 +717,111 @@ class PeriodCompareTests(unittest.TestCase):
         pc.apply_complex_rules(rows, cur, pre, config, on_step=lambda _s: None)
         row = next(r for r in rows if r["指标编码"] == "20202003")
         self.assertEqual(row["是否说明"], "", "两侧十进制相同时不得报不平衡")
+
+
+@pytest.mark.parametrize("layout", ["single", "reports", "banks"])
+@pytest.mark.parametrize("suffix", [".xlsx", ".xls"])
+@pytest.mark.parametrize("empty_side", ["current", "previous", "both"])
+def test_pair_list_matches_empty_sheets_using_only_names(tmp_path, layout, suffix, empty_side):
+    current, previous = tmp_path / "current", tmp_path / "previous"
+    current.mkdir(); previous.mkdir()
+    code = "91440000AA"
+    sheet_name = code if layout == "banks" else "20201"
+    for side, directory, date in (("current", current, "2026-06-30"), ("previous", previous, "2026-03-31")):
+        if layout == "banks":
+            name = f"banks#{date}#01#20201{suffix}"
+        elif layout == "reports":
+            name = f"reports#{code}#{date}#01#甲银行{suffix}"
+        else:
+            name = f"{code}#{date}#01#20201#甲银行{suffix}"
+        path = directory / name
+        rows = [] if empty_side in (side, "both") else [
+            ["标题"], [], ["指标编号", "指标名称", "值"],
+            [20201001, "机构名称", "--"], [20201002, "机构代码", "误填代码"],
+        ]
+        if suffix == ".xls":
+            xlwt = pytest.importorskip("xlwt")
+            book = xlwt.Workbook(); sheet = book.add_sheet(sheet_name)
+            for r, row in enumerate(rows):
+                for c, value in enumerate(row):
+                    sheet.write(r, c, value)
+        else:
+            book = Workbook(); sheet = book.active; sheet.title = sheet_name
+            for row in rows:
+                sheet.append(row)
+        book.save(str(path))
+    pairs = pc.list_period_pairs(current, previous)
+    assert len(pairs) == 1
+    pair = pairs[0]
+    assert pair["side"] == "both" and pair["matched"]
+    assert pair["org"] == code and pair["form"] == "20201"
+    assert pair["socialCreditCode"] == code
+    assert pair["orgName"] == (code if layout == "banks" else "甲银行")
+    assert pair["curDate"] == "2026-06-30" and pair["preDate"] == "2026-03-31"
+
+
+def test_pair_list_does_not_open_worksheet_xml_or_shared_strings(tmp_path, monkeypatch):
+    """工作表正文/共享字符串无法解析，也不应影响仅靠名称的配对预览。"""
+    current, previous = tmp_path / "current", tmp_path / "previous"
+    current.mkdir(); previous.mkdir()
+    for directory, date in ((current, "2026-06-30"), (previous, "2026-03-31")):
+        path = directory / f"9144#{date}#01#20201#甲银行.xlsx"
+        with ZipFile(path, "w") as archive:
+            archive.writestr("xl/workbook.xml", '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="20201" sheetId="1"/></sheets></workbook>')
+            archive.writestr("xl/worksheets/sheet1.xml", "<invalid body")
+            archive.writestr("xl/sharedStrings.xml", "<invalid shared strings")
+    original_read = ZipFile.read
+    read_members = []
+
+    def metadata_only_read(self, name, *args, **kwargs):
+        assert name == "xl/workbook.xml"
+        read_members.append(name)
+        return original_read(self, name, *args, **kwargs)
+
+    monkeypatch.setattr(ZipFile, "read", metadata_only_read)
+    pairs = pc.list_period_pairs(current, previous)
+    assert len(pairs) == 1 and pairs[0]["matched"]
+    assert read_members == ["xl/workbook.xml", "xl/workbook.xml"]
+
+
+def test_pair_list_keeps_multiple_empty_institutions_and_true_one_sided_sheet(tmp_path):
+    current, previous = tmp_path / "current", tmp_path / "previous"
+    current.mkdir(); previous.mkdir()
+    for directory, date, codes in (
+        (current, "20260630", ("9144AA", "9144BB", "9144CC")),
+        (previous, "20260331", ("9144AA", "9144BB")),
+    ):
+        book = Workbook(); book.remove(book.active)
+        for code in codes:
+            book.create_sheet(code)
+        book.save(directory / f"banks#{date}#01#20201.xlsx")
+    pairs = pc.list_period_pairs(current, previous)
+    assert {row["org"]: row["side"] for row in pairs} == {
+        "9144AA": "both", "9144BB": "both", "9144CC": "cur",
+    }
+    assert all(row["socialCreditCode"] == row["org"] for row in pairs)
+
+
+@pytest.mark.parametrize("side", ["current", "previous"])
+def test_pair_list_keeps_credit_code_for_one_sided_banks_without_org_name(tmp_path, side):
+    directory = tmp_path / side; directory.mkdir()
+    book = Workbook(); book.active.title = "001122334455667788"
+    book.save(directory / "banks#20260630#01#20201.xlsx"); book.close()
+    current = directory if side == "current" else None
+    previous = directory if side == "previous" else None
+    pairs = pc.list_period_pairs(current, previous)
+    assert len(pairs) == 1
+    assert pairs[0]["socialCreditCode"] == "001122334455667788"
+    assert pairs[0]["side"] == ("cur" if side == "current" else "pre")
+    assert not pairs[0]["matched"]
+
+
+def test_pair_list_does_not_use_institution_name_as_credit_code(tmp_path):
+    book = Workbook(); book.active.title = "20201"
+    book.save(tmp_path / "非标准机构文件.xlsx"); book.close()
+    pair = pc.list_period_pairs(tmp_path, None)[0]
+    assert pair["org"] == "非标准机构文件"
+    assert pair["socialCreditCode"] == ""
 
 
 if __name__ == "__main__":

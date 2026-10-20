@@ -1,0 +1,60 @@
+【时间与执行者】
+时间：2026-10-19 18:06:30（本机时间）
+执行者：Codex
+修改前 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca
+修改后 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca（未提交）
+工作分支：desktop
+任务开始时已有未跟踪 WIP：GPT修改记录/20261019_100913_S1S2使用与安装说明完善.txt、external/；本轮未改动。
+
+【修改目的】
+S1-F02 是汇总功能。某个源文件缺少模板中的一张目标工作表时，不应因此丢弃该文件的其他可汇总工作表，更不应造成整批没有文件可处理。
+
+【修改与新增文件】
+修改：core/src/base_audit/preflight_xlsx.py
+修改：core/src/base_audit/region_summary.py
+修改：core/src/base_audit/native/summary.py
+修改：core/src/base_audit/workflow/defaults.py
+修改：core/src/base_audit/workflow/adapters/audit_handlers.py
+修改：core/src/base_audit/workflow/adapters/native_audit_handlers.py
+修改：core/src/base_audit/workflow/adapters/simple_handlers.py
+修改：core/src/base_audit/name_config.py
+修改：core/frontend/web/index.html
+修改：core/tests/test_preflight_xlsx.py
+修改：core/tests/test_native_uos.py
+修改：core/tests/TEST_GROUPS.md
+修改：版本管理/VERSION_MANIFEST.json
+修改：版本管理/S1_逐笔统计系统/功能/S1-F02_汇总校验结果说明/CHANGELOG.md
+新增：GPT修改记录/20261019_180630_S1F02缺少工作表继续汇总.txt
+
+【行为变化】
+1. S1-F02 结构检查允许源文件缺少模板配置的工作表：缺失的表逐表跳过，同一源文件其他结构匹配的表继续汇总。
+2. 所有配置目标表都缺失时仍保留该源文件参与流程，并生成带表头的结果工作簿；运行记录说明缺表情况。
+3. 已存在的工作表仍做表头结构核对。结构错位的文件继续剔除，以免列错位数据被误汇总；若所有源文件都被剔除，仍会提示没有可汇总文件。
+4. 源文件缺少命名区域单元格字段所在工作表时，该元数据留空并提示，不再因该字段中止整批。
+5. S1-F02 不再检查它不会复制使用的可选外部工作簿，避免无关外部文件阻断汇总。
+6. 缺表容错开关仅加在 S1-F02 流程；S1-F01 的结构检查策略保持不变。更新默认流程说明和用户界面提示。
+
+【组件版本】
+系统：S1 逐笔统计系统
+影响功能：S1-F02 汇总校验结果说明 v1.1.1 → v1.1.2
+影响配置：S1-CFG-01 逐笔统计系统配置 v2.0.0 → v2.0.0（未变）
+未修改的相关组件：S1-F01、S1-F03～S1-F05、S2-*、S3-*（全部未升级）
+版本升级原因：Bugfix / PATCH；缺表从整文件拒绝改为逐表跳过，配置结构和汇总列协议不变。
+
+【验证与结果】
+- 定向测试：python -m pytest -q core/tests/test_preflight_xlsx.py core/tests/test_native_uos.py -k 'summary'：5 passed。
+- S1 回归：python -m pytest -q -rs -m s1 core/tests：475 passed、13 skipped、463 deselected。
+- 跳过项为当前平台不适用的 Linux/UOS 探测，及需要未安装 Flask 的端点测试。
+- 本轮未在麒麟 V10/UOS 真机运行，也未独立执行真实 LibreOffice/Office 业务工作簿验收。
+- 未提交、未推送、未合并；没有改动原始业务文件或真实配置。
+
+【仍会阻断或跳过的情况】
+- 模板本身不可读，缺少可用汇总命名区域、表头区域，或汇总区域与表头无交集：无法确定读取位置，流程报错。
+- 没有发现可处理的 .xlsx 文件：输入节点停止；关闭递归时，子文件夹中的文件不会被发现。
+- 源文件无法读取/损坏，或已有工作表表头严重错位：该文件会被剔除；如果全部文件都被剔除，汇总会提示无可用源文件。
+- 输出目录无写权限、磁盘空间不足或目标文件被占用：结果文件无法落盘，整个运行失败。
+- Office/LibreOffice 模式启动或打开工作簿失败：对应引擎错误可能中止汇总。本轮自动化回归不替代目标桌面环境验收。
+- 纯 Python 读取公式单元格的已保存缓存，不负责重新计算公式；缓存缺失或过期时可能造成空值/旧值，这是结果完整性风险，不一定表现为流程报错。
+
+【备份与回滚】
+本轮为代码与文档记录变更，没有覆盖原始业务文件。回滚本变更时应按 Git diff 逐文件还原本轮列出的文件，并同步恢复 S1-F02 v1.1.1；不要覆盖任务开始时已有的 `external/` 和说明文档修改记录。

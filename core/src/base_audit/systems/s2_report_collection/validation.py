@@ -13,7 +13,7 @@ def _finding_id(*parts: str) -> str:
     return hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
-def _quality(record: IndicatorRecord, description: str, *, severity: str = "严重", trace: str = "") -> AuditFinding:
+def _quality(record: IndicatorRecord, description: str, *, severity: str = "硬性", trace: str = "") -> AuditFinding:
     return AuditFinding(
         finding_id=_finding_id("质量", record.institution_id, record.indicator_code, record.period, description),
         audit_type="校验规则", status=STATUS_ABNORMAL, severity=severity,
@@ -37,14 +37,14 @@ def validate_import(result: ImportResult) -> list[AuditFinding]:
         ))
     for record in result.records:
         if not record.institution_id:
-            findings.append(_quality(record, "缺少稳定机构身份", severity="严重"))
+            findings.append(_quality(record, "缺少稳定机构身份", severity="硬性"))
         if not record.form_code:
-            findings.append(_quality(record, "未识别表单代码", severity="关注"))
+            findings.append(_quality(record, "未识别表单代码", severity="软性"))
     for text in result.warnings:
         # 文件级导入告警没有可靠单一记录时，保留为系统级质量发现。
         findings.append(AuditFinding(
             finding_id=_finding_id("质量", text), audit_type="校验规则", status=STATUS_ABNORMAL,
-            severity="关注", rule_id="Q001", rule_description=text, description=text, rule_type="导入校验",
+            severity="软性", rule_id="Q001", rule_description=text, description=text, rule_type="导入校验",
         ))
     return findings
 
@@ -52,5 +52,5 @@ def validate_import(result: ImportResult) -> list[AuditFinding]:
 def validate_config_warnings(warnings: list[str]) -> list[AuditFinding]:
     return [AuditFinding(
         finding_id=_finding_id("配置", warning), audit_type="校验规则", status=STATUS_ABNORMAL,
-        severity="关注", rule_id="Q001", rule_description="配置检查：" + warning, description="配置检查：" + warning, rule_type="配置检查",
+        severity="软性", rule_id="Q001", rule_description="配置检查：" + warning, description="配置检查：" + warning, rule_type="配置检查",
     ) for warning in warnings]

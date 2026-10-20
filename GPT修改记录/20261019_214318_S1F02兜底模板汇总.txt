@@ -1,0 +1,54 @@
+【时间与执行者】
+时间：2026-10-19 21:43:18（本机时间）
+执行者：Codex
+修改前 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca
+修改后 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca（未提交）
+工作分支：desktop
+任务开始时已有未跟踪 WIP：external/、GPT修改记录/20261019_100913_S1S2使用与安装说明完善.txt、GPT修改记录/20261019_180630_S1F02缺少工作表继续汇总.txt；本轮保留，未清理或覆盖。
+
+【修改目的】
+为 S1-F02 提供可选的未匹配工作表兜底汇总，同时保证没有兜底工作表的既有模板不改变行为。
+
+【修改与新增文件】
+新增：core/src/base_audit/summary_fallback.py
+修改：core/src/base_audit/native/summary.py
+修改：core/src/base_audit/region_summary.py
+修改：core/src/base_audit/preflight_xlsx.py
+修改：core/src/base_audit/workflow/adapters/audit_handlers.py
+修改：core/src/base_audit/workflow/adapters/native_audit_handlers.py
+修改：core/src/base_audit/workflow/defaults.py
+修改：core/src/base_audit/name_config.py
+修改：core/src/base_audit/node_flow_config.py
+修改：core/frontend/web/index.html
+修改：core/tests/test_native_uos.py
+修改：core/tests/test_preflight_xlsx.py
+修改：core/tests/test_version_manifest.py
+修改：core/tests/TEST_GROUPS.md
+修改：版本管理/VERSION_MANIFEST.json
+修改：版本管理/S1_逐笔统计系统/功能/S1-F02_汇总校验结果说明/CHANGELOG.md
+新增：GPT修改记录/20261019_214318_S1F02兜底模板汇总.txt
+
+【行为变化】
+1. 只有模板中存在名为“兜底模板”的工作表时才启用兜底。该表必须各有一个“任意行汇总区域”和“表头区域”命名区域，且两者至少有共同列。
+2. 未匹配的源工作表按兜底模板中配置的坐标提取数据、按兜底表头输出；源工作表名称和来源文件信息仍写入结果。
+3. 未匹配源工作表在兜底数据区域没有非空数据行时不生成结果工作表，并在运行日志提示。
+4. 模板没有“兜底模板”时不改变行为：未匹配源工作表继续忽略，正常模板命名区域仍按原结构校验。
+5. 支持模板只配置兜底区域的情况；普通映射工作表缺失仍按前一版本的按表继续汇总规则处理。
+
+【组件版本】
+系统：S1 逐笔统计系统
+影响功能：S1-F02 汇总校验结果说明 v1.1.2 → v1.2.0
+影响配置：S1-CFG-01 逐笔统计系统配置 v2.0.0 → v2.0.0（未变）
+未修改的相关组件：S1-F01、S1-F03～S1-F05、S2-*、S3-*（未升级）
+版本升级原因：Feature / MINOR；新增按模板显式启用的可选兜底能力，旧模板无需改动且维持原行为。
+
+【验证与结果】
+- 定向测试：`python -m pytest -q -m s1 core/tests/test_native_uos.py::test_s1_summary_keeps_other_sheet_when_source_is_missing_one_template_sheet core/tests/test_native_uos.py::test_s1_summary_uses_optional_fallback_template_for_unmatched_sheets core/tests/test_preflight_xlsx.py`：12 passed。
+- S1 回归：`python -m pytest -q -rs -m s1 core/tests`：477 passed、13 skipped、463 deselected。
+- `python -m compileall -q core/src/base_audit` 通过；`git diff --check` 通过。
+- S1 回归包含新增兜底端到端用例和版本清单检查；13 项跳过是 Linux/UOS 专属探测、Flask 未安装时的端点测试。
+- 本轮未在麒麟/UOS 真机、Windows Excel COM 或 LibreOffice 桌面环境执行验收；这些平台的实际运行仍需目标环境复核。
+- 未提交、未推送、未合并；未修改 `config-real/`、原始业务文件或既有 external/ WIP。
+
+【备份与回滚】
+本轮为代码与说明变更，没有覆盖源业务文件。回滚本轮兜底功能时按本记录的新增/修改文件恢复，并把 S1-F02 版本恢复为 v1.1.2；保留此前 S1-F02 v1.1.2 变更及任务开始时的 WIP，不要整体清除工作区。

@@ -1,0 +1,41 @@
+时间：2026-10-20 19:57（Asia/Shanghai）
+执行者：Codex 主 Agent，未委派子 Agent。
+修改前 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca
+修改后 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca（未提交）
+分支：desktop；origin 为 Open-Data-Audit 公开代码仓库。
+
+【WIP 与目的】
+保留当前全部 S1/S2 功能、真实配置相关测试和前序版本留痕 WIP，只做本轮增量修改；修改前文件快照保存在系统临时目录 codex_s2_pair_credit_eto_f2st，没有新增项目内备份。
+用户要求“对比对象”同时显示统一社会信用代码，即使 banks 机构名称未找到，也能按代码定位。
+
+【文件清单】
+修改 core/src/base_audit/period_compare.py、core/frontend/web/index.html。
+修改 core/tests/test_period_compare.py、core/tests/test_distribution_profile.py、core/tests/test_web_app.py、core/tests/test_version_manifest.py、core/tests/TEST_GROUPS.md。
+修改 版本管理/VERSION_MANIFEST.json、版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md。
+新增本记录；删除文件：无。
+
+【行为与接口】
+periodPairs 每项新增 socialCreditCode 字符串字段：逐机构逐表/reports 从标准文件名提取，banks 从工作表名提取，不能从 org 名称兜底值反推信用代码。没有识别出代码时为空字符串。该字段随配对结果传递至 WebApi.get_state，无新接口动作。
+对比对象按机构名称、信用代码、表单三行显示，信用代码支持选中复制、换行及完整悬停提示；未知代码明确“未识别”。机构名、代码和 tooltip 均沿用 HTML 转义，测试包含特殊字符。
+不读取报表正文，不增加机构参照读取；即使名称未匹配到，代码也独立保留。配对键、排序、两期数量、单边状态、正式导入/审核及 Excel 输出没有修改。
+未修改 config/、config-real/ 工作簿或原始业务文件。两个外壳继续共用 core，无平台业务副本。
+
+【组件版本】
+系统：S2 报表采集系统。
+影响功能：S2-F01 v10.0.0 → v10.1.0。
+配置：S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0 均未变。
+未修改组件：S1/S3 功能、配置及产品整包版本。
+原因：Feature / MINOR，增加向后兼容的配对字段和展示信息，已有字段与输出协议不变。
+
+【验证】
+1. 定向：python -m pytest -q core/tests/test_period_compare.py core/tests/test_distribution_profile.py core/tests/test_web_app.py core/tests/test_version_manifest.py —— 113 passed / 0 skipped / 0 failed / 0 errors。
+2. 最终 S2 回归：python -m pytest -q -rs -m s2 core/tests —— 406 passed / 6 skipped / 2 failed / 0 errors，628 deselected。失败仍为下述两项既有配置差异；6项因缺少Flask跳过，没有新增功能失败。
+3. 新增4项用例：banks 仅本期/仅上期的空表仍保留代码（含前导0）；非标准文件名中的机构名称不能冒充信用代码；Node.js 执行真实 renderPairList 验证已知名称/无名称/无代码/特殊字符、原配对数量和清空列表。
+4. 增强既有三种导出×xls/xlsx×空表组合测试，断言独立代码字段；WebApi 选择 banks 的状态回包保留代码。前端完整脚本继续通过既有 Node.js 语法及交付范围行为测试。
+5. Python 编译、Python 3.8 语法解析、git diff --check 通过。
+6. 前轮 S2 基线为402 passed、6 skipped、2 failed；两项既有失败是配置缺硬性/软性下拉，以及本机输出单位万元与测试要求元不一致；6项因缺少Flask跳过。本轮不为迎合测试改用户配置。
+S2 配置测试实际只读 config-real/2.报表采集系统_配置.xlsx 及 config-real/默认配置/2.报表采集系统_配置.xlsx。
+未执行：core 全量 pytest、浏览器视觉验收、Python 3.8.10 实际运行时、麒麟/UOS 实机或发行包验证。本轮未打包。
+
+【回滚与 Git】
+没有 commit、push、merge、rebase 或 PR 操作。回滚须只撤销本轮字段、显示及测试增量并恢复 S2-F01 v10.0.0，不可整文件 restore 覆盖前序 WIP；可参考本轮临时快照核对差异。

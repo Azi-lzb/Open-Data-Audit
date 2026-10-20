@@ -14,12 +14,12 @@ from typing import Any
 
 from openpyxl import load_workbook
 
-from .config import _code, _number, _severity, _text, _yes, load_config
+from .config import LEGACY_SEVERITY_MAP, _code, _number, _severity, _text, _yes, load_config
 
 
 REQUIRED_SHEETS = ("指标参照", "机构参照", "环比策略", "校验规则", "外部核对规则", "通用设置")
 DATA_TYPES = {"余额", "累发", "百分数", "个数", "文字"}
-SEVERITIES = {"", "提示", "关注", "严重"}
+SEVERITIES = {"", "硬性", "软性"}
 CHECK_DEFINITIONS = (
     ("file_read", "配置文件可读取"),
     ("required_sheets", "必需工作表齐全"),
@@ -75,6 +75,33 @@ def _header(sheet) -> dict[str, int]:
 def _cell(row: tuple[Any, ...], headers: dict[str, int], name: str) -> Any:
     idx = headers.get(name)
     return row[idx] if idx is not None and idx < len(row) else None
+
+
+def _warn_legacy_severity_values(report: dict[str, Any], book) -> None:
+    """旧级别可读取，但只读提示人工把配置迁到新版枚举。"""
+    for sheet_name, header_name in (
+        ("环比策略", "审核级别"),
+        ("校验规则", "级别"),
+        ("外部核对规则", "级别"),
+    ):
+        if sheet_name not in book.sheetnames:
+            continue
+        sheet = book[sheet_name]
+        headers = _header(sheet)
+        if header_name not in headers:
+            continue
+        for row_number, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+            raw = _text(_cell(row, headers, header_name))
+            mapped = LEGACY_SEVERITY_MAP.get(raw)
+            if mapped:
+                _issue(
+                    report,
+                    "warning",
+                    f"旧审核级别“{raw}”兼容映射为“{mapped}”；建议人工改为“{mapped}”。"
+                    "建议人工复核，程序未自动修改配置。",
+                    sheet=sheet_name,
+                    row=row_number,
+                )
 
 
 def _check_ranges(report: dict[str, Any], rows: list[dict[str, Any]], group: str) -> None:
@@ -253,6 +280,7 @@ def check_s2_config(path: Path) -> dict[str, Any]:
         )
 
         runtime_check_start = len(report["issues"])
+        _warn_legacy_severity_values(report, book)
         try:
             loaded = load_config(target)
         except Exception as exc:  # noqa: BLE001

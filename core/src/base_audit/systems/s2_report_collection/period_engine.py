@@ -31,7 +31,7 @@ def _numeric(value: Any) -> float | Decimal | None:
         return None
 
 
-def _base(record: IndicatorRecord, *, status: str, severity: str = "", description: str = "", **values: Any) -> AuditFinding:
+def _base(record: IndicatorRecord, *, status: str, severity: str = "", description: str = "", data_type: str = "", **values: Any) -> AuditFinding:
     source_refs = values.pop("source_refs", (record.source,))
     return AuditFinding(
         finding_id=_id("环比", record.institution_id, record.indicator_code, record.period),
@@ -40,7 +40,7 @@ def _base(record: IndicatorRecord, *, status: str, severity: str = "", descripti
         institution_name=record.institution_name, social_credit_code=record.social_credit_code,
         form_code=record.form_code, form_codes=(record.form_code,) if record.form_code else (),
         period=record.period, indicator_code=record.indicator_code, indicator_name=record.indicator_name,
-        description=description, source_refs=source_refs, **values,
+        description=description, source_refs=source_refs, data_type=data_type, **values,
     )
 
 
@@ -123,13 +123,11 @@ def _gate_passed(abs_change: float, minimum: float | None) -> bool:
 
 
 def _trace_number(value: float | Decimal) -> str:
-    if isinstance(value, Decimal):
-        return format(value, "f")
     return f"{value:.2f}"
 
 
-def _strategy_rule_label(group: str, band: PeriodBandConfig | None) -> str:
-    """返回结果表中可唯一定位策略的规则编号。"""
+def _strategy_identity(group: str, band: PeriodBandConfig | None) -> str:
+    """保留内部策略身份，供引擎诊断和既有调用使用。"""
     if band is None:
         return ""
     return f"{group}-{band.rule_id}" if group else band.rule_id
@@ -139,16 +137,11 @@ def _strategy_description(
     band: PeriodBandConfig | None,
     *,
     abnormal: bool,
-    gate_passed: bool,
 ) -> str:
-    """生成适合筛选的稳定审核说明，不拼接每行实际变动值。"""
-    if band and band.description:
-        return band.description
+    """仅输出实际触发规则配置中的提示；其他情况留空供人工判断。"""
     if abnormal and band:
-        return "命中规则"
-    if band and not gate_passed and band.severity:
-        return "未达到最小变动值"
-    return "未命中规则"
+        return band.description or ""
+    return ""
 
 
 class PeriodComparisonEngine:
@@ -158,6 +151,14 @@ class PeriodComparisonEngine:
         current_by = {(r.institution_id, r.indicator_code): r for r in current.values()}
         previous_by = {(r.institution_id, r.indicator_code): r for r in previous.values()}
         findings: list[AuditFinding] = []
+        # 文字变动的默认审核级别（通用设置“文字变动默认级别”，缺省硬性）：
+        # 管文字指标变化，也管文字指标的单侧缺失。
+        text_severity = config.text_change_severity or "硬性"
+        # 非文字指标的单侧缺失按方向分别取“本期缺失默认级别”（本期无，上期有）
+        # 与“上期缺失默认级别”（本期有，上期无），均含该侧无数值/为 0 按无处理；
+        # 两项缺省硬性。
+        config_current_missing = config.current_missing_severity or "硬性"
+        config_previous_missing = config.previous_missing_severity or "硬性"
         for key in sorted(set(current_by) | set(previous_by)):
             cur, pre = current_by.get(key), previous_by.get(key)
             anchor = cur or pre
@@ -165,41 +166,48 @@ class PeriodComparisonEngine:
             indicator_config = _indicator_config(config, anchor)
             if indicator_config is not None and (indicator_config.disabled or not indicator_config.period_enabled):
                 continue
+            # 数据属性以指标参照为准，未配置时回落记录值类型；与 _strategy_bands 同口径。
+            attribute = (indicator_config.data_type if indicator_config else "") or anchor.value_type
+            if attribute == "文字":
+                current_side_severity = previous_side_severity = text_severity
+            else:
+                current_side_severity = config_current_missing
+                previous_side_severity = config_previous_missing
             if cur is None:
-                findings.append(_base(anchor, status=STATUS_ABNORMAL, severity="提示", description="本期无，上期有", previous_value=pre.normalized_value,
+                findings.append(_base(anchor, status=STATUS_ABNORMAL, severity=current_side_severity, description="本期无，上期有", data_type=attribute, previous_value=pre.normalized_value,
                                       band="", retrieval_note=_join_notes(_retrieval_note(cur, "本期"), _retrieval_note(pre, "上期"))))
                 continue
             if pre is None:
-                findings.append(_base(anchor, status=STATUS_ABNORMAL, severity="提示", description="本期有，上期无", current_value=cur.normalized_value,
+                findings.append(_base(anchor, status=STATUS_ABNORMAL, severity=previous_side_severity, description="本期有，上期无", data_type=attribute, current_value=cur.normalized_value,
                                       band="", retrieval_note=_join_notes(_retrieval_note(cur, "本期"), _retrieval_note(pre, "上期"))))
                 continue
             if cur.form_code != pre.form_code:
-                findings.append(_base(cur, status=STATUS_ABNORMAL, severity="严重", description=f"两期表单不一致：本期 {cur.form_code}，上期 {pre.form_code}", current_value=cur.normalized_value, previous_value=pre.normalized_value,
+                findings.append(_base(cur, status=STATUS_ABNORMAL, severity="硬性", description=f"两期表单不一致：本期 {cur.form_code}，上期 {pre.form_code}", data_type=attribute, current_value=cur.normalized_value, previous_value=pre.normalized_value,
                                       band="", retrieval_note=_join_notes(_retrieval_note(cur, "本期"), _retrieval_note(pre, "上期")), source_refs=(cur.source, pre.source)))
                 continue
             if cur.value_type == "文字" or pre.value_type == "文字":
                 changed = str(cur.normalized_value or "") != str(pre.normalized_value or "")
-                findings.append(_base(cur, status=STATUS_ABNORMAL if changed else STATUS_NORMAL, severity="提示" if changed else "", description="文字指标变化" if changed else "无变动", current_value=cur.normalized_value, previous_value=pre.normalized_value,
+                findings.append(_base(cur, status=STATUS_ABNORMAL if changed else STATUS_NORMAL, severity=text_severity if changed else "", description="文字指标变化" if changed else "无变动", data_type=attribute, current_value=cur.normalized_value, previous_value=pre.normalized_value,
                                       band="", retrieval_note=_join_notes(_retrieval_note(cur, "本期"), _retrieval_note(pre, "上期"), "变动幅度未计算"), source_refs=(cur.source, pre.source)))
                 continue
             cn, pn = _numeric(cur.normalized_value), _numeric(pre.normalized_value)
             if cn is None and pn is None:
                 # 两侧都无数值：与“完全一致”同口径，状态=正常。
-                findings.append(_base(cur, status=STATUS_NORMAL, description="无变动", current_value=cur.normalized_value, previous_value=pre.normalized_value,
+                findings.append(_base(cur, status=STATUS_NORMAL, description="无变动", data_type=attribute, current_value=cur.normalized_value, previous_value=pre.normalized_value,
                                       band="", retrieval_note=_join_notes(_retrieval_note(cur, "本期"), _retrieval_note(pre, "上期")), source_refs=(cur.source, pre.source)))
                 continue
             if cn == pn:
                 # 本期与上期完全一致（含两侧均为 0）：统一“无变动”，
                 # 不区分数值/百分数，不再进入环比档位。
-                findings.append(_base(cur, status=STATUS_NORMAL, description="无变动", current_value=cn, previous_value=pn, difference_value=0.0, change_rate=0.0, source_refs=(cur.source, pre.source)))
+                findings.append(_base(cur, status=STATUS_NORMAL, description="无变动", data_type=attribute, current_value=cn, previous_value=pn, difference_value=0.0, change_rate=0.0, source_refs=(cur.source, pre.source)))
                 continue
             if cn is None:
                 # 单侧存在性异常：明确标识；环比不计算。
-                findings.append(_base(cur, status=STATUS_ABNORMAL, severity="提示", description="本期无，上期有", previous_value=pn, band="",
+                findings.append(_base(cur, status=STATUS_ABNORMAL, severity=current_side_severity, description="本期无，上期有", data_type=attribute, previous_value=pn, band="",
                                       retrieval_note=_join_notes(_retrieval_note(cur, "本期"), _retrieval_note(pre, "上期")), source_refs=(cur.source, pre.source)))
                 continue
             if pn is None:
-                findings.append(_base(cur, status=STATUS_ABNORMAL, severity="提示", description="本期有，上期无", current_value=cn, band="",
+                findings.append(_base(cur, status=STATUS_ABNORMAL, severity=previous_side_severity, description="本期有，上期无", data_type=attribute, current_value=cn, band="",
                                       retrieval_note=_join_notes(_retrieval_note(cur, "本期"), _retrieval_note(pre, "上期")), source_refs=(cur.source, pre.source)))
                 continue
             configured_type = indicator_config.data_type if indicator_config else ""
@@ -208,8 +216,8 @@ class PeriodComparisonEngine:
                 # 变动率（单位：百分点），不计算相对变动 (本期-上期)/上期、
                 # 不计算倍率。新环比策略直接用百分点数值匹配（-8.92 个百分点
                 # = 配置值 -8.92）；旧无策略组配置仍按 -0.0892 兼容。
-                # 中间提示档（新配置 B005(-30,0)/B006(0,30)）
-                # 照常命中 → 状态=异常、级别=提示；相对降幅/增幅档
+                # 中间软性档（新配置 B005(-30,0)/B006(0,30)）
+                # 照常命中 → 状态=异常、级别=软性；相对降幅/增幅档
                 # （-89.92% → B002 之类）不再产生。「变动幅度」列按百分点
                 # 数值输出（exporter 对该行用非百分比格式）。
                 difference = cn - pn
@@ -220,18 +228,17 @@ class PeriodComparisonEngine:
                 minimum = _min_change(config, cur)
                 gate_passed = _gate_passed(abs(difference), minimum)
                 abnormal = bool(band and (band.description or band.severity) and gate_passed)
-                severity = (band.severity or "提示") if abnormal and band else ""
+                severity = (band.severity or "软性") if abnormal and band else ""
                 description = _strategy_description(
-                    band, abnormal=abnormal, gate_passed=gate_passed
+                    band, abnormal=abnormal
                 )
-                rule_label = _strategy_rule_label(group, band)
-                trace = (f"{cn:.2f}% - {pn:.2f}% = {difference:.2f} 个百分点"
-                         "（百分数按百分点差异匹配环比规则，不适用相对增降幅）")
-                if group:
-                    min_text = "不适用" if minimum is None else f"{minimum:g}"
-                    trace += f"；策略组={group}；命中规则={rule_label or '未命中'}；绝对变动值={abs(difference):.2f}；最小变动值={min_text}；{'门槛通过' if gate_passed else '未达到最小变动值'}"
+                rule_label = _strategy_identity(group, band)
+                trace = (
+                    f"{_trace_number(cn)}% - {_trace_number(pn)}% = "
+                    f"{_trace_number(difference)} 个百分点"
+                )
                 findings.append(_base(cur, status=STATUS_ABNORMAL if abnormal else STATUS_NORMAL, severity=severity,
-                                      description=description, band=rule_label,
+                                      description=description, band=rule_label, data_type=attribute,
                                       current_value=cn, previous_value=pn,
                                       difference_value=difference, change_rate=difference,
                                       value_type="百分数",
@@ -239,11 +246,11 @@ class PeriodComparisonEngine:
                                       source_refs=(cur.source, pre.source)))
                 continue
             if pn == 0:
-                findings.append(_base(cur, status=STATUS_ABNORMAL, severity="提示", description="本期有，上期无", current_value=cn, previous_value=pn, difference_value=cn,
+                findings.append(_base(cur, status=STATUS_ABNORMAL, severity=previous_side_severity, description="本期有，上期无", data_type=attribute, current_value=cn, previous_value=pn, difference_value=cn,
                                       band="未命中", retrieval_note="变动幅度未计算", source_refs=(cur.source, pre.source)))
                 continue
             if cn == 0:
-                findings.append(_base(cur, status=STATUS_ABNORMAL, severity="提示", description="本期无，上期有", current_value=cn, previous_value=pn, difference_value=-pn,
+                findings.append(_base(cur, status=STATUS_ABNORMAL, severity=current_side_severity, description="本期无，上期有", data_type=attribute, current_value=cn, previous_value=pn, difference_value=-pn,
                                       band="未命中", retrieval_note="变动幅度未计算", source_refs=(cur.source, pre.source)))
                 continue
             difference = cn - pn
@@ -257,16 +264,11 @@ class PeriodComparisonEngine:
             gate_passed = _gate_passed(abs(difference), minimum)
             abnormal = bool(band and (band.description or band.severity) and gate_passed)
             description = _strategy_description(
-                band, abnormal=abnormal, gate_passed=gate_passed
+                band, abnormal=abnormal
             )
-            severity = (band.severity or "提示") if abnormal and band else ""
-            rule_label = _strategy_rule_label(group, band)
+            severity = (band.severity or "软性") if abnormal and band else ""
+            rule_label = _strategy_identity(group, band)
             trace = (f"({_trace_number(cn)} - {_trace_number(pn)}) / "
                      f"abs({_trace_number(pn)}) = {change_rate:.2%}")
-            if group:
-                min_text = "不适用" if minimum is None else f"{minimum:g}"
-                trace += (f"；策略组={group}；命中规则={rule_label or '未命中'}；"
-                          f"绝对变动值={_trace_number(abs(difference))}；最小变动值={min_text}；"
-                          f"{'门槛通过' if gate_passed else '未达到最小变动值'}")
-            findings.append(_base(cur, status=STATUS_ABNORMAL if abnormal else STATUS_NORMAL, severity=severity, description=description, band=rule_label, current_value=cn, previous_value=pn, difference_value=difference, change_rate=change_rate, value_type=cur.value_type or "数值", calculation_trace=trace, source_refs=(cur.source, pre.source)))
+            findings.append(_base(cur, status=STATUS_ABNORMAL if abnormal else STATUS_NORMAL, severity=severity, description=description, band=rule_label, data_type=attribute, current_value=cn, previous_value=pn, difference_value=difference, change_rate=change_rate, value_type=cur.value_type or "数值", calculation_trace=trace, source_refs=(cur.source, pre.source)))
         return findings

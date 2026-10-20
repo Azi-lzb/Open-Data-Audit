@@ -1,0 +1,55 @@
+【基本信息】
+时间：2026-10-20 19:10:05。
+执行者：Codex。
+修改前/后 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca（未提交，未执行 Git 同步）。
+WIP：修改前已有 S1/S2、使用说明及配置相关未提交修改。本轮在当前工作区最小化追加，不覆盖已有 WIP。
+
+【目的】
+兼容大集中外部文件的时序导出格式，并按本期报送文件的完整日期取数。根据表头字段判断，避免“第一行有内容就是时序格式”的误判。
+
+【实现与业务边界】
+- 正式数据工作表仍为“集中系统数据”；不自动混读“集中系统数据2”等样例表。
+- 在前20行识别同时具有“数据日期”“行名称”的时序表头，支持空行/说明行前置、字段调序及表头两端空白。
+- 时序模式保留日期与机构行存在性，以“完整日期+报表项目+外部指标名称”建立索引，不使用其他日期，不自动取最新，不跨期合计。
+- Excel日期、常用完整日期文本与8位日期数字统一为YYYY-MM-DD，不把仅有年月的字段猜成某一天。
+- 真实0正常核对；时序空值/缺日期/缺机构项目输出未匹配，不落入普通格式按0兜底。
+- 不完整/重复时序字段、重复指标列、同日同机构重复行、非法日期/数值明确报告；不同日期的同机构记录允许共存。
+- 普通格式读取和既有标签列缺失按0兼容保留；外部机构映射优先级、金额单位换算与结果列协议保持不变。
+- 使用说明补充两种布局与日期匹配，并纠正S2外部数据选择提示为仅支持xlsx。
+- 未改配置工作簿或原始业务文件，无VBA迁移影响，无新增依赖。
+
+【修改文件】
+- core/src/base_audit/systems/s2_report_collection/importer.py
+- core/src/base_audit/systems/s2_report_collection/external_engine.py
+- core/src/base_audit/config_guide.py
+- core/tests/test_period_v2.py
+- core/tests/TEST_GROUPS.md
+- core/tests/test_version_manifest.py
+- 版本管理/VERSION_MANIFEST.json
+- 版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md
+
+【验证】
+1. `python -m pytest -q core/tests/test_period_v2.py core/tests/test_config_guide.py core/tests/test_version_manifest.py`：88 passed、0 skipped、0 failed/errors。
+2. `python -m pytest -q -rs -m s2 core/tests`：358 passed、6 skipped、2 failed、0 errors。
+   - 失败1：test_formal_and_default_s2_configs_pass_read_only_check，本机正式配置“校验规则”缺少硬性/软性下拉验证。
+   - 失败2：test_shipped_s2_configs_keep_global_unit_settings_in_main_workbook，本机输出单位为万元，而测试固定断言元。
+   - 两项均为前序已记录的配置/测试差异；本轮未改这些配置或断言。
+   - 6 skipped：当前测试环境缺少Flask，无法执行外壳安装API路由测试。
+3. 在现有测试模块新增25项参数化场景，覆盖格式/字段位置、日期类型、精度、零/空值、日期精确匹配、全空时序表、机构未匹配、重复/非法数据、仅年月数字不能误识别为日期、正式服务导出与输入哈希保护。
+4. 真实样例只读验证：普通表按原布局导入；时序样例的机构行及日期可识别，但其指标值全空，未做真实数值端到端对拍。原文件SHA-256前后相同。
+5. 受影响Python文件compileall、两处业务模块按Python3.8语法解析、git diff --check通过。语法解析不等于已完成Python3.8.10运行时测试。
+
+【未执行与已知问题】
+- 未在Python3.8.10、麒麟V10或UOS实体机运行本轮新增路径。
+- 未重打发行包；未进行Office公式计算路径测试，本次仅静态Excel读取与Python数值核对。
+- 真实时序样例没有业务数值，正式交付前仍需使用带数值的时序导出文件核对。
+
+【删除清单与回滚提示】
+无删除文件。回滚时仅撤销本轮的时序解析、引擎日期取数、相应说明/测试及版本记录，保留前序WIP；不要整文件恢复或覆盖已有机构参照/零值兜底变更。
+
+【组件版本】
+系统：S2 报表采集系统。
+影响功能：S2-F01 执行报表规则 v9.2.0 → v9.3.0。
+影响配置：S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0（均未变）。
+未修改的相关组件：S1-*、S3-*（业务实现未动）。
+版本升级原因：MINOR，新增兼容时序输入的能力，保留原普通格式与配置协议。

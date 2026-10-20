@@ -37,7 +37,8 @@ from ...native.openpyxl_workbook import (add_external_sheets, copy_formula_range
                                          extract_issues, named_ranges,
                                          require_named_ranges, template_formulas,
                                          template_structure_values)
-from ...preflight_xlsx import validate_source_xlsx
+from ...preflight_xlsx import summary_source_is_usable, validate_source_xlsx
+from ...summary_fallback import split_summary_fallback_ranges
 from ...template import TemplateError
 from ...template_snapshot import load_template_snapshot
 
@@ -126,29 +127,26 @@ def handle_template_load(ctx: NodeContext, parameters: dict, inputs: dict) -> Mo
                 book,
                 (FeatureMapping("汇总表头", USED_RANGE_SUMMARY_FUNCTION, ("表头区域",), False, "", ""),),
 )
+            data_ranges, headers, fallback_template = split_summary_fallback_ranges(
+                book.sheetnames, data_ranges, headers,
+            )
         finally:
             book.close()
-        if not data_ranges:
+        if not data_ranges and fallback_template is None:
             raise TemplateError("汇总功能未找到命名区域：" + "、".join(
                 name for mapping in summary_mappings for name in mapping.range_names
             ))
-        if not headers:
+        if not headers and fallback_template is None:
             raise TemplateError("汇总功能缺少“表头区域”命名区域")
         definition = TemplateDefinition(
             rules=[], copy_ranges=data_ranges, structured=False, structure_ranges=headers,
         )
+        # S1-F02 does not copy external worksheets; do not let an optional
+        # external audit workbook prevent a plain row summary.
         plan = None
-        if parameters.get("external_path"):
-            external = load_workbook(parameters["external_path"], read_only=True, data_only=False, keep_links=False)
-            try:
-                plan = make_external_sheet_plan(
-                    formulas=template_formulas(template_path), available_sheets=external.sheetnames,
-                )
-            finally:
-                external.close()
         return ModuleExecutionResult.ok(template=MetadataArtifact(payload={
             "definition": definition, "mappings": mappings, "external_plan": plan,
-            "template_path": str(template_path),
+            "template_path": str(template_path), "fallback_template": fallback_template,
         }))
 
     snapshot = load_template_snapshot(template_path, mappings)
@@ -219,32 +217,44 @@ def handle_structure_compare(ctx: NodeContext, parameters: dict, inputs: dict) -
         else template_structure_values(Path(template["template_path"]), definition)
     )
     external = template.get("external_plan")
+    allow_missing_sheets = bool(parameters.get("allow_missing_sheets", False))
     accepted, matches, rejected = [], [], []
     for record in _records(inputs["source_files"]):
         path = Path(record.source)
         try:
             match = validate_source_xlsx(path, definition, expected,
-                                         external_sheet_names=external.sheet_names if external else ())
+                                         external_sheet_names=external.sheet_names if external else (),
+                                         allow_missing_sheets=allow_missing_sheets,
+                                         allow_fallback_only=bool(
+                                             template.get("fallback_template") and not definition.copy_ranges
+                                         ))
         except Exception as exc:
             match = SourceMatch(False, 0, 0, 0, (), f"无法完成结构匹配：{exc}")
         matches.append((path, match))
-        if match.matched:
+        if summary_source_is_usable(match, allow_missing_sheets=allow_missing_sheets):
             accepted.append(record)
         else:
             rejected.append(FileAuditResult(path, None, record.org_code, record.org_name,
                                             error="报送文件与模板不匹配：" + match.details))
     structure = StructureMatchArtifact(matches=tuple(matches),
-        accepted=tuple(str(path) for path, match in matches if match.matched),
-        rejected=tuple(str(path) for path, match in matches if not match.matched),
+        accepted=tuple(str(record.source) for record in accepted),
+        rejected=tuple(str(item.source_path) for item in rejected),
         metadata={"rejected_file_results": tuple(rejected)})
     feature_log = ctx.run.resources.get("feature_log")
     if feature_log is not None:
+        accepted_paths = {Path(record.source).resolve() for record in accepted}
         feature_log.add_sheet(
             "表结构比对",
             ("报送文件", "匹配结果", "匹配率", "匹配标签数", "检查标签数", "缺少工作表", "说明"),
             [
                 (
-                    str(path), "通过" if match.matched else "不通过", f"{match.score:.0%}",
+                    str(path),
+                    (
+                        "部分工作表缺失，继续汇总"
+                        if match.missing_sheets and path.resolve() in accepted_paths
+                        else "通过" if match.matched else "不通过"
+                    ),
+                    f"{match.score:.0%}",
                     match.matched_labels, match.checked_labels,
                     "、".join(match.missing_sheets) or "无", match.details,
                 )

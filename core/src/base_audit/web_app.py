@@ -397,7 +397,9 @@ class WebApi:
             "centralTolerance": self.settings.central_diff_tolerance_yuan,
             "centralExpressionSchema": self.settings.central_expression_schema,
             "periodPairs": [],
+            "periodSourceWarning": "",
             "periodSummary": {},
+            "periodProgress": {},
             "periodConfigCheck": {},
         # 业务系统配置的健康状况：非空表示缺失/损坏，前端提示去设置中心重置。
         "configIssues": {},
@@ -465,6 +467,9 @@ class WebApi:
         return self._refresh_period_config_check()
 
     def get_state(self) -> dict[str, Any]:
+        period_progress = self.state.get("periodProgress", {})
+        if period_progress.get("status") == "running":
+            period_progress["elapsedSeconds"] = max(0, time.monotonic() - getattr(self, "_period_started_at", time.monotonic()))
         # 即使用户已离开安装页，完成后也刷新全局环境信息。
         if self._libreoffice_installer.snapshot().get("phase") == "success":
             self.get_libreoffice_install()
@@ -1672,15 +1677,22 @@ class WebApi:
         return list(self.state.get("extraFiles", []))
 
     def _refresh_period_pairs(self) -> None:
-        """按机构+表单配对两期已选目录中的文件，供报表采集页展示。"""
+        """更新 periodPairs 与 periodSourceWarning（banks 导出格式提醒）。"""
         from .period_compare import list_period_pairs
+        from .report_source import report_source_warning
 
         cur = self.state.get("pcCurDir")
         pre = self.state.get("pcPreDir")
+        old_warning = self.state.get("periodSourceWarning", "")
+        self.state["periodSourceWarning"] = ""
         if not cur and not pre:
             self.state["periodPairs"] = []
             return
         try:
+            warning = report_source_warning(Path(cur) if cur else None, Path(pre) if pre else None)
+            self.state["periodSourceWarning"] = warning
+            if warning and warning != old_warning:
+                self._log(warning)
             self.state["periodPairs"] = list_period_pairs(
                 Path(cur) if cur else None, Path(pre) if pre else None
             )
@@ -2589,11 +2601,6 @@ class WebApi:
         """启动当前报表采集审核主流程，输出带时间戳的报表审核清单。"""
         if self._execution_busy():
             return False
-        config_report = self._refresh_period_config_check()
-        if not config_report["passed"]:
-            self._log(format_config_report(config_report))
-            self.state["status"] = "跨期比较失败：报表采集系统配置存在阻断错误"
-            return False
         cur, pre = self.state.get("pcCurDir"), self.state.get("pcPreDir")
         if not cur or not pre:
             self._log("跨期比较失败：请先选择本期与上期目录")
@@ -2603,38 +2610,147 @@ class WebApi:
             self._log(f"跨期比较失败：大集中数据文件不存在：{central}")
             return False
         self.state["busy"] = True
-        self.state["status"] = "正在执行跨期比较，请勿关闭窗口……"
-        threading.Thread(
-            target=self._period_compare_v2_worker,
-            args=(Path(cur), Path(pre), central, Path(self.state.get("pcOutput") or (Path(cur) / "执行结果"))),
-            daemon=True,
-        ).start()
+        self._period_started_at = time.monotonic()
+        self.state["periodSummary"] = {}
+        self._update_period_progress({"stage": "config", "label": "检查审核配置", "percent": 0})
+        try:
+            config_report = self._refresh_period_config_check()
+            if not config_report["passed"]:
+                self._log(format_config_report(config_report))
+                self._update_period_progress({"stage": "config", "label": "检查审核配置", "percent": 0, "message": config_report["message"]}, status="failed")
+                self.state["status"] = "跨期比较失败：报表采集系统配置存在阻断错误"
+                self.state["busy"] = False
+                return False
+            threading.Thread(
+                target=self._period_compare_v2_worker,
+                args=(Path(cur), Path(pre), central, Path(self.state.get("pcOutput") or (Path(cur) / "执行结果"))),
+                daemon=True,
+            ).start()
+        except Exception as exc:
+            self._update_period_progress({"stage": "config", "label": "准备审核", "percent": 0, "message": str(exc)}, status="failed")
+            self.state["status"] = "跨期比较失败"
+            self._log("跨期比较失败：" + str(exc) + "\n" + traceback.format_exc())
+            self.state["busy"] = False
+            return False
         return True
+
+    def _update_period_progress(self, progress: dict[str, object], *, status: str = "running") -> None:
+        """一次替换进度快照；进度是阶段工作量，不把耗时或日志数当完成量。"""
+        percent = max(0, min(100 if status == "completed" else 99, float(progress.get("percent", 0))))
+        snapshot = {"current": 0, "total": 0, "message": "", **progress, "percent": percent, "status": status}
+        snapshot["elapsedSeconds"] = max(0, time.monotonic() - getattr(self, "_period_started_at", time.monotonic()))
+        self.state["periodProgress"] = snapshot
+        if status == "running":
+            self.state["status"] = str(snapshot.get("label", "正在审核报表")) + "……"
 
     def _period_compare_v2_worker(self, current_dir: Path, previous_dir: Path, central_path: Path | None, output_dir: Path) -> None:
         started = time.monotonic()
+        if not hasattr(self, "_period_started_at"):
+            self._period_started_at = started
+        config_path = Path(self.state.get("pcConfig") or release_config_dir(self.project_root) / CONFIG_WORKBOOK_NAME)
+        central_label = str(central_path) if central_path is not None else "未选择"
+        self._log(
+            f"S2F1开始：本期目录 {current_dir}；上期目录 {previous_dir}；"
+            f"大集中数据 {central_label}；配置文件 {config_path}；输出目录 {output_dir}"
+        )
+        progress_log: dict[str, object] = {"key": None, "bucket": 0, "message": ""}
+
+        def report_progress(progress: dict[str, object]) -> None:
+            self._update_period_progress(progress)
+            stage = str(progress.get("stage", ""))
+            label = str(progress.get("label", "报表处理"))
+            current = max(0, int(progress.get("current", 0) or 0))
+            total = max(0, int(progress.get("total", 0) or 0))
+            message = str(progress.get("message", "") or "")
+            key = (stage, label)
+            import_stage = stage in {"current", "previous"}
+            counted_stage = import_stage or (stage == "export" and label.startswith("写入"))
+
+            def progress_bucket() -> int:
+                if total <= 0 or current <= 0:
+                    return 0
+                if current >= total:
+                    return 10
+                interval = max(5, (total + 9) // 10)
+                return min(9, current // interval)
+
+            # 导入阶段的总文件数只会在 importer 开始枚举后出现；跳过前置的空事件，
+            # 这样运行记录能在一行里同时写出总数和首个文件名。
+            if import_stage and total <= 0:
+                return
+
+            def detail_text() -> str:
+                if import_stage:
+                    if current >= total:
+                        suffix = f"；{message}" if message else ""
+                        return f"已读取 {current}/{total} 个工作簿{suffix}"
+                    suffix = f"；当前第 {current + 1} 个：{message}" if message else ""
+                    return f"已处理 {current}/{total} 个工作簿{suffix}"
+                if stage == "export" and total:
+                    return f"已写入 {current}/{total} 条审核结果"
+                if stage == "save" and total:
+                    return f"共 {total} 条审核结果，正在保存工作簿"
+                return message
+
+            if key != progress_log["key"]:
+                progress_log["key"] = key
+                progress_log["bucket"] = progress_bucket()
+                if import_stage:
+                    self._log(f"S2F1：{label}，共 {total} 个工作簿；{detail_text()}")
+                elif stage == "export" and label.startswith("写入"):
+                    self._log(f"S2F1：开始{label}；{detail_text()}")
+                elif stage == "save":
+                    self._log(f"S2F1：{label}；{detail_text()}")
+                elif stage == "complete":
+                    self._log("S2F1：三张分类审核表已保存，审核流程完成")
+                else:
+                    suffix = f"；{message}" if message else ""
+                    self._log(f"S2F1：开始{label}{suffix}")
+            else:
+                if stage in {"validate", "period", "rules", "external_read", "external"} and message and message != progress_log["message"]:
+                    self._log(f"S2F1：{label}；{message}")
+                if counted_stage and total:
+                    bucket = progress_bucket()
+                    if bucket > int(progress_log["bucket"]):
+                        self._log(f"S2F1：{label}；{detail_text()}")
+                        progress_log["bucket"] = bucket
+            progress_log["message"] = message
+
         try:
             from .systems.s2_report_collection import PeriodAuditV2Service
             result = PeriodAuditV2Service().run(
                 current_dir=current_dir, previous_dir=previous_dir, central_path=central_path,
                 output_dir=output_dir,
-                config_path=Path(self.state.get("pcConfig") or release_config_dir(self.project_root) / CONFIG_WORKBOOK_NAME),
+                config_path=config_path,
+                on_progress=report_progress,
             )
             self.state["periodSummary"] = {
                 "institutions": result.summary.institutions, "forms": result.summary.forms,
                 "indicators": result.summary.indicators, "abnormal": result.summary.abnormal_findings,
                 "byType": result.summary.by_type, "result": str(result.paths.result),
             }
+            # 已有配对不变时复用清单；只为此前读取失败的空清单重试元数据扫描。
+            if not self.state.get("periodPairs"):
+                self._update_period_progress({"stage": "pairs", "label": "刷新对比对象", "percent": 99})
+                self._refresh_period_pairs()
+            self._update_period_progress({"stage": "complete", "label": "审核完成", "percent": 100, "message": "已生成三张分类审核表"}, status="completed")
             self.state["status"] = f"跨期比较完成：异常 {result.summary.abnormal_findings} 条"
-            self._log(f"跨期比较完成：审核清单 {result.paths.result}")
+            by_type = "、".join(f"{name} {count} 条" for name, count in result.summary.by_type.items()) or "无异常分类"
+            total_findings = getattr(result.summary, "total_findings", None)
+            if total_findings is None:
+                total_findings = len(getattr(result, "findings", ()))
+            self._log(
+                f"S2F1审核完成：机构 {result.summary.institutions} 家，表单 {result.summary.forms} 张，"
+                f"指标 {result.summary.indicators} 项，审核结果 {total_findings} 条，"
+                f"异常 {result.summary.abnormal_findings} 条（{by_type}）；结果文件：{result.paths.result}"
+            )
         except Exception as exc:
+            self._update_period_progress({**self.state.get("periodProgress", {}), "message": str(exc)}, status="failed")
             self.state["status"] = "跨期比较失败"
-            self._log("跨期比较失败：" + str(exc) + "\n" + traceback.format_exc())
+            failed_stage = self.state.get("periodProgress", {}).get("label", "未知阶段")
+            self._log(f"S2F1在“{failed_stage}”失败：{exc}\n{traceback.format_exc()}")
         finally:
             self._log(f"跨期比较任务结束，本次耗时：{time.monotonic() - started:.1f} 秒")
-            # 配对清单只在选择目录/启动时计算；执行后刷新一次，
-            # 让早前一次性配对失败的空列表自愈（例如文件被占用）。
-            self._refresh_period_pairs()
             self.state["busy"] = False
 
     def update(self, values: dict[str, Any]) -> dict[str, Any]:

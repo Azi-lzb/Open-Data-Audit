@@ -45,7 +45,7 @@ Linux 桌面真机可双击仓库根目录 `运行Linux全量测试.sh`：脚本
 
 | 功能 | 主要自动测试 | 不能由单测替代的验收 |
 |---|---|---|
-| S2-F01 执行报表规则 | `test_period_v2.py`（正式 S2 包：导入、环比、外部核对、校验、导出）、`test_s2_units.py`、`test_s2_config_check.py` | 真实报表与大集中数据重跑，核对三 Sheet 的行数、结论、数值和配置；目前没有专属黄金端到端对拍 |
+| S2-F01 执行报表规则 | `test_period_v2.py`（正式 S2 包：导入、环比、外部核对、校验、导出）、`test_s2_units.py`、`test_s2_config_check.py`、`test_fast_reader.py`（快速读取引擎对拍与回退） | 真实报表与大集中数据重跑，核对三 Sheet 的行数、结论、数值和配置；目前没有专属黄金端到端对拍 |
 
 `test_period_compare.py`、`test_percentage_indicators.py`、`test_percentage_point_compare.py` 也归在 S2 组，但测的是历史 `base_audit.period_compare` 兼容路径，**不能替代**当前 `systems/s2_report_collection` 的测试。
 
@@ -78,6 +78,8 @@ Linux 桌面真机可双击仓库根目录 `运行Linux全量测试.sh`：脚本
 | 核对点 | pytest 用例 |
 |---|---|
 | 说明文件黄金输出、无校验区场景 | `golden/test_golden_summary_flow.py::test_summary_flow_golden_contract`、`::test_summary_flow_without_validation_region` |
+| 源文件缺少一个/全部模板工作表时继续生成汇总；存在表头错位时仍剔除该文件 | `test_native_uos.py::test_s1_summary_keeps_other_sheet_when_source_is_missing_one_template_sheet`、`test_preflight_xlsx.py::PreflightXlsxTests::test_summary_keeps_present_sheets_when_another_template_sheet_is_missing`、`::test_summary_keeps_header_only_result_when_all_target_sheets_are_missing`、`::test_summary_still_rejects_misaligned_existing_sheet_if_another_is_missing` |
+| 只有模板含“兜底模板”时才汇总未匹配工作表；空工作表不输出；仅兜底模板可通过结构预检 | `test_native_uos.py::test_s1_summary_uses_optional_fallback_template_for_unmatched_sheets`、`test_preflight_xlsx.py::PreflightXlsxTests::test_summary_accepts_a_fallback_only_template`；不含兜底模板时的忽略行为由 `::test_s1_summary_keeps_other_sheet_when_source_is_missing_one_template_sheet` 覆盖 |
 | 输出名称、历史说明、历史键、重复运行 | `test_region_summary.py::test_explanation_summary_uses_business_facing_output_name`、`::test_history_context_appends_by_builtin_rule`、`::test_history_key_matches_numeric_and_text_values`、`::test_enrich_history_columns_is_idempotent` |
 
 ### S1-F03 组合工作表（核查表）
@@ -107,11 +109,23 @@ Linux 桌面真机可双击仓库根目录 `运行Linux全量测试.sh`：脚本
 | 核对点 | pytest 用例 |
 |---|---|
 | 三 Sheet 路由、真实 0 数值、未知类型与级别冲突 | `test_period_v2.py::test_v2_export_keeps_zero_numeric_and_routes_three_empty_sheets`、`::test_v2_export_rejects_unknown_audit_type`、`::test_v2_export_rejects_severity_conflict` |
+| 进度按实际文件数及审核/导出/保存阶段推进，保存成功才到100%；有无回调业务结果及输入哈希相同；损坏文件不报告完成、导入保留来源并只取A:C | `test_period_v2.py::test_v2_progress_covers_file_counts_export_and_changes_no_results`、`::test_v2_import_progress_retains_sources_and_only_reads_contract_columns`、`::test_v2_failed_read_does_not_report_completion` |
+| S2后台进度成功/失败均释放busy、失败保留完成量，已有配对免重扫且空清单重试；运行记录按阶段、文件/结果计数写入并按比例限流；前端仅保留运行记录上方进度条，同一行显示阶段/数量/耗时，无0/0和独立框；完成/失败及其他任务旧值隔离 | `test_web_app.py::S2ProgressLifecycleTests::test_worker_reports_completed_or_failed_without_refreshing_existing_pairs`、`::test_worker_logs_progress_at_bounded_intervals_with_phase_totals`、`test_distribution_profile.py::test_s2_phase_progress_reflects_actual_state_and_hides_stale_values` |
+| 对比对象表头在列表内固定，相同数据/筛选复用DOM，重建保留滚动位置且筛选仍实时生效 | `test_distribution_profile.py::test_period_pair_filters_combine_clear_and_preserve_full_audit_scope`；固定表头另经浏览器滚动验证 |
 | 普通数值环比与百分数百分点差 | `test_period_v2.py::test_v2_normal_amount_still_uses_relative_change`、`::test_v2_percentage_change_rate_is_percentage_point_difference` |
+| 对比对象显示独立信用代码，三种导出/空表/单边保留，banks 未取得名称仍可定位，不用机构名称冒充代码，前端正确转义并保留原配对数 | `test_period_compare.py::test_pair_list_matches_empty_sheets_using_only_names`、`::test_pair_list_keeps_credit_code_for_one_sided_banks_without_org_name`、`::test_pair_list_does_not_use_institution_name_as_credit_code`、`test_distribution_profile.py::test_period_pair_targets_show_credit_codes_without_org_name_mapping` |
+| 对比对象按机构/信用代码关键词及表单组合筛选，忽略大小写和首尾空格；开关/清空/无结果提示、刷新保留、选项更新和HTML转义；正式审核仍使用全部对比对象 | `test_distribution_profile.py::test_period_pair_filters_combine_clear_and_preserve_full_audit_scope` |
+| 配对状态筛选全部/单边/本期缺少/上期缺少/两期齐全，pre表示本期缺少、cur表示上期缺少，缺失位置明确期别；支持四条件组合、刷新保留和统一清空，不改变审核数据 | `test_distribution_profile.py::test_period_pair_status_filter_identifies_the_missing_period`、`::test_period_pair_filters_combine_clear_and_preserve_full_audit_scope` |
+| 三种导出方式只按文件名/工作表名配对；xlsx/xls 空表保留、多机构不合并、预览不扫描正文，空表/错误正文身份不影响正式环比结果的机构字段且输入不变 | `test_period_compare.py::test_pair_list_matches_empty_sheets_using_only_names`、`::test_pair_list_does_not_open_worksheet_xml_or_shared_strings`、`::test_pair_list_keeps_multiple_empty_institutions_and_true_one_sided_sheet`、`test_period_v2.py::test_v2_import_identity_comes_from_names_when_body_is_blank_or_wrong`、`::test_v2_import_keeps_filename_credit_code_when_name_profile_has_other_code`、`::test_v2_export_preserves_identity_for_completely_empty_counterpart` |
+| banks 导出提示依赖机构参照，建议重新导出默认单sheet/按报表单sheet；本期/上期任一选择触发、换目录清除，执行确认同步提醒 | `test_web_app.py::WebAppCompatibilityTests::test_banks_selection_warns_and_recommended_source_clears_warning`、`test_distribution_profile.py::test_period_banks_warning_renders_and_reaches_execution_confirmation` |
 | 外部核对容差、缺失值、六种比较方式 | `test_period_v2.py::test_v2_external_rule_uses_its_own_tolerance_and_rule_identity`、`test_s2_units.py::test_external_missing_value_is_not_treated_as_real_zero`、`::test_external_comparison_methods_use_report_value_as_left_operand_and_test_boundaries` |
+| 外部核对缺数审核说明按报表项目是否为空提示完善大集中报表定义或机构参照映射；普通/时序两种格式及结果工作簿一致，真实0和既有零值兜底保持 | `test_period_v2.py::test_v2_external_export_shows_selected_report_item_next_to_credit_code`、`::test_v2_external_time_series_with_all_blank_values_stays_missing`、`test_s2_units.py::test_external_missing_value_is_not_treated_as_real_zero`、`::test_external_uses_explicit_zero_fallback_when_institution_label_is_missing` |
+| 外部核对结果在信用代码右侧显示报表项目；外部映射优先、CF2回退、已映射缺数仍保留、无映射留空、真实0/标签缺失兜底、时序匹配及文本标签完整导出 | `test_period_v2.py::test_v2_external_export_shows_selected_report_item_next_to_credit_code`、`::test_v2_service_exports_current_time_series_value_without_modifying_inputs`、`test_s2_units.py::test_external_mapping_precedes_cf2_and_cf2_is_used_as_fallback` |
+| 外部数据按表头识别普通/时序布局；完整日期匹配、真实0/空值区分、不混用其他日期或样例表、重复行/非法日期明确失败及源文件保护 | `test_period_v2.py::test_v2_external_import_time_series_uses_named_headers_and_full_dates`、`::test_v2_external_import_time_series_rejects_ambiguous_or_invalid_data`、`::test_v2_external_time_series_matches_exact_current_date_and_preserves_missing_values`、`::test_v2_external_time_series_with_all_blank_values_stays_missing`、`::test_v2_service_exports_current_time_series_value_without_modifying_inputs` |
 | 金额单位统一后比较、保持小数精度 | `test_s2_units.py::test_amount_comparison_converts_both_sides_to_output_unit_and_keeps_tolerance_in_that_unit`、`::test_rule_expression_preserves_decimal_digits_beyond_excel_float_precision` |
 | 正式配置检查、环比策略区间与外部规则字段 | `test_s2_config_check.py::test_formal_and_default_s2_configs_pass_read_only_check`、`::test_checker_blocks_gap_and_duplicate_strategy`、`::test_checker_requires_external_rule_header_order` |
 | 日志设置不改变业务输出 | `test_period_v2.py::test_s2_business_output_is_independent_of_unrelated_log_preferences` |
+| 快速读取引擎与传统引擎逐值对拍（xls 对齐 xlrd、xlsx 对齐 openpyxl），缺包静默回退、单文件失败提示后重读，两引擎导入结果全量一致 | `test_fast_reader.py::test_fast_reader_values_match_legacy_engine`、`::test_fast_reader_absent_falls_back_silently`、`::test_fast_reader_failure_falls_back_with_warning`、`::test_import_results_are_identical_between_engines` |
 
 ### S3-F01 两期数据到比较文件
 

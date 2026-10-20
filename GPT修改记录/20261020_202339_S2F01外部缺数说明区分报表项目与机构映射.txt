@@ -1,0 +1,38 @@
+时间：2026-10-20 20:23（Asia/Shanghai）
+执行者：Codex 主 Agent，未委派子 Agent。
+修改前 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca
+修改后 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca（未提交）
+分支：desktop；origin 为 https://github.com/Azi-lzb/Open-Data-Audit.git。
+
+【WIP 与目的】
+已核对 AGENTS、适用规则、Git 状态、远端、分支及 commit。保留现有 S1/S2 等全部未提交工作；本轮修改前7个文件快照位于系统临时目录 codex_s2_external_missing_cn0_0q9x。
+按用户要求，将外部核对结果中“未找到大集中系统数据”拆分为报表项目已有映射和机构映射缺失两种可操作的提示。
+
+【文件】
+修改 core/src/base_audit/systems/s2_report_collection/external_engine.py、core/tests/test_s2_units.py、core/tests/test_period_v2.py、core/tests/test_version_manifest.py、core/tests/TEST_GROUPS.md、版本管理/VERSION_MANIFEST.json、版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md。
+新增本记录；删除文件：无。
+
+【逻辑与配置影响】
+1. 外部数值缺失且报表项目不为空，审核说明为“大集中系统数据未找到该报表项目，请先完善大集中数据的报表定义”。
+2. 外部数值缺失且报表项目为空，审核说明为“请完善报表采集系统配置或外部文件中的机构参照映射”。
+3. rule_description 和 description 一致，结果工作簿“审核说明”直接承接；普通格式的计算过程明确报表项目和指标，未映射时明确缺少机构映射或报表项目。
+4. 时序格式仍保留日期无效/本期日期不存在的专门审核说明及详细取数原因；正常比较、真实0、既有缺少机构标签列时的按0兜底不变。
+5. 没有改变外部映射优先、配置CF2回退的次序、启用规则执行链、结果列、比较算法或数值。未修改 config/、config-real/ 或原始业务工作簿；无配置/VBA迁移。
+
+【组件版本】
+系统：S2 报表采集系统。
+功能：S2-F01 执行报表规则 v10.3.0 → v10.3.1。
+原因：Bugfix / PATCH，补全缺数提示的原因及维护指引，不改变业务计算和配置结构。
+配置：S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0 未变；S1/S3 及产品整包版本未变。
+
+【验证】
+1. python -m pytest -q core/tests/test_s2_units.py core/tests/test_period_v2.py core/tests/test_version_manifest.py -k 'external or version or manifest or changelog or component or backups' —— 68 passed / 0 skipped / 0 failed / 0 errors，80 deselected。
+2. 更新既有缺数/真实0及导出用例，校验两种审核说明；时序全空值用例增加无机构映射分支，验证相应提示且外部值仍为空。现有外部规则、金额换算、真实0及零值兜底用例一并通过。
+3. 最终 S2 回归：python -m pytest -q -rs -m s2 core/tests —— 413 passed / 6 skipped / 2 failed / 0 errors，628 deselected，用时90.27秒。两项失败与前轮相同，没有新增失败。
+4. python -m compileall -q core/src/base_audit/systems/s2_report_collection/external_engine.py core/tests/test_s2_units.py core/tests/test_period_v2.py core/tests/test_version_manifest.py 通过；git diff --check 通过；相对本轮临时快照逐项复核增量，未覆盖前序 WIP。清单比较确认仅 S2-F01 变化，其他功能/配置和产品版本不变。
+前轮 S2 基线412 passed、6 skipped、2 failed。两项既有失败是校验规则缺少硬性/软性下拉，以及本机输出单位万元与测试要求元不一致；6项因缺少Flask跳过，不为迎合测试修改用户配置。
+S2 回归实际配置来源：config-real/2.报表采集系统_配置.xlsx、config-real/默认配置/2.报表采集系统_配置.xlsx，均只读。
+未执行：core 全量 pytest、真实业务文件验收、Office/麒麟/UOS 实机和发行包验收；本轮未打包。
+
+【回滚及 Git】
+未 commit、push、merge、rebase 或创建 PR。只撤销本轮审核说明、取数原因、测试、版本及留痕增量，恢复 S2-F01 v10.3.0；不得整文件 restore 覆盖前序 WIP，可用本轮系统临时快照核对差异。

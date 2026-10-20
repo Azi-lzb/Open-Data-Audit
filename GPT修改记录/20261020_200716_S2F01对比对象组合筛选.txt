@@ -1,0 +1,42 @@
+时间：2026-10-20 20:07（Asia/Shanghai）
+执行者：Codex 主 Agent，未委派子 Agent。
+修改前 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca
+修改后 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca（未提交）
+分支：desktop；origin 为 Open-Data-Audit 公开代码仓库。
+
+【WIP 与目的】
+已检查 Git 状态、分支、commit 和远端。保留所有前序 S1/S2、配置、时序及机构身份等 WIP，只做本轮增量修改；相关快照位于系统临时目录 codex_s2_pair_filters_5rp0p5pr，未增加项目内备份。
+用户要求在文件列表对比对象增加筛选按钮，按机构、统一社会信用代码、表单代码筛选。
+
+【文件清单】
+修改 core/frontend/web/index.html、core/tests/test_distribution_profile.py、core/tests/test_version_manifest.py、core/tests/TEST_GROUPS.md、版本管理/VERSION_MANIFEST.json、版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md。
+新增本记录。删除文件：无。
+
+【交互与边界】
+标题右侧筛选按钮控制面板折叠。机构名称和信用代码支持普通子串搜索，忽略大小写和首尾空格；表单下拉精确选择当前清单中实际出现的代码/标识；三者为同时满足关系。
+清空筛选恢复全部对象；按钮显示已启用条件数，清单头显示筛选后/总对象数和当前可见对象的两期/单边计数，无结果时说明可调整或清空条件。
+常规刷新不重建输入框，保留输入和已有表单选择；表单选项仅在集合变化时更新，旧选项已不存在时清空该选择。面板关闭不清除条件；窄窗口使用两列/一列布局。
+筛选只在现有 state.periodPairs 上生成显示子集，不修改原数组，不调用任何新接口、不读取文件或单元格，不写配置。正式执行确认和后台审核继续使用原目录全部对象，页面明确说明该范围。
+信用代码仅查 socialCreditCode，不从机构名称冒充；选项、行内容和 tooltip 均正确HTML转义。没有改后端配对/导入/审核/输出逻辑，没有新增依赖。
+config/、config-real/ 工作簿和原始业务文件均未写入；两个外壳仍共用 core 前端。
+
+【组件版本】
+系统：S2 报表采集系统。
+影响功能：S2-F01 v10.1.0 → v10.2.0。
+配置：S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0 均未变。
+未修改组件：S1/S3 功能、配置版本及产品整包版本。
+原因：Feature / MINOR，新增加可选的显示筛选能力，默认条件为空，后台及输出契约未变。
+
+【验证】
+1. 修改前定向：python -m pytest -q core/tests/test_distribution_profile.py -k 'period or delivery_profiles' —— 3 passed、10 deselected。
+2. 最终定向：python -m pytest -q core/tests/test_distribution_profile.py core/tests/test_version_manifest.py —— 22 passed / 0 skipped / 0 failed / 0 errors。
+3. 最终 S2 回归：python -m pytest -q -rs -m s2 core/tests —— 407 passed / 6 skipped / 2 failed / 0 errors，628 deselected。失败仍为下述两项既有配置差异；6项因缺少Flask跳过，没有新增功能失败。
+4. 新增 Node.js 行为用例执行真实筛选、列表渲染及执行确认函数，覆盖按钮开关、机构搜索、信用代码部分搜索、首尾空格/大小写、表单精确选择、三条件组合、无结果、清空、显示计数、刷新保留及选项不重复重建、表单集合变化清除失效选择、特殊字符转义和无数据清空。
+5. 该用例还断言筛选前后原 state 数据完全相同，列表只剩1项时正式执行确认仍显示5项，防止把查看筛选误用为审核范围。既有信用代码显示、banks 提醒及交付范围测试继续通过。
+6. Node.js 完整前端脚本语法、测试 Python 编译和 git diff --check 通过。
+前轮 S2 基线406 passed、6 skipped、2 failed；两项既有失败为校验规则缺硬性/软性下拉，以及本机输出单位万元与测试固定要求元不一致。6项因缺少Flask跳过。本轮不为迎合测试改配置。
+S2 配置回归只读 config-real/2.报表采集系统_配置.xlsx 及 config-real/默认配置/2.报表采集系统_配置.xlsx。
+未执行：core 全量 pytest、浏览器视觉验收、麒麟/UOS 实机及发行包验收。本轮没有打包。
+
+【回滚及 Git】
+没有 commit、push、merge、rebase 或 PR。回滚只撤销本轮面板、筛选函数、测试和版本留痕增量，恢复 S2-F01 v10.1.0；不可整文件 restore 覆盖前序 WIP，可参考本轮临时快照。

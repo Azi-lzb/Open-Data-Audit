@@ -14,6 +14,18 @@ from .models import CopyRange, PreflightItem, SourceMatch, StructureCheck, Templ
 STRUCTURE_MATCH_THRESHOLD = 0.90
 
 
+def summary_source_is_usable(match: SourceMatch, *, allow_missing_sheets: bool = False) -> bool:
+    """Whether a readable workbook can contribute to a configured row summary."""
+    if match.matched:
+        return True
+    return (
+        allow_missing_sheets
+        and bool(match.missing_sheets)
+        and match.checked_labels == 0
+        and match.details.startswith("缺少模板要求的工作表：")
+    )
+
+
 def _merged_anchor_lookup(
     workbook: Any, sheet_name: str, requested: set[tuple[int, int]]
 ) -> dict[tuple[int, int], tuple[int, int]]:
@@ -75,16 +87,34 @@ def validate_source_xlsx(
     expected_ranges: list[tuple[CopyRange, list[list[Any]]]],
     *,
     external_sheet_names: tuple[str, ...] = (),
+    allow_missing_sheets: bool = False,
+    allow_fallback_only: bool = False,
 ) -> SourceMatch:
-    """Check fixed labels from xlsx XML without launching Microsoft Excel."""
+    """Check fixed labels from xlsx XML without launching Microsoft Excel.
+
+    ``allow_missing_sheets`` is reserved for row-summary flows: absent source
+    sheets are reported, while structure on sheets that do exist is still
+    checked.  Callers can then omit only the missing sheet instead of dropping
+    the entire workbook.
+    """
     workbook = load_workbook(source_path, read_only=True, data_only=False, keep_links=False)
     try:
         source_names = set(workbook.sheetnames)
         required_names = {item.sheet_name for item in definition.copy_ranges}
-        missing = tuple(sorted(required_names - source_names))
-        if missing:
+        missing_names = required_names - source_names
+        expected_missing = {
+            item.sheet_name for item, _ in expected_ranges
+            if item.sheet_name not in source_names
+        }
+        missing = tuple(sorted(missing_names | expected_missing))
+        if missing and not allow_missing_sheets:
             return SourceMatch(False, 0.0, 0, 0, missing, "缺少模板要求的工作表：" + "、".join(missing))
         if not expected_ranges:
+            if allow_fallback_only and not definition.copy_ranges:
+                return SourceMatch(
+                    True, 1.0, 0, 0, (),
+                    "模板仅配置“兜底模板”，源工作表将按兜底区域汇总",
+                )
             return SourceMatch(False, 0.0, 0, 0, (), "模板没有可用的“表结构区域”命名区域，请先维护模板")
 
         checked = matched = 0
@@ -95,6 +125,8 @@ def validate_source_xlsx(
         requested_by_sheet: dict[str, set[tuple[int, int]]] = defaultdict(set)
         for item, expected_values in expected_ranges:
             if item.sheet_name not in source_names:
+                if allow_missing_sheets:
+                    continue
                 return SourceMatch(False, 0.0, 0, 0, (item.sheet_name,), "缺少模板要求的工作表：" + item.sheet_name)
             bounds = range_boundaries(item.address)
             range_specs.append((item, expected_values, bounds))
@@ -166,18 +198,26 @@ def validate_source_xlsx(
                         )
 
         if checked == 0:
-            return SourceMatch(False, 0.0, 0, 0, (), "模板没有可用的“表结构区域”命名区域，请先维护模板")
+            if allow_missing_sheets and missing:
+                return SourceMatch(
+                    False, 0.0, 0, 0, missing,
+                    "缺少模板要求的工作表：" + "、".join(missing)
+                    + "；没有可比对的工作表，本文件将仅汇总其中存在的目标表",
+                )
+            return SourceMatch(False, 0.0, 0, 0, missing, "模板没有可用的“表结构区域”命名区域，请先维护模板")
         score = matched / checked
         enough = matched >= 3 if checked >= 5 else matched >= 1
         details = f"表结构区域精确匹配 {matched}/{checked}（{score:.0%}）"
+        if missing:
+            details += "；缺少工作表：" + "、".join(missing) + "（其余工作表继续汇总）"
         if mismatches:
             details += "；不一致示例：" + "；".join(mismatches)
         if score < STRUCTURE_MATCH_THRESHOLD or not enough:
-            return SourceMatch(False, score, matched, checked, (), details, tuple(checks))
+            return SourceMatch(False, score, matched, checked, missing, details, tuple(checks))
         conflicts = sorted(source_names.intersection(external_sheet_names))
         if conflicts:
-            return SourceMatch(False, 0.0, matched, checked, (), "外部文件工作表与报送文件重名，不能覆盖原表：" + "、".join(conflicts))
-        return SourceMatch(True, score, matched, checked, (), details, tuple(checks))
+            return SourceMatch(False, 0.0, matched, checked, missing, "外部文件工作表与报送文件重名，不能覆盖原表：" + "、".join(conflicts))
+        return SourceMatch(True, score, matched, checked, missing, details, tuple(checks))
     finally:
         workbook.close()
 

@@ -27,6 +27,8 @@ from typing import Any, Callable, Iterable
 
 from openpyxl import Workbook, load_workbook
 
+from .report_source import report_sheet_names, report_source_identity
+
 # —— 口径常量（与 VBA 一致） ——
 SOURCE_UNIT = "元"
 DEST_UNIT = "万元"
@@ -872,12 +874,13 @@ def list_period_pairs(
 ) -> list[dict[str, object]]:
     """按“工作簿 → 工作表 → 机构 + 表单”配对两期数据，供界面展示。
 
-    三种导出方式的配对键：
-    - 逐机构逐表（机构代码#日期#01#表单#机构名）：机构名 + 表单号；
-    - 按机构划分（reports#代码#日期#01#机构名）：逐子工作表配对；
-    - 按报表划分（banks#日期#01#表单）：逐社会信用代码子工作表配对。
+    身份只来自工作簿名和工作表名，不扫描正文，不因空表而漏掉对象。
+    - 逐机构逐表：文件名中的机构代码 + 工作表/文件名中的表单；
+    - 按机构划分 reports：文件名中的机构代码 + 子工作表身份；
+    - 按报表划分 banks：子工作表名中的机构代码 + 文件名中的表单。
     每行均保留工作簿名、工作表名与数据日期。只在单期出现的子表同样列出，
     另一侧标记缺失，便于发现漏报。
+    socialCreditCode 单独保留文件名/表名识别的代码；无代码时留空，不用名称冒充。
     """
 
     def collect(directory: Path | None) -> dict[tuple[str, str], dict[str, str]]:
@@ -889,9 +892,8 @@ def list_period_pairs(
             if not path.is_file() or path.suffix.casefold() not in {".xls", ".xlsx"} or path.name.startswith("~$"):
                 continue
             items.extend(_list_source_sheets(path))
-        # 按报表划分时，通常只有 20201 子表带“金融机构名称”指标；
-        # 20202/20203 仅有社会信用代码工作表名。先收集有名称的子表，再
-        # 补齐同一代码的其余子表，避免把多家机构折叠为一个空名称。
+        # 同批存在带机构名称的标准文件名时，可补齐 banks 子表的展示名称。
+        # 不从正文借用名称，缺少名称时直接显示代码。
         names_by_code = {
             item["orgKey"]: item["orgName"]
             for item in items
@@ -914,6 +916,7 @@ def list_period_pairs(
             "org": key[0],
             "form": key[1],
             "orgName": (cur_item or pre_item or {}).get("orgName", key[0]),
+            "socialCreditCode": (cur_item or pre_item or {}).get("socialCreditCode", ""),
             "curName": cur_item["name"] if cur_item else "",
             "curPath": cur_item["path"] if cur_item else "",
             "curSheet": cur_item["sheet"] if cur_item else "",
@@ -929,49 +932,20 @@ def list_period_pairs(
 
 
 def _list_source_sheets(path: Path) -> list[dict[str, str]]:
-    """读取一份导出工作簿的子表身份，供跨期配对清单使用。"""
-    segments = path.stem.split("#")
-    sheet_names, make_rows, close = _open_read_only(path)
+    """只用文件名和工作表目录识别子表；完全空白的子表也参与配对。"""
     items: list[dict[str, str]] = []
-    try:
-        is_banks = len(segments) >= 4 and segments[0].casefold() == "banks"
-        if is_banks:
-            date, fallback_form = segments[1], segments[3]
-            fallback_org_code, fallback_org_name = "", ""
-        elif len(segments) >= 5:
-            if segments[0].casefold() == "reports":
-                fallback_org_code, date, fallback_form, fallback_org_name = (
-                    segments[1], segments[2], "", segments[4]
-                )
-            else:
-                fallback_org_code, date, fallback_form, fallback_org_name = (
-                    segments[0], segments[1], segments[3], segments[4]
-                )
-        else:
-            # 非标准命名也列出其工作表，避免在界面中静默漏掉文件。
-            date, fallback_form, fallback_org_code, fallback_org_name = "", "", "", path.stem
-
-        for sheet_name in sheet_names:
-            rows = _read_sheet_rows(make_rows(sheet_name))
-            if not rows:
-                continue
-            lookup = {code: value for code, _name, value in rows}
-            org_code = _norm_code(lookup.get(INDICATOR_CODE_CODE)) or _norm_code(fallback_org_code)
-            org_name = str(lookup.get(INDICATOR_NAME_CODE, "") or fallback_org_name or sheet_name).strip()
-            if is_banks and not org_code:
-                org_code = _norm_code(sheet_name)
-            form = _form_from_sheet(sheet_name, rows, fallback_form)
-            items.append({
-                "orgKey": org_code or org_name,
-                "orgName": org_name,
-                "form": form,
-                "name": path.name,
-                "path": str(path),
-                "sheet": str(sheet_name),
-                "date": str(date),
-            })
-    finally:
-        close()
+    for sheet_name in report_sheet_names(path):
+        identity = report_source_identity(path, sheet_name)
+        items.append({
+            "orgKey": identity.institution_id or identity.institution_name,
+            "orgName": identity.institution_name,
+            "socialCreditCode": identity.institution_id,
+            "form": identity.form_key,
+            "name": path.name,
+            "path": str(path),
+            "sheet": str(sheet_name),
+            "date": identity.data_date,
+        })
     return items
 
 

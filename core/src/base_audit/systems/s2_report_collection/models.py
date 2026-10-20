@@ -9,7 +9,7 @@ from typing import Any
 
 STATUS_NORMAL = "正常"
 STATUS_ABNORMAL = "异常"
-SEVERITIES = ("提示", "关注", "严重")
+SEVERITIES = ("硬性", "软性")
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ class ExternalCheckRule:
     external_indicator_name: str
     comparison_method: str = "等于"
     tolerance: float = 0.0
-    severity: str = "严重"
+    severity: str = "硬性"
     enabled: bool = True
     source: SourceRef | None = None
 
@@ -74,7 +74,7 @@ class RuleConfig:
     rule_type: str
     description: str
     expression: str
-    severity: str = "提示"
+    severity: str = "软性"
     threshold: float | None = None
     invert: bool = False
     disabled: bool = False
@@ -101,6 +101,11 @@ class ReportAuditConfig:
     unit_settings: UnitSettings = field(default_factory=UnitSettings)
     hide_unchanged_period_rows: bool = False
     hide_matching_external_rows: bool = False
+    # 通用设置“文字变动默认级别”；缺省硬性，兼容未写该行的旧配置。
+    text_change_severity: str = "硬性"
+    # 通用设置“本期缺失默认级别”/“上期缺失默认级别”；缺省硬性，兼容未写该行的旧配置。
+    current_missing_severity: str = "硬性"
+    previous_missing_severity: str = "硬性"
 
 
 @dataclass(frozen=True)
@@ -171,6 +176,8 @@ class AuditFinding:
     difference_value: Any = ""
     change_rate: float | None = None
     value_type: str = ""
+    # 指标的数据属性（文字/余额/累发/百分数/个数），来自指标参照配置。
+    data_type: str = ""
     band: str = ""
     description: str = ""
     calculation_trace: str = ""
@@ -181,6 +188,8 @@ class AuditFinding:
     retrieval_note: str = ""
     rule_type: str = ""
     value_details: str = ""
+    # 外部机构映射选定的报表项目；缺数仍保留，缺少映射时为空。
+    report_item: str = ""
 
 
 @dataclass(frozen=True)

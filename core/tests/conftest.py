@@ -54,6 +54,7 @@ _SYSTEM_TEST_FILES = {
         "test_runner_no_issues_error.py",
     },
     "s2": {
+        "test_fast_reader.py",
         "test_period_compare.py",
         "test_period_v2.py",
         "test_percentage_indicators.py",

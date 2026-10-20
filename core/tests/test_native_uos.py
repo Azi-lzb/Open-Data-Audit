@@ -373,6 +373,151 @@ def test_region_summary_appends_history_columns_only_for_identity_sheets(tmp_pat
     out.close()
 
 
+def test_s1_summary_keeps_other_sheet_when_source_is_missing_one_template_sheet(tmp_path: Path) -> None:
+    """S1-F02 should skip only the absent table and still write available rows."""
+    from openpyxl.workbook.defined_name import DefinedName
+    from base_audit.name_config import initialize_config
+    from base_audit.service import AuditService
+    from base_audit.workflow.runner import run_dag_flow
+
+    template = tmp_path / "汇总模板.xlsx"
+    book = Workbook()
+    for index, sheet_name in enumerate(("表甲", "表乙")):
+        sheet = book.active if index == 0 else book.create_sheet(sheet_name)
+        if index == 0:
+            sheet.title = sheet_name
+        sheet.append(("项目", "数值"))
+        sheet.append(("模板行", 0))
+        book.defined_names.add(DefinedName(
+            f"任意行汇总区域_{index + 1}",
+            attr_text=f"'{sheet_name}'!$A$2:$B$20",
+        ))
+        book.defined_names.add(DefinedName(
+            f"表头区域_{index + 1}",
+            attr_text=f"'{sheet_name}'!$A$1:$B$1",
+        ))
+    book.save(template)
+    book.close()
+
+    source_dir = tmp_path / "源数据"
+    source_dir.mkdir()
+    source = source_dir / "机构甲_2026-08.xlsx"
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "表甲"
+    sheet.append(("项目", "数值"))
+    sheet.append(("真实数据", 123))
+    extra = book.create_sheet("未匹配表")
+    extra.append(("源文件自有表头", "源文件自有数值"))
+    extra.append(("不应自动纳入", 999))
+    book.save(source)
+    book.close()
+
+    config = initialize_config(tmp_path / "逐笔统计系统_配置.xlsx")
+    logs: list[str] = []
+    result = run_dag_flow(
+        "dag:汇总校验结果说明",
+        service=AuditService(config_path=config),
+        template_path=template,
+        input_dir=source_dir,
+        output_dir=tmp_path / "输出",
+        period="2026-08",
+        history_path=config,
+        recursive=False,
+        on_step=logs.append,
+        write_flow_logs=False,
+    )
+
+    assert result.skipped_files == ()
+    assert "表乙" in "\n".join(logs)
+    output = load_workbook(result.output_path, read_only=True, data_only=True)
+    try:
+        assert output.sheetnames == ["表甲", "表乙"]
+        assert list(output["表甲"].values) == [
+            ("来源文件", "来源工作表", "项目", "数值"),
+            ("机构甲", "表甲", "真实数据", 123),
+        ]
+        assert list(output["表乙"].values) == [("来源文件", "来源工作表", "项目", "数值")]
+    finally:
+        output.close()
+
+
+def test_s1_summary_uses_optional_fallback_template_for_unmatched_sheets(tmp_path: Path) -> None:
+    """Only a template with 兜底模板 may add data from otherwise unmatched sheets."""
+    from openpyxl.workbook.defined_name import DefinedName
+    from base_audit.name_config import initialize_config
+    from base_audit.service import AuditService
+    from base_audit.workflow.runner import run_dag_flow
+
+    template = tmp_path / "汇总模板_含兜底.xlsx"
+    book = Workbook()
+    regular = book.active
+    regular.title = "表甲"
+    regular.append(("项目", "数值"))
+    regular.append(("模板行", 0))
+    book.defined_names.add(DefinedName(
+        "任意行汇总区域_表甲", attr_text="'表甲'!$A$2:$B$20",
+    ))
+    book.defined_names.add(DefinedName(
+        "表头区域_表甲", attr_text="'表甲'!$A$1:$B$1",
+    ))
+
+    fallback = book.create_sheet("兜底模板")
+    fallback.append(("备用项目", "备用数值"))
+    fallback.append((None, None))
+    book.defined_names.add(DefinedName(
+        "任意行汇总区域_兜底模板", attr_text="'兜底模板'!$A$2:$B$20",
+    ))
+    book.defined_names.add(DefinedName(
+        "表头区域_兜底模板", attr_text="'兜底模板'!$A$1:$B$1",
+    ))
+    book.save(template)
+    book.close()
+
+    source_dir = tmp_path / "源数据"
+    source_dir.mkdir()
+    source = source_dir / "机构甲_2026-08.xlsx"
+    book = Workbook()
+    regular = book.active
+    regular.title = "表甲"
+    regular.append(("项目", "数值"))
+    regular.append(("正常数据", 123))
+    unmatched = book.create_sheet("新增业务表")
+    unmatched.append(("源表头一", "源表头二"))
+    unmatched.append(("兜底数据", 456))
+    book.create_sheet("空白新增表")
+    book.save(source)
+    book.close()
+
+    config = initialize_config(tmp_path / "逐笔统计系统_配置.xlsx")
+    logs: list[str] = []
+    result = run_dag_flow(
+        "dag:汇总校验结果说明",
+        service=AuditService(config_path=config),
+        template_path=template,
+        input_dir=source_dir,
+        output_dir=tmp_path / "输出",
+        period="2026-08",
+        history_path=config,
+        recursive=False,
+        on_step=logs.append,
+        write_flow_logs=False,
+    )
+
+    assert result.skipped_files == ()
+    assert "兜底汇总" in "\n".join(logs)
+    assert "没有有效数据行，不生成汇总表" in "\n".join(logs)
+    output = load_workbook(result.output_path, read_only=True, data_only=True)
+    try:
+        assert output.sheetnames == ["表甲", "新增业务表"]
+        assert list(output["新增业务表"].values) == [
+            ("来源文件", "来源工作表", "备用项目", "备用数值"),
+            ("机构甲", "新增业务表", "兜底数据", 456),
+        ]
+    finally:
+        output.close()
+
+
 # ---------------------------------------------------------------------------
 # service 入口分派（preflight / summarize_regions / run / merge_template_files）
 # ---------------------------------------------------------------------------

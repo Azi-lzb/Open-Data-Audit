@@ -1,0 +1,65 @@
+时间：2026-10-20 19:42（Asia/Shanghai）
+执行者：Codex 主 Agent；未委派子 Agent。
+修改前 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca
+修改后 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca（未提交）
+分支：desktop；origin 为 Open-Data-Audit 公开代码仓库。
+
+【WIP 保护】
+开始时有 S1/S2 功能、公开配置、真实本机配置对应测试及版本留痕等大量既有未提交修改。本轮只增量修改下述文件，没有还原、提交或覆盖其他 WIP。相关文件修改前快照保存在系统临时目录 codex_s2_name_identity_cixml8sj，仅用于本机回滚，未加入项目或版本控制。
+本轮没有 commit、push、merge、rebase、PR、构建或安装操作。
+
+【目的】
+用户要求两期工作表配对只依据工作簿名和工作表名，空表也能匹配；避免正文缺机构名称/代码、占位符导致环比输出机构字段变为“--”。随后用户要求优先推荐带机构名称的逐机构逐表和 reports 导出，选到 banks 时提示改用默认单sheet或按报表单sheet。
+
+【新增及修改文件】
+新增：core/src/base_audit/report_source.py。
+修改：
+1. core/src/base_audit/period_compare.py
+2. core/src/base_audit/systems/s2_report_collection/importer.py
+3. core/src/base_audit/web_app.py
+4. core/frontend/web/index.html
+5. core/src/base_audit/config_guide.py
+6. core/tests/test_period_compare.py
+7. core/tests/test_period_v2.py
+8. core/tests/test_web_app.py
+9. core/tests/test_distribution_profile.py
+10. core/tests/TEST_GROUPS.md
+11. core/tests/test_version_manifest.py
+12. 版本管理/VERSION_MANIFEST.json
+13. 版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md
+新增本记录。删除文件：无。
+
+【逻辑变化】
+1. 统一身份解析：逐机构逐表从文件名取机构代码、名称、日期及表单兜底；reports 从文件名取机构代码/名称/日期，从表名识别表单；banks 从工作表名取机构代码，从文件名取表单/日期。机构代码优先于名称作为配对键，日期继续不作为跨期配对键。
+2. 配对预览只读工作表目录。xlsx 复用既有 workbook.xml 名称读取器，不解析工作表正文或共享字符串；xls 使用 xlrd on_demand=True 并释放资源。原先因正文无指标而跳过的空白工作表现在列出并参与配对。
+3. 正式导入仍从第4行读取指标数据，但机构身份不从 20201001/20201002 的值提取；这些值仍作为普通指标参与审核，不自动填数或修改原值。
+4. 文件名中的机构代码、名称优先。机构参照补名称、类别、承接行和地区；同名但代码不同的参照项不替换文件身份。banks 缺名称且无参照时以代码展示，不能凭空恢复机构名称。
+5. Web 状态新增 periodSourceWarning 字符串字段，含两期 banks 文件数量及重新导出的提示；该提醒由所选目录文件名生成，不扫描正文。文件列表上方、日志、执行确认均可见，目录更换/清除后同步更新。不将该提醒当作审核结论或新的阻断条件。
+6. 使用指引源码及前端提示推荐“机构代码#日期#01#表单#机构名称”和“reports#机构代码#日期#01#机构名称”格式；导出选项按用户用词提示“默认单sheet”或“按报表单sheet”。
+7. 旧 period_compare 比较业务引擎没有重构；修改的是 UI 共用的清单函数，正式 S2 导入使用共享身份模块。两个平台外壳仍共用 core，无业务副本。
+
+【配置及迁移影响】
+没有改写 config/、config-real/ 下的工作簿，没有迁移 VBA 或修改配置行。标准文件名须保留机构字段；非标准文件名仍仅供预览展示，正式导入延续原有显式告警。没有新增配置字段或更改结果列。
+来源代码/表名为空时无法凭正文恢复身份，这是本次只依赖名称协议的明确边界。空表被配对不代表已报数，实际缺报值仍输出本期有/上期无等提示。
+
+【组件版本】
+系统：S2 报表采集系统。
+影响功能：S2-F01 执行报表规则 v9.3.0 → v9.3.1。
+影响配置：S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0 均未变。
+未修改相关组件：S1/S3 功能、配置版本和整包产品版本。
+版本升级原因：Bugfix / PATCH，修复空表/正文占位符干扰机构身份及配对，补充选择 banks 格式时的导出提示，不改配置协议。
+
+【验证】
+1. 修改前定向基线：python -m pytest -q core/tests/test_period_compare.py core/tests/test_period_v2.py —— 92 passed。
+2. 最终定向：python -m pytest -q core/tests/test_period_compare.py core/tests/test_period_v2.py core/tests/test_web_app.py core/tests/test_distribution_profile.py core/tests/test_config_guide.py core/tests/test_version_manifest.py —— 204 passed / 0 skipped / 0 failed / 0 errors。
+3. 最终 S2 系统回归：python -m pytest -q -rs -m s2 core/tests —— 395 passed / 6 skipped / 2 failed / 0 errors，628 deselected。两项失败为下列已知配置差异，6 项跳过因环境缺少 Flask；没有新增功能失败。
+4. 新增 37 项参数化/独立用例：三种导出和 xls/xlsx 的完全空表；两期均空或单侧空；正文误填代码与名称；不同机构不折叠；真正缺少的工作表保持单边；xlsx 正文/共享字符串不被访问；正式结果机构字段；同名旧代码配置不覆盖文件代码；端到端导出和输入 SHA-256 不变；banks 提示产生/清除及 Node.js 执行确认显示。
+5. AST 按 Python 3.8 语法解析及修改 Python 文件编译检查通过；前端脚本由现有 Node.js 语法检查和新增行为测试覆盖；git diff --check 通过。
+
+【实际配置来源及已知问题】
+S2 回归读取 config-real/2.报表采集系统_配置.xlsx；默认配置对应 config-real/默认配置/2.报表采集系统_配置.xlsx。只读检查，不写入。
+前轮已知配置相关失败：test_formal_and_default_s2_configs_pass_read_only_check 要求“校验规则”硬性/软性下拉，而本机配置缺该下拉；test_shipped_s2_configs_keep_global_unit_settings_in_main_workbook 固定要求输出单位元，但本机正式配置为万元。本轮未擅自改配置以迎合测试。
+未执行：core 全量 pytest、Python 3.8.10 真实运行时、麒麟/UOS 实机、Office 专属路径、真实报送批次端到端对拍、发行包验证。此次未打包。
+
+【回滚提示】
+本轮与前序时序数据兼容等未提交修改共用文件，禁止整文件 git checkout/restore。只撤销本记录对应的增量；删除新 report_source.py 前须同步撤销相关 import，恢复 S2-F01 v9.3.0 并删除本条 CHANGELOG，保留前序修改。临时快照可用于核对本轮前后的局部差异。

@@ -1,0 +1,40 @@
+日期：2026-10-20
+功能：S2-F01 执行报表规则
+
+用户需求（本轮两条口述，先后修正）：
+- 实测结果中“本期无，上期有”等单侧缺失行仍输出软性，应默认硬性；可在通用设置加“本期缺失/上期缺失”设置项，拆成两个也可以。
+- 拆成两个：本期缺失默认级别、上期缺失默认级别，更灵活；说明里写详细一点。
+- 后补充口径：这两个设置项只适用于非文字类属性。
+
+最终口径：
+- 「本期缺失默认级别」：非文字指标（余额/累发/百分数/个数）审核说明为“本期无，上期有”的行——本期整行缺指标、本期无数值、本期为 0 按无处理（band=未命中）均属此类。
+- 「上期缺失默认级别」：非文字指标“本期有，上期无”的行——上期整行缺指标、上期无数值、上期为 0 按无处理。
+- 文字指标的单侧缺失仍由「文字变动默认级别」控制（维持 20261020_224706 记录确认的口径），缺失方向设置不影响文字指标。
+- 两项均可缺省（不写按硬性），取值硬性/软性，非法值在配置检查报错并给出行号。
+
+实现：
+- models.py：ReportAuditConfig 新增 current_missing_severity / previous_missing_severity（均默认“硬性”）。
+- config.py：ENUM_SETTING_FIELDS 增加两键；_load_general_settings_from_book 返回 6 元组；write_default_config 写入第 9、10 行并给 B8:B10 统一加硬性/软性下拉（沿用既有 DataValidation 写法，带提示与错误文案）。
+- period_engine.py：循环内按 attribute 分派——文字指标单侧缺失用 text_severity，非文字按方向分别用 current/previous 缺失设置；六个单侧分支（cur/pre 整行缺失、cn/pn 无数值、pn==0/cn==0）全部接入。
+- config_guide.py：通用设置条目改为三设置说明；CONFIG_VERSION 维持本轮未发布的 2.3。
+- 测试：test_period_v2 拆分重写文字/本期缺失/上期缺失分工与方向互不串扰、0 按无跟随方向设置等用例；test_v2_both_sides_empty 单侧断言 软性→硬性；test_s2_units 三项设置参数化三态用例 + 默认配置生成器 9 行与 B8:B10 下拉断言 + shipped 三字段断言；test_s2_config_check 增加 B9/B10 断言。
+
+配置/数据：
+- config-real 正式与默认配置：B8 说明改为“文字指标……或单侧缺失”，追加第 9、10 行（均=硬性），B8 单格下拉合并为 B8:B10；修改前各更新 .bak。
+- 公开 config/ 空表头快照未改动。
+
+验证：
+- 定向：test_period_v2 + test_s2_units + test_s2_config_check 共 164 passed / 2 failed（均为既有“输出文件单位=万元 vs 测试断言元”口径差异，用户已知）。
+- S2 回归组：425 passed / 2 failed / 6 skipped（Flask 跳过）/ 0 errors，628 deselected，3 个子场景 passed。
+- test_version_manifest + test_config_guide 17 passed；compileall 通过；check_public_snapshot 无暂存内容。
+- 本机两份真实配置重开核对：第 8-10 行键值、B8:B10 下拉、B2:B4/B6:B7 及三张规则表下拉齐全。
+- 未运行真实报表数据重跑与 Office/Linux 实机验收。
+
+【组件版本】
+系统：S2 报表采集系统
+影响功能：S2-F01 执行报表规则 v10.5.0（并入本日未提交的 v10.4.2 → v10.5.0 MINOR，含数据属性列与三项默认级别设置）
+影响配置：S2-CFG-01 报表采集系统配置 v8.4.0（并入本日未提交的 v8.3.0 → v8.4.0 MINOR，通用设置新增三行可选设置）
+未修改的相关组件：S1-*、S3-*、S2-CFG-02（全部未动）；产品整包 V26.1.6.0 不变。
+版本升级原因：Feature/MINOR——本轮两项缺失级别设置与 22:47 的数据属性列/文字变动默认级别同属一次未提交的功能批次，合并记录在同一 MINOR 升级，逐轮细节见两份 GPT修改记录。
+
+Git：未提交（desktop 分支，提交范围待用户确认）。

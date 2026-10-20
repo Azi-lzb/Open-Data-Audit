@@ -570,6 +570,41 @@ class WebAppCompatibilityTests(unittest.TestCase):
 
                 self.assertEqual(self._file_hash(target), before)
 
+    def test_banks_selection_warns_and_recommended_source_clears_warning(self) -> None:
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            banks_current, banks_previous, recommended = root / "banks-current", root / "banks-previous", root / "recommended"
+            for directory in (banks_current, banks_previous, recommended):
+                directory.mkdir()
+            inputs = []
+            for directory, filename, sheet_name in (
+                (banks_current, "banks#20260630#01#20201.xlsx", "9144"),
+                (banks_previous, "banks#20260331#01#20201.xlsx", "9144"),
+                (recommended, "reports#9144#20260630#01#甲银行.xlsx", "20201"),
+            ):
+                book = Workbook(); book.active.title = sheet_name
+                path = directory / filename; book.save(path); book.close(); inputs.append(path)
+            before = {path: self._file_hash(path) for path in inputs}
+            api = WebApi(root)
+            self.assertEqual(api.get_state()["periodSourceWarning"], "")
+            api.choose_period_compare("pcCurDir", str(banks_current))
+            warning = api.get_state()["periodSourceWarning"]
+            self.assertIn("本期1个", warning)
+            self.assertIn("默认单sheet", warning)
+            self.assertIn("按报表单sheet", warning)
+            self.assertIn("机构参照映射", warning)
+            self.assertEqual(len(api.state["periodPairs"]), 1)
+            self.assertEqual(api.get_state()["periodPairs"][0]["socialCreditCode"], "9144")
+            api.choose_period_compare("pcPreDir", str(banks_previous))
+            self.assertIn("上期1个", api.get_state()["periodSourceWarning"])
+            self.assertTrue(api.state["periodPairs"][0]["matched"])
+            api.choose_period_compare("pcCurDir", str(recommended))
+            self.assertNotIn("本期1个", api.get_state()["periodSourceWarning"])
+            self.assertIn("上期1个", api.get_state()["periodSourceWarning"])
+            api.clear_path("pcPreDir")
+            self.assertEqual(api.get_state()["periodSourceWarning"], "")
+            self.assertEqual({path: self._file_hash(path) for path in inputs}, before)
+
     def test_period_compare_paths_and_output_are_persisted_separately(self) -> None:
         with TemporaryDirectory() as folder:
             root = Path(folder)
@@ -978,6 +1013,89 @@ class WebAppCompatibilityTests(unittest.TestCase):
         self.assertIn("逐笔统计系统", groups)
         # 日志表拆时间列，内容保留。
         self.assertTrue(any("结构化导出冒烟" in str(row[1]) for row in log_rows if len(row) > 1))
+
+
+class S2ProgressLifecycleTests(unittest.TestCase):
+    def test_worker_reports_completed_or_failed_without_refreshing_existing_pairs(self) -> None:
+        for mode in ("complete", "refresh_empty", "failed"):
+            with self.subTest(mode=mode):
+                api = object.__new__(WebApi)
+                api.state = {"busy": True, "pcConfig": "config.xlsx", "periodProgress": {}, "periodPairs": [] if mode == "refresh_empty" else [{"side": "both"}]}
+                messages = []
+                refreshes = []
+                api._log = messages.append
+                api._refresh_period_pairs = lambda: refreshes.append(True)
+
+                def run(**kwargs):
+                    kwargs["on_progress"]({"stage": "current", "label": "读取本期报表", "percent": 41, "current": 4, "total": 10, "message": "样例.xlsx"})
+                    self.assertEqual(api.state["periodProgress"]["status"], "running")
+                    self.assertEqual(api.state["periodProgress"]["current"], 4)
+                    self.assertTrue(api.state["busy"])
+                    if mode == "failed":
+                        raise ValueError("样例文件损坏，请重新导出")
+                    kwargs["on_progress"]({"stage": "complete", "label": "审核完成", "percent": 100})
+                    self.assertLess(api.state["periodProgress"]["percent"], 100)
+                    return SimpleNamespace(
+                        findings=(),
+                        summary=SimpleNamespace(institutions=1, forms=1, indicators=10, total_findings=0, abnormal_findings=0, by_type={}),
+                        paths=SimpleNamespace(result=Path("result.xlsx")),
+                    )
+
+                with patch("base_audit.systems.s2_report_collection.PeriodAuditV2Service.run", side_effect=run):
+                    api._period_compare_v2_worker(Path("cur"), Path("pre"), None, Path("out"))
+                self.assertFalse(api.state["busy"])
+                progress = api.state["periodProgress"]
+                self.assertGreaterEqual(progress["elapsedSeconds"], 0)
+                self.assertEqual(progress["status"], "failed" if mode == "failed" else "completed")
+                self.assertEqual(progress["percent"], 41 if mode == "failed" else 100)
+                self.assertEqual(bool(refreshes), mode == "refresh_empty")
+                if mode == "failed":
+                    self.assertIn("文件损坏", progress["message"])
+                    self.assertTrue(any("S2F1在“读取本期报表”失败" in message for message in messages))
+                else:
+                    self.assertEqual(api.state["periodSummary"]["result"], "result.xlsx")
+                    self.assertTrue(any("S2F1审核完成：机构 1 家" in message for message in messages))
+                self.assertTrue(any("读取本期报表" in message and "样例.xlsx" in message for message in messages))
+
+    def test_worker_logs_progress_at_bounded_intervals_with_phase_totals(self) -> None:
+        api = object.__new__(WebApi)
+        api.state = {"busy": True, "pcConfig": "config.xlsx", "periodProgress": {}, "periodPairs": [{"side": "both"}]}
+        messages = []
+        api._log = messages.append
+        api._refresh_period_pairs = lambda: None
+
+        def run(**kwargs):
+            report = kwargs["on_progress"]
+            for current in range(101):
+                report({
+                    "stage": "current", "label": "读取本期报表", "percent": current / 4,
+                    "current": current, "total": 100,
+                    "message": "正在整理本期指标" if current == 100 else f"源文件{current + 1:03}.xls",
+                })
+            report({"stage": "period", "label": "执行环比规则", "percent": 60, "message": "正在比较指标"})
+            report({"stage": "period", "label": "执行环比规则", "percent": 66, "message": "完成：生成 20 条环比结果"})
+            report({"stage": "export", "label": "写入环比规则", "percent": 80, "current": 0, "total": 1000})
+            for current in range(250, 1001, 250):
+                report({"stage": "export", "label": "写入环比规则", "percent": 80 + current / 1000 * 14, "current": current, "total": 1000})
+            report({"stage": "save", "label": "保存审核工作簿", "percent": 95, "current": 1000, "total": 1000})
+            report({"stage": "complete", "label": "审核完成", "percent": 100})
+            return SimpleNamespace(
+                findings=(),
+                summary=SimpleNamespace(institutions=1, forms=1, indicators=100, total_findings=1000, abnormal_findings=20, by_type={"环比": 20}),
+                paths=SimpleNamespace(result=Path("result.xlsx")),
+            )
+
+        with patch("base_audit.systems.s2_report_collection.PeriodAuditV2Service.run", side_effect=run):
+            api._period_compare_v2_worker(Path("cur"), Path("pre"), None, Path("out"))
+
+        read_lines = [message for message in messages if "读取本期报表" in message and "工作簿" in message]
+        export_lines = [message for message in messages if "写入环比规则" in message and "审核结果" in message]
+        self.assertGreaterEqual(len(read_lines), 10)
+        self.assertLessEqual(len(read_lines), 12, "不应每读取一个文件都写一条运行记录")
+        self.assertTrue(any("10/100" in message for message in read_lines))
+        self.assertLessEqual(len(export_lines), 6, "导出进度按比例记录，不逐行刷屏")
+        self.assertTrue(any("20 条环比结果" in message for message in messages))
+        self.assertTrue(any("异常 20 条" in message for message in messages))
 
 
 if __name__ == "__main__":

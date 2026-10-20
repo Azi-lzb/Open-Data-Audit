@@ -1,0 +1,39 @@
+日期：2026-10-20
+功能：S2-F01 执行报表规则
+
+用户需求与决策：
+- 在 v10.4.x 进度/导出优化基础上继续给 S2F1 提速；经评估剩余瓶颈在两期文件读取（549 对样例约 3.76s，占总时长一半）。
+- 用户确认接入 Calamine，并明确硬约束：目标系统为麒麟 V10 SP1（glibc 2.31）与统信 UOS（glibc 2.28），打包成 DEB 使用，必须考虑兼容性。
+
+兼容性核实（接入前完成）：
+- python-calamine 0.3.1：requires_python>=3.8；Linux wheel 全部为 manylinux_2_17（x86_64 与 aarch64 齐全，cp38~cp313），无 manylinux_2_28+ 构建——glibc≥2.17 即可运行，覆盖 UOS 2.28、麒麟 2.31，连项目 ARM64 glibc 2.23 冒烟目标也在范围内；Windows 有 win_amd64 与 win32（cp38）wheel。
+- 版本钉死 0.3.1：最新 0.9.0 要求 Python>=3.11，与 Win7 兼容包的 32 位 Python 3.8.10 及核心 3.8 语法冲突；0.3.1 恰好全链路覆盖（cp38-win32、cp312-manylinux 双架构）。
+- 打包链现状：DEB 用 PyInstaller 冻结自带 CPython（3.12 优先），requirements.txt 统一装依赖；已有 objdump ELF 检查入口。
+
+实现：
+- importer.py：新增 _open_fast（calamine 优先）与 _normalize_fast_value；_open 双引擎分发——整包缺失静默回退，单文件异常逐文件提示后回退 xlrd/openpyxl。
+- 值形态对齐：.xls 对齐 xlrd（int→float、bool→int）；.xlsx 对齐 openpyxl（整型 float→int、''→None、date→零点 datetime）。实测差异为基础：calamine xlsx 给整型 float、xls 给 int，xlrd 全 float、openpyxl 整型给 int，需分别归一。
+- 行位对齐（实测踩坑）：calamine to_python 会裁掉前导空行（中间空位保留），导致 rows[3:] 表头跳过与 SourceRef 行号漂移——回归组立即捕获（test_v10.5.0 时代既有的 test_v2_importer_preserves_percentage_data_type 记录数为 0）。修复：按 sheet.start（首个非空行 0 基行号）补回等量空行；并把前导空行写入对拍夹具防回归。
+- 已知有意边界差异（留痕）：.xls 值列日期单元格 xlrd 读作序列数 float 参与数值计算，快速引擎读作 date 走非数值路径；报表值列不含日期。
+- 打包接入：requirements.txt 钉 python-calamine==0.3.1；build_exe.py COMMON_HIDDEN 加 python_calamine；Linux-2 脚本 --collect-all python_calamine 并加入依赖导入检查；Win7 32 位构建 venv 已装 cp38-win32 wheel 并导入验证（32 位确认）。
+- 测试：新增 core/tests/test_fast_reader.py（6 项）并归入 conftest s2 组与 TEST_GROUPS。
+
+性能（本机 549 对/1098 文件合成样例=500 xlsx+598 xls，约 1.65 万条指标）：
+- 预热后两轮：传统 4.26s / 快速 1.02s（4.2x）；记录数 16470/16470、警告 0/0 完全一致。
+- 冷启动假象提醒：首轮读取刚写完的新文件会触发 Defender 首扫，首测曾出现快速引擎反而更慢（11.9s vs 3.9s）的倒置，预热后消失；基准一律以预热后为准。
+- 结合 v10.4.2 Direct OOXML 导出，同规模全程预计 7.5s → 约 4.6s。微基准：calamine xlsx 0.41ms/文件 vs openpyxl 3.62ms；xls 0.12ms vs xlrd 1.15ms。
+
+验证：
+- test_fast_reader.py 6 passed（含此前失败用例复验）。
+- S2 回归组 431 passed / 2 failed / 6 skipped（Flask 跳过）；两项失败仍为本机既有“输出文件单位=万元 vs 测试断言元”口径差异，与本轮无关。
+- compileall 通过；test_version_manifest 随版本更新通过。
+- 未做：Linux/ARM64 打包与启动验收（WSL/QEMU 及真机按现有流程另行执行）、真实报表数据全量对拍（建议下次正式跑批时核对结果文件与行数）。
+
+【组件版本】
+系统：S2 报表采集系统
+影响功能：S2-F01 执行报表规则 v10.5.0 → v10.6.0
+影响配置：S2-CFG-01 v8.4.0（未变）
+未修改的相关组件：S1-*、S3-*、S2-CFG-02（全部未动）；产品整包 V26.1.6.0 不变（依赖增量随下次打包测量）。
+版本升级原因：Feature/MINOR——新增可选快速读取能力（双引擎回退，业务结果不变）与运行依赖 python-calamine==0.3.1。
+
+Git：未提交（desktop 分支，提交范围待用户确认）。

@@ -1,6 +1,93 @@
 # S1-F02 汇总校验结果说明
 
-当前版本：v1.1.1
+当前版本：v1.2.0
+
+## v1.2.0 — 2026-10-19 21:43
+
+变更类型：Feature / MINOR
+
+前版本：v1.1.2
+新版本：v1.2.0
+
+修改内容：
+- 新增可选“兜底模板”工作表；只有模板包含该表且配置一个“任意行汇总区域”和一个“表头区域”时，才会把未匹配的源工作表按该区域及表头汇总；
+- 未匹配工作表没有有效数据行时不生成结果工作表；
+- 模板不含“兜底模板”时维持原行为，未匹配的源工作表仍忽略；
+- 保留普通命名区域的表头结构检查，以及缺少模板目标工作表时按表继续汇总的行为；
+- 更新 S1-F02 流程说明、模板命名区域提示和测试登记。
+
+影响文件：
+- core/src/base_audit/summary_fallback.py
+- core/src/base_audit/native/summary.py
+- core/src/base_audit/region_summary.py
+- core/src/base_audit/preflight_xlsx.py
+- core/src/base_audit/workflow/adapters/audit_handlers.py
+- core/src/base_audit/workflow/adapters/native_audit_handlers.py
+- core/src/base_audit/workflow/defaults.py
+- core/src/base_audit/name_config.py
+- core/src/base_audit/node_flow_config.py
+- core/frontend/web/index.html
+- core/tests/test_native_uos.py
+- core/tests/test_preflight_xlsx.py
+- core/tests/test_version_manifest.py
+- core/tests/TEST_GROUPS.md
+- 版本管理/VERSION_MANIFEST.json
+
+配置影响：
+- 无；S1-CFG-01 不升级。需要使用兜底时，在现有模板中添加“兜底模板”工作表并设置所需命名区域。
+
+测试：
+- 定向测试：12 passed；
+- `python -m pytest -q -rs -m s1 core/tests`：477 passed、13 skipped、463 deselected；
+- `python -m compileall -q core/src/base_audit` 与 `git diff --check` 通过；
+- UOS/麒麟与 Windows Excel COM 真机路径未在本轮执行。
+
+GPT修改记录：
+- GPT修改记录/20261019_214318_S1F02兜底模板汇总.txt
+
+Git提交：
+- 未提交
+
+## v1.1.2 — 2026-10-19 18:06
+
+变更类型：Bugfix / PATCH
+
+前版本：v1.1.1
+新版本：v1.1.2
+
+修改内容：
+- 源文件缺少模板中的一张或多张目标工作表时，只跳过对应工作表，继续汇总该文件中其他结构匹配的工作表；即使所有目标工作表都缺失，也保留带表头的汇总结果；
+- 缺少命名区域字段来源工作表时，该字段留空并给出提示，不再使整批汇总中断；
+- 保留现有工作表结构比对，已存在工作表表头不匹配的源文件仍跳过，避免列错位数据进入汇总；
+- S1-F02 不再因未实际使用的可选外部工作簿检查失败而中止。
+
+影响文件：
+- core/src/base_audit/preflight_xlsx.py
+- core/src/base_audit/region_summary.py
+- core/src/base_audit/native/summary.py
+- core/src/base_audit/workflow/defaults.py
+- core/src/base_audit/workflow/adapters/audit_handlers.py
+- core/src/base_audit/workflow/adapters/native_audit_handlers.py
+- core/src/base_audit/workflow/adapters/simple_handlers.py
+- core/src/base_audit/name_config.py
+- core/frontend/web/index.html
+- core/tests/test_preflight_xlsx.py
+- core/tests/test_native_uos.py
+- core/tests/TEST_GROUPS.md
+
+配置影响：
+- 无；S1-CFG-01 不升级。仅更新默认流程说明，不改变用户配置工作簿结构。
+
+测试：
+- 定向汇总测试：5 passed；
+- `python -m pytest -q -rs -m s1 core/tests`：475 passed、13 skipped、463 deselected；跳过项为 Windows/Linux 平台限制或 Flask 依赖条件；
+- UOS/麒麟真机及 Office/LibreOffice 实际运行未在本轮执行。
+
+GPT修改记录：
+- GPT修改记录/20261019_180630_S1F02缺少工作表继续汇总.txt
+
+Git提交：
+- 未提交
 
 ## v1.1.1 — 2026-09-28 11:11
 

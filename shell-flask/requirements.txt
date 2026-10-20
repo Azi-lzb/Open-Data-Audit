@@ -4,4 +4,8 @@ flask>=3.0
 openpyxl>=3.1
 lxml>=4.9  # openpyxl 的 C 加速 XML 后端
 xlrd>=2.0
+# S2 快速读取引擎（Rust 扩展）：缺包时自动回退 xlrd/openpyxl。
+# 钉 0.3.1：新版要求 Python>=3.11，而 Win7 兼容包用 32 位 Python 3.8；
+# 0.3.1 的 Linux wheel 为 manylinux_2_17（glibc>=2.17），覆盖 UOS 2.28/麒麟 2.31。
+python-calamine==0.3.1
 pywin32>=306 ; sys_platform == "win32"

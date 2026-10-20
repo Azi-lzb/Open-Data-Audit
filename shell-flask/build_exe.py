@@ -48,6 +48,9 @@ COMMON_HIDDEN = [
     "base_audit.region_summary",
     "base_audit.engines.libreoffice_adapter",
     "openpyxl",
+    # S2 快速读取引擎（Rust 扩展 python_calamine）：importer 在 try/except 中
+    # 导入，静态分析可能漏收；缺包时运行期自动回退 xlrd/openpyxl。
+    "python_calamine",
     "pythoncom",
     "pywintypes",
     "flask",

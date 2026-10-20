@@ -1,0 +1,43 @@
+日期：2026-10-20
+功能：S2-F01 执行报表规则
+
+用户需求：
+- 在已有底部进度条之外，把正在执行的审核阶段及处理细节写入运行记录。
+- 了解结果文件是否由 openpyxl 导出，以及直接生成 OOXML 是否可能更快。
+
+实现：
+- 运行记录记下 S2F1 的本期/上期目录、大集中数据、配置及输出位置。
+- 读取本期/上期文件时记录总数、当前文件名及约每10%的完成数量；导出每张分类表时按约每10%的结果行数记录，不逐文件/逐行刷屏。
+- 服务进度事件补充本期/上期指标数、环比结果数、校验结果数、外部数据和机构参照数量、外部核对结果数，以及审核完成摘要。
+- 失败日志附上失败阶段。进度条和运行记录共用同一组进度事件，未改变数据读取或审核结果。
+- 确认 `core/src/base_audit/systems/s2_report_collection/exporter.py` 使用 `openpyxl.Workbook` 与 `book.save()`。Direct OOXML 适合此固定三表结构且有明确导出瓶颈的场景，但本轮没有切换或基准测试该写出器；需先验证性能及值、样式、筛选、冻结窗格、隐藏行和重开结果。
+
+影响文件：
+- core/src/base_audit/web_app.py
+- core/src/base_audit/systems/s2_report_collection/service.py
+- core/tests/test_period_v2.py
+- core/tests/test_web_app.py
+- core/tests/test_version_manifest.py
+- core/tests/TEST_GROUPS.md
+- 版本管理/VERSION_MANIFEST.json
+- 版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md
+
+配置/数据：未修改真实配置、业务工作簿或打包依赖。
+
+验证：
+- 定向：11 passed，3 个子场景 passed。
+- S2 回归：419 passed / 6 skipped / 2 failed / 0 errors，628 deselected，3 个子场景 passed。
+- 两项失败与本机既有配置差异一致：真实配置“校验规则”缺少硬性/软性下拉；输出文件单位为万元而测试断言为元。6 项因缺少 Flask 跳过。
+- Python compileall 与 `git diff --check` 通过。
+- 测试对比开启/关闭进度回调时审核结果相同；未重跑真实549对性能基准、平台测试或打包。
+
+版本：S2-F01 从 10.4.1 升至 10.4.2（PATCH）；配置版本不变。
+Git：未提交。
+
+──────────────────
+留痕补记（2026-10-20 23:30，ZCode 整理）：
+本记录正文写于 Direct OOXML 切换之前（当时判断“本轮没有切换”）。同一轮工作随后继续完成：
+- exporter.py 已接入 Direct OOXML 写出（zipfile+XML，openpyxl 保留为非常见数据类型回退路径）。
+- 549 对/1098 个扩展样例（19032 条指标、28182 条审核结果）实测：完整运行 15.694 秒 → 7.534 秒，导出阶段 9.4869 秒 → 2.042 秒；单元格值、数据类型、样式、列宽、冻结/筛选/隐藏行逐格对拍一致，输出约小 3.7%，输入 SHA-256 不变。
+- 定向 97 passed；S2 回归 419 passed / 6 skipped / 2 failed（两项为本机既有配置差异）。
+原始执行方（Codex）在最终对拍与留痕收尾阶段中断，正文未同步；以上数据以 CHANGELOG v10.4.2 与 VERSION_MANIFEST 为准，并由后续会话的 S2 回归（426 passed，同一导出路径）复验。

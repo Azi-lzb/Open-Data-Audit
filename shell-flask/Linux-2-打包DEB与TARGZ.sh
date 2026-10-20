@@ -272,7 +272,7 @@ else
     echo '[错误] 依赖安装失败。' >&2
     exit 1
 fi
-"$BUILD_PY" -c 'import flask, openpyxl, xlrd, lxml, PyInstaller; print("[依赖] 导入检查通过")'
+"$BUILD_PY" -c 'import flask, openpyxl, xlrd, lxml, python_calamine, PyInstaller; print("[依赖] 导入检查通过")'
 
 # ---------------------------------------------------------------------------
 # PyInstaller 冻结（onedir，与 DEB 内布局一致）。
@@ -300,6 +300,7 @@ set -- --noconfirm --clean --onedir --name "$LINUX_NAME" \
     --collect-all openpyxl \
     --collect-all xlrd \
     --collect-all lxml \
+    --collect-all python_calamine \
     --distpath "$PYI_DIST" \
     --workpath "$BUILD_STAGE/work" \
     --specpath "$BUILD_STAGE/spec"

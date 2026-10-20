@@ -111,7 +111,7 @@ def build_summary_workflow() -> WorkflowDefinition:
     definition = WorkflowDefinition(
         workflow_id="dag:汇总校验结果说明",
         name="汇总校验结果说明（DAG）",
-        description="结构比对通过的文件做任意行汇总，输出校验结果与报送说明汇总。",
+        description="结构正常的工作表参与任意行汇总；源文件缺少模板工作表时继续处理可用表；模板含“兜底模板”时，未匹配且有数据的源工作表也参与汇总。",
         settings={
             "flow_name": "汇总校验结果说明",
             "output_name": "汇总校验结果说明",
@@ -134,7 +134,8 @@ def build_summary_workflow() -> WorkflowDefinition:
                      display_name="检查表头区域",
                      parameters={"feature_names": ["检查表头区域"]}, failure_policy=_SKIP),
         WorkflowNode("compare-structure", "excel.structure_compare", display_name="表结构比对",
-                     parameters={"feature_name": "表结构比对"}, failure_policy=_SKIP),
+                     parameters={"feature_name": "表结构比对", "allow_missing_sheets": True},
+                     failure_policy=_SKIP),
         WorkflowNode("region-summary", "summary.region_summary", display_name="任意行汇总",
                      parameters={"flow_name": "汇总校验结果说明", "output_name": "汇总校验结果说明",
                                  "summary_feature_names": ["任意行汇总"]}),

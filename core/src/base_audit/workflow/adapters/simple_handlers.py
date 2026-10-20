@@ -72,10 +72,10 @@ def handle_summary_preflight(ctx: NodeContext, parameters: Dict[str, Any], input
 
 
 def handle_region_summary(ctx: NodeContext, parameters: Dict[str, Any], inputs: Dict[str, Any]) -> ModuleExecutionResult:
-    """summary.region_summary：对结构比对通过的文件执行区域汇总（含汇总表合并分派）。
+    """summary.region_summary：对可用工作簿执行区域汇总（含汇总表合并分派）。
 
-    输入直接来自前驱「表结构比对」节点的通过文件集，因此本节点不再内嵌
-    结构过滤；历史说明富化也已拆到独立节点，此处只产出基础汇总列。
+    前驱结构比对节点会按流程策略筛选文件；S1-F02 可保留缺少单张工作表的
+    工作簿，由底层汇总器逐表跳过缺失表。历史说明富化已拆到独立节点。
     """
     params = {**_params(inputs), **parameters}
     service = ctx.resource("service")
@@ -83,11 +83,27 @@ def handle_region_summary(ctx: NodeContext, parameters: Dict[str, Any], inputs: 
     matched_files = [Path(record.source) for record in accepted]
     structure = inputs.get("structure_report")
     matches = list(getattr(structure, "matches", ()) or ())
-    skipped_files = tuple((path, match) for path, match in matches if not match.matched)
+    accepted_paths = {
+        Path(path).resolve() for path in getattr(structure, "accepted", ())
+    }
+    rejected_paths = {
+        Path(path).resolve() for path in getattr(structure, "rejected", ())
+    }
+    skipped_files = tuple(
+        (path, match) for path, match in matches
+        if (path.resolve() in rejected_paths)
+        or (not accepted_paths and not rejected_paths and not match.matched)
+    )
+    for path, match in matches:
+        if match.missing_sheets and path.resolve() in accepted_paths:
+            ctx.log(
+                f"汇总提示：{path.name} 缺少工作表“{'、'.join(match.missing_sheets)}”；"
+                "只跳过这些工作表，继续汇总该文件其他可用工作表。"
+            )
     if not matched_files:
         names = "、".join(path.name for path, _ in skipped_files)
         raise ValueError(
-            f"表结构比对后没有可汇总文件，已跳过 {len(skipped_files)} 个文件：{names}"
+            f"没有可读取且可汇总的源文件，已跳过 {len(skipped_files)} 个文件：{names}"
         )
     # 汇总区域由代码内置的命名区域协议决定；不再由用户编辑 DAG 区域组。
     from ...node_flow_config import load_dag_feature_mappings as _load_mappings

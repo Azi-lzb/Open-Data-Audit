@@ -1,0 +1,56 @@
+时间：2026-10-20 19:50（Asia/Shanghai）
+执行者：Codex 主 Agent；未委派子 Agent。
+修改前 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca
+修改后 commit：cfebde7162fda8d885c2cbbdf95af31ceb824eca（未提交）
+分支：desktop；origin 为 Open-Data-Audit 公开代码仓库。
+
+【WIP 保护】
+修改前检查了 Git 状态、远端、分支和既有未提交文件。保留前序 S1/S2、时序数据兼容、机构身份配对及 banks 提醒等全部 WIP，只做本轮增量修改。相关修改前快照位于系统临时目录 codex_s2_report_item_kt1fo4ye，未加入项目。
+没有 commit、push、merge、rebase、PR、构建或安装操作。
+
+【修改目的】
+用户要求在“外部核对规则”结果的“社会信用代码”右边增加“报表项目”，显示机构映射到的报表项目，方便核对取数来源。
+
+【修改文件】
+1. core/src/base_audit/systems/s2_report_collection/models.py
+2. core/src/base_audit/systems/s2_report_collection/external_engine.py
+3. core/src/base_audit/systems/s2_report_collection/exporter.py
+4. core/src/base_audit/config_guide.py
+5. core/tests/test_period_v2.py
+6. core/tests/test_s2_units.py
+7. core/tests/test_version_manifest.py
+8. core/tests/TEST_GROUPS.md
+9. 版本管理/VERSION_MANIFEST.json
+10. 版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md
+新增本记录；删除文件：无。
+
+【逻辑及输出变化】
+AuditFinding 末尾增加默认空字符串 report_item 字段，保留原有位置参数构造兼容性。外部核对引擎将本次 row_label 写入该字段，导出层不二次查映射、不从其他文字猜测。
+结果“外部核对规则”F列新增“报表项目”，E列仍为社会信用代码，原F列“表单”及其后续列依次右移，总列数15→16。环比规则和校验规则输出列不变。
+项目取值延续现有顺序：外部文件按信用代码的机构参照映射优先；没有外部映射时回退 CF2 机构参照的报表项目。已选中项目但日期/机构数据行/指标缺数时仍展示选中的项目，原缺数提示继续说明未能取到数值；完全没有机构映射时该列为空。
+机构标签列缺失而按0比较时，已有映射项目仍显示，没有映射则留空，并继续保留明确的按0兜底说明；不会虚构项目。
+新列自动换行；以等号开头的项目标签强制按文本保留，避免变成公式。比较计算、容差、单位换算和审核结论均未改动。
+使用说明源码补充项目展示和缺数语义；没有写入现有配置工作簿。
+
+【组件版本】
+系统：S2 报表采集系统。
+影响功能：S2-F01 执行报表规则 v9.3.1 → v10.0.0。
+影响配置：S2-CFG-01 v8.3.0、S2-CFG-02 v1.0.0 均未变。
+未修改组件：S1/S3 功能、配置版本与产品整包版本。
+升级原因：Feature / Breaking / MAJOR。结果中间插入列改变固定列坐标，按 rules/11 的输出契约规则升 MAJOR；配置结构和输入协议未变，无需迁移配置。
+
+【验证】
+1. 修改前定向基线：python -m pytest -q core/tests/test_period_v2.py core/tests/test_s2_units.py -k 'external or export' —— 61 passed、71 deselected。
+2. 修改后定向：python -m pytest -q core/tests/test_period_v2.py core/tests/test_s2_units.py core/tests/test_version_manifest.py core/tests/test_config_guide.py -k 'external or export or manifest or guide' —— 85 passed / 0 skipped / 0 failed / 0 errors，71 deselected。
+3. 最终 S2 回归：python -m pytest -q -rs -m s2 core/tests —— 402 passed / 6 skipped / 2 failed / 0 errors，628 deselected。失败仍为下述两项既有配置差异；6项因缺少Flask跳过，没有新增功能失败。
+4. 新增7项参数化测试覆盖：正常取数、真实0、已映射缺指标值、无机构映射、无映射的标签列缺失按0兜底、已映射的标签列缺失按0兜底、等号开头的文本项目。验证新列位置、相邻列数据、不写成公式、换行、冻结及筛选范围、其他两张表不加列。
+5. 增强既有测试：外部映射优先/CF2回退各自报告实际项目；普通和时序服务端到端输出新增列；时序缺日期/缺数仍保留选定项目；隐藏行按正确的审核说明列处理，取消隐藏后数值仍保留。
+6. 普通/时序既有端到端测试继续检查原始输入 SHA-256 不变。Python 编译、按Python 3.8语法解析及 git diff --check 通过。
+
+【配置来源、已知问题及未执行项】
+S2 测试逐文件使用 config-real/2.报表采集系统_配置.xlsx 和 config-real/默认配置/2.报表采集系统_配置.xlsx，只读不修改。没有改写 config/、config-real/ 或原始业务数据。
+前轮已知配置相关失败：校验规则缺少硬性/软性下拉；本机输出单位万元与测试固定要求元不一致。没有为迎合测试改动用户配置。
+未执行：core 全量 pytest、Python 3.8.10 实际运行时、Linux/麒麟/UOS 实机、Office 专属路径、真实报送批次端到端对拍、发行包验证。本轮不打包。
+
+【回滚提示】
+上述文件含前序未提交改动，不能整文件 git checkout/restore。只撤销本记录对应的模型字段、引擎赋值、结果新列、相关定向测试和指引增量，恢复 S2-F01 v9.3.1 并删除本条 CHANGELOG；保留之前的空表身份配对和时序兼容修改。可用本轮临时快照核对差异。

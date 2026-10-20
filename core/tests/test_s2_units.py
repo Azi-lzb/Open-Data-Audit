@@ -19,6 +19,7 @@ from base_audit.systems.s2_report_collection.models import (
     ExternalCheckRule,
     IndicatorConfig,
     IndicatorRecord,
+    InstitutionProfile,
     PeriodBandConfig,
     ReportAuditConfig,
     RuleConfig,
@@ -69,16 +70,16 @@ def _make_config(path: Path, *, source: str = "元", external: str = "元", outp
     strategies = book.create_sheet("环比策略")
     strategies.append(["策略组", "规则编号", "数据属性", "下限", "上限", "审核级别", "分类说明", "禁用"])
     for group, data_type in (("BAL01", "余额"), ("ACC01", "累发"), ("PCT01", "百分数"), ("CNT01", "个数")):
-        strategies.append([group, "B001", data_type, None, 0, "提示", "下降", "否"])
+        strategies.append([group, "B001", data_type, None, 0, "软性", "下降", "否"])
         strategies.append([group, "B002", data_type, 0, 30, "", "", "否"])
-        strategies.append([group, "B003", data_type, 30, None, "关注", "增长", "否"])
+        strategies.append([group, "B003", data_type, 30, None, "软性", "增长", "否"])
 
     rules = book.create_sheet("校验规则")
     rules.append(["规则编号", "类型", "描述", "规则内容", "Thd值(万元)", "取反", "级别", "禁用", "备注"])
 
     external_rules = book.create_sheet("外部核对规则")
     external_rules.append(["规则编号", "指标代码", "比较方式", "外部指标名称", "容差", "级别", "启用"])
-    external_rules.append(["D001", "20202001", "等于", "存款余额", 0, "严重", "是"])
+    external_rules.append(["D001", "20202001", "等于", "存款余额", 0, "硬性", "是"])
     _write_general_settings(book, source=source, external=external, output=output)
     book.save(path)
     book.close()
@@ -109,7 +110,12 @@ def test_shipped_s2_configs_keep_global_unit_settings_in_main_workbook() -> None
             assert set(configured) == {"源数据单位", "外部文件单位", "输出文件单位"}
             assert set(configured.values()) <= {"元", "万元", "亿元"}
             assert configured["源数据单位"] == "元"
-            assert configured["输出文件单位"] == "元"
+            # 输出单位由配置维护；上方已核对合法值及加载一致性，不限定为“元”。
+            # 三项默认级别随配置工作簿维护；正式配置应写明“硬性”。
+            loaded_config = load_config(path)
+            assert loaded_config.text_change_severity == "硬性"
+            assert loaded_config.current_missing_severity == "硬性"
+            assert loaded_config.previous_missing_severity == "硬性"
         finally:
             general.close()
 
@@ -140,10 +146,12 @@ def test_default_config_writer_embeds_unit_settings_in_same_workbook(tmp_path: P
         assert [general.cell(row=1, column=column).value for column in range(1, 4)] == [
             "设置项", "设置值", "说明",
         ]
-        assert [general.cell(row=row, column=1).value for row in range(2, 8)] == [
+        assert [general.cell(row=row, column=1).value for row in range(2, 11)] == [
             "源数据单位", "外部文件单位", "输出文件单位", "换算范围",
             "是否隐藏无变动指标", "是否隐藏与大集中一致指标",
+            "文字变动默认级别", "本期缺失默认级别", "上期缺失默认级别",
         ]
+        assert [general.cell(row=row, column=2).value for row in range(8, 11)] == ["硬性", "硬性", "硬性"]
         assert all(cell.fill.fill_type == "solid" and cell.fill.fgColor.rgb.endswith("1F4E78") for cell in general[1])
         assert all(cell.font.bold and cell.font.color.rgb.endswith("FFFFFF") for cell in general[1])
         body_cells = [cell for row in general.iter_rows(min_row=2) for cell in row if cell.value not in (None, "")]
@@ -152,6 +160,7 @@ def test_default_config_writer_embeds_unit_settings_in_same_workbook(tmp_path: P
         assert [(item.type, item.formula1, str(item.sqref)) for item in validations] == [
             ("list", '"元,万元,亿元"', "B2:B4"),
             ("list", '"是,否"', "B6:B7"),
+            ("list", '"硬性,软性"', "B8:B10"),
         ]
     finally:
         book.close()
@@ -250,6 +259,45 @@ def test_report_config_visibility_defaults_are_false() -> None:
     assert config.hide_matching_external_rows is False
 
 
+def test_report_config_severity_defaults_are_hard() -> None:
+    config = ReportAuditConfig()
+
+    assert config.text_change_severity == "硬性"
+    assert config.current_missing_severity == "硬性"
+    assert config.previous_missing_severity == "硬性"
+
+
+@pytest.mark.parametrize(
+    ("setting", "field"),
+    [
+        ("文字变动默认级别", "text_change_severity"),
+        ("本期缺失默认级别", "current_missing_severity"),
+        ("上期缺失默认级别", "previous_missing_severity"),
+    ],
+)
+def test_severity_default_settings_are_optional_enums(tmp_path: Path, setting: str, field: str) -> None:
+    path = tmp_path / "s2-general.xlsx"
+    _make_config(path)
+    # 旧配置不写该行：缺省按硬性执行，不阻断。
+    assert getattr(load_config(path), field) == "硬性"
+
+    book = load_workbook(path)
+    book["通用设置"].append([setting, "软性", ""])
+    book.save(path)
+    book.close()
+    assert getattr(load_config(path), field) == "软性"
+
+    book = load_workbook(path)
+    book["通用设置"]["B8"] = "提示"
+    book.save(path)
+    book.close()
+    with pytest.raises(ValueError, match=f"{setting}.*必须为硬性或软性"):
+        load_config(path)
+    report = check_s2_config(path)
+    assert not report["passed"]
+    assert any(setting in issue["message"] and "必须为硬性或软性" in issue["message"] for issue in report["issues"])
+
+
 @pytest.mark.parametrize(
     ("cell", "setting", "bad_value"),
     [
@@ -275,11 +323,14 @@ def test_runtime_and_checker_reject_non_yes_no_visibility_values(
 
 
 @pytest.mark.parametrize(
-    ("setting", "cell"),
-    [("是否隐藏无变动指标", "B6"), ("是否隐藏与大集中一致指标", "B7")],
+    ("setting", "cell", "default_text"),
+    [
+        ("是否隐藏无变动指标", "B6", "否"),
+        ("是否隐藏与大集中一致指标", "B7", "否"),
+    ],
 )
-def test_runtime_blocks_missing_general_setting(
-    tmp_path: Path, setting: str, cell: str,
+def test_runtime_uses_default_when_general_setting_row_is_missing(
+    tmp_path: Path, setting: str, cell: str, default_text: str,
 ) -> None:
     path = tmp_path / "s2-general.xlsx"
     _make_config(path)
@@ -289,11 +340,43 @@ def test_runtime_blocks_missing_general_setting(
     book.save(path)
     book.close()
 
-    with pytest.raises(ValueError, match=f"缺少设置项：.*{setting}"):
-        load_config(path)
+    config = load_config(path)
+    assert not config.hide_unchanged_period_rows
+    assert not config.hide_matching_external_rows
+    assert any(
+        setting in warning and f"已按默认“{default_text}”执行" in warning
+        for warning in config.warnings
+    )
     report = check_s2_config(path)
-    assert not report["passed"]
-    assert any(setting in issue["message"] and "缺少设置项" in issue["message"] for issue in report["issues"])
+    assert report["passed"]
+    assert any(
+        issue["level"] == "warning" and setting in issue["message"] and "已按默认" in issue["message"]
+        for issue in report["issues"]
+    )
+
+
+def test_general_settings_allows_empty_sheet_and_runs_on_defaults(tmp_path: Path) -> None:
+    """设置行全部丢失时按默认执行：单位=元、隐藏=否、级别=硬性；逐项提示补齐。"""
+    path = tmp_path / "s2-general.xlsx"
+    _make_config(path)
+    book = load_workbook(path)
+    general = book["通用设置"]
+    for row in range(general.max_row, 1, -1):
+        general.delete_rows(row)
+    book.save(path)
+    book.close()
+
+    config = load_config(path)
+    assert config.unit_settings == UnitSettings("元", "元", "元")
+    assert config.hide_unchanged_period_rows is False
+    assert config.hide_matching_external_rows is False
+    assert config.text_change_severity == "硬性"
+    assert config.current_missing_severity == "硬性"
+    assert config.previous_missing_severity == "硬性"
+    # 换算范围是纯说明行，缺行不提示；其余 8 个取值设置项各提示一条。
+    assert len(config.warnings) == 8
+    assert all("已按默认" in warning for warning in config.warnings)
+    assert not any("换算范围" in warning for warning in config.warnings)
 
 
 def test_runtime_blocks_duplicate_general_setting(tmp_path: Path) -> None:
@@ -389,7 +472,7 @@ def test_external_values_convert_to_output_unit_and_compare_there() -> None:
     config = ReportAuditConfig(
         unit_settings=UnitSettings("元", "亿元", "万元"),
         indicators={"20202001": IndicatorConfig("20202001", data_type="余额")},
-        external_rules=[ExternalCheckRule("D001", "20202001", "大集中", "存款余额", "等于", 0.000001, "严重")],
+        external_rules=[ExternalCheckRule("D001", "20202001", "大集中", "存款余额", "等于", 0.000001, "硬性")],
     )
     external = {("row-a", "存款余额"): ExternalValue("row-a", "存款余额", Decimal("0.0001234567"), record.source)}
     findings = ExternalComparisonEngine().run(
@@ -399,6 +482,58 @@ def test_external_values_convert_to_output_unit_and_compare_there() -> None:
     assert findings[0].external_value == Decimal("1.234567")
     assert findings[0].difference_value == Decimal("0.000000")
     assert findings[0].status == "正常"
+    assert findings[0].calculation_trace == "差异绝对值= abs(1.23 - 1.23) = 0.00 万元"
+
+
+def test_external_mapping_precedes_cf2_and_cf2_is_used_as_fallback() -> None:
+    record = _record("20202001", Decimal("10"))
+    config = ReportAuditConfig(
+        institutions_by_id={
+            "9144": InstitutionProfile("9144", "甲银行", "9144", report_item="配置项目"),
+        },
+        indicators={"20202001": IndicatorConfig("20202001", data_type="余额")},
+        external_rules=[ExternalCheckRule("D001", "20202001", "大集中", "存款余额", "等于", 0, "硬性")],
+    )
+    external = {
+        ("外部项目", "存款余额"): ExternalValue("外部项目", "存款余额", Decimal("10"), record.source),
+        ("配置项目", "存款余额"): ExternalValue("配置项目", "存款余额", Decimal("30"), record.source),
+    }
+
+    from_external = ExternalComparisonEngine().run(
+        {record.logical_key: record}, external, {"9144": "外部项目"}, config,
+    )[0]
+    from_config = ExternalComparisonEngine().run(
+        {record.logical_key: record}, external, {}, config,
+    )[0]
+
+    assert from_external.external_value == Decimal("10")
+    assert from_external.report_item == "外部项目"
+    assert from_external.status == "正常"
+    assert from_config.external_value == Decimal("30")
+    assert from_config.report_item == "配置项目"
+    assert from_config.status == "异常"
+
+
+def test_external_calculation_trace_formats_absolute_difference_to_two_decimals() -> None:
+    record = _record("20202001", Decimal("5145253.70000"))
+    config = ReportAuditConfig(
+        unit_settings=UnitSettings("元", "万元", "万元"),
+        indicators={"20202001": IndicatorConfig("20202001", data_type="余额")},
+        external_rules=[ExternalCheckRule("D001", "20202001", "大集中", "存款余额", "等于", 0, "硬性")],
+    )
+    external = {
+        ("row-a", "存款余额"): ExternalValue("row-a", "存款余额", Decimal("5124804.24"), record.source),
+    }
+
+    finding = ExternalComparisonEngine().run(
+        {record.logical_key: record}, external, {"9144": "row-a"}, config,
+    )[0]
+
+    assert finding.calculation_trace == (
+        "差异绝对值= abs(5145253.70 - 5124804.24) = 20449.46 万元"
+    )
+    assert finding.difference_value == Decimal("20449.46000")
+    assert finding.status == "异常"
 
 
 @pytest.mark.parametrize(
@@ -427,7 +562,7 @@ def test_external_comparison_methods_use_report_value_as_left_operand_and_test_b
     config = ReportAuditConfig(
         indicators={"20202001": IndicatorConfig("20202001", data_type="余额")},
         external_rules=[ExternalCheckRule(
-            "D001", "20202001", "大集中", "存款余额", method, tolerance, "严重",
+            "D001", "20202001", "大集中", "存款余额", method, tolerance, "硬性",
         )],
     )
     external = {
@@ -441,23 +576,28 @@ def test_external_comparison_methods_use_report_value_as_left_operand_and_test_b
     assert finding.current_value == report_value
     assert finding.external_value == external_value
     assert finding.status == expected_status
+    assert finding.calculation_trace == (
+        f"差异绝对值= abs({report_value:.2f} - {external_value:.2f}) = "
+        f"{abs(report_value - external_value):.2f} 元"
+    )
+    assert "成立" not in finding.calculation_trace
+    assert "不成立" not in finding.calculation_trace
+    assert "容差" not in finding.calculation_trace
     if method == "等于":
         assert finding.description == (
             "与大集中系统数据一致" if expected_status == "正常" else "与大集中系统数据不一致"
         )
-        assert "容差" in finding.calculation_trace
     else:
         assert finding.description == (
             "满足外部核对规则" if expected_status == "正常" else "不满足外部核对规则"
         )
-        assert "容差" not in finding.calculation_trace
 
 
 def test_external_missing_value_is_not_treated_as_real_zero() -> None:
     record = _record("20202001", Decimal("0"))
     config = ReportAuditConfig(
         indicators={"20202001": IndicatorConfig("20202001", data_type="余额")},
-        external_rules=[ExternalCheckRule("D001", "20202001", "大集中", "存款余额", "等于", 0, "严重")],
+        external_rules=[ExternalCheckRule("D001", "20202001", "大集中", "存款余额", "等于", 0, "硬性")],
     )
 
     zero = ExternalValue("row-a", "存款余额", Decimal("0"), record.source)
@@ -470,11 +610,45 @@ def test_external_missing_value_is_not_treated_as_real_zero() -> None:
 
     assert zero_finding.status == "正常"
     assert zero_finding.external_value == Decimal("0")
+    assert zero_finding.report_item == "row-a"
     assert zero_finding.difference_value == Decimal("0")
     assert missing_finding.status == "异常"
     assert missing_finding.external_value is None
+    assert missing_finding.report_item == "row-a"
     assert missing_finding.retrieval_note == "外部未匹配"
-    assert "未找到大集中系统数据" in missing_finding.description
+    assert missing_finding.description == "大集中系统数据未找到该报表项目，请先完善大集中数据的报表定义"
+    assert missing_finding.rule_description == missing_finding.description
+    assert missing_finding.calculation_trace == "未比较：报表项目“row-a”、指标“存款余额”无可读取数值"
+
+
+def test_external_uses_explicit_zero_fallback_when_institution_label_is_missing() -> None:
+    from base_audit.systems.s2_report_collection.importer import (
+        MISSING_INSTITUTION_LABEL_FALLBACK_KEY,
+        MISSING_INSTITUTION_LABEL_FALLBACK_REASON,
+    )
+
+    record = _record("20202001", Decimal("5"))
+    config = ReportAuditConfig(
+        indicators={"20202001": IndicatorConfig("20202001", data_type="余额")},
+        external_rules=[ExternalCheckRule("D001", "20202001", "大集中", "存款余额", "等于", 0, "硬性")],
+    )
+    zero_fallback = ExternalValue(
+        "", "", Decimal("0"), record.source, MISSING_INSTITUTION_LABEL_FALLBACK_REASON,
+    )
+
+    finding = ExternalComparisonEngine().run(
+        {record.logical_key: record},
+        {MISSING_INSTITUTION_LABEL_FALLBACK_KEY: zero_fallback},
+        {},
+        config,
+    )[0]
+
+    assert finding.external_value == Decimal("0")
+    assert finding.report_item == ""
+    assert finding.difference_value == Decimal("5")
+    assert finding.status == "异常"
+    assert MISSING_INSTITUTION_LABEL_FALLBACK_REASON in finding.description
+    assert "差异绝对值= abs(5.00 - 0.00) = 5.00 元" == finding.calculation_trace
 
 
 @pytest.mark.parametrize(
@@ -492,7 +666,7 @@ def test_non_amount_external_values_and_tolerance_keep_native_scale(
         unit_settings=UnitSettings("元", "亿元", "万元"),
         indicators={indicator_code: IndicatorConfig(indicator_code, data_type=data_type)},
         external_rules=[ExternalCheckRule(
-            "D001", indicator_code, "大集中", "指标", "等于", tolerance, "严重",
+            "D001", indicator_code, "大集中", "指标", "等于", tolerance, "硬性",
         )],
     )
     external = ExternalValue("row-a", "指标", Decimal(external_value), record.source)
@@ -524,7 +698,7 @@ def test_amount_comparison_converts_both_sides_to_output_unit_and_keeps_toleranc
         unit_settings=UnitSettings("元", "亿元", "万元"),
         indicators={"20202001": IndicatorConfig("20202001", data_type="余额")},
         external_rules=[ExternalCheckRule(
-            "D001", "20202001", "大集中", "存款余额", "等于", 0.0001, "严重",
+            "D001", "20202001", "大集中", "存款余额", "等于", 0.0001, "硬性",
         )],
     )
     external = ExternalValue("row-a", "存款余额", Decimal(external_value), source)
@@ -550,9 +724,9 @@ def test_period_comparison_runs_after_source_values_are_normalized(tmp_path: Pat
             ),
         },
         bands=[
-            PeriodBandConfig("B001", None, 0, "下降", "提示", False, "BAL01", "余额"),
-            PeriodBandConfig("B002", 0, 30, "增长", "提示", False, "BAL01", "余额"),
-            PeriodBandConfig("B003", 30, None, "大幅增长", "关注", False, "BAL01", "余额"),
+            PeriodBandConfig("B001", None, 0, "下降", "软性", False, "BAL01", "余额"),
+            PeriodBandConfig("B002", 0, 30, "增长", "软性", False, "BAL01", "余额"),
+            PeriodBandConfig("B003", 30, None, "大幅增长", "软性", False, "BAL01", "余额"),
         ],
     )
     current, previous = tmp_path / "current", tmp_path / "previous"
@@ -584,7 +758,7 @@ def test_rule_threshold_is_converted_to_output_unit_before_evaluation() -> None:
     config = ReportAuditConfig(
         unit_settings=UnitSettings("元", "亿元", "亿元"),
         indicators={"20202001": IndicatorConfig("20202001", data_type="余额")},
-        rules=[RuleConfig("R001", "表达式", "阈值检查", "[20202001] > Thd", "提示", 1)],
+        rules=[RuleConfig("R001", "表达式", "阈值检查", "[20202001] > Thd", "软性", 1)],
     )
     findings, _quality = RuleEngine().run({record.logical_key: record}, {}, config)
     assert findings == []  # Thd=1万元 → 0.0001亿元；本期 0.00005亿元不超过阈值。
@@ -595,7 +769,7 @@ def test_rule_expression_preserves_decimal_digits_beyond_excel_float_precision()
     config = ReportAuditConfig(
         unit_settings=UnitSettings("元", "元", "元"),
         indicators={"20202001": IndicatorConfig("20202001", data_type="余额")},
-        rules=[RuleConfig("R002", "表达式", "精度检查", "[20202001] > 1234567890123456.6", "严重")],
+        rules=[RuleConfig("R002", "表达式", "精度检查", "[20202001] > 1234567890123456.6", "硬性")],
     )
 
     findings, quality = RuleEngine().run({record.logical_key: record}, {}, config)

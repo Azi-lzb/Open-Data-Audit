@@ -1,0 +1,35 @@
+【修改时间】2026-10-19 22:05（Asia/Shanghai）
+
+【需求】
+S2-F01 的“校验规则”“环比策略”“外部核对规则”只保留“硬性/软性”，并统一结果输出。
+
+【修改内容】
+- 输出级别统一为硬性、软性；旧值“严重/错误”映射为硬性，“提示/关注/核实”映射为软性。
+- 更新校验规则、环比结果、外部核对结果、导入/配置质量发现的级别生成及导出校验；正常或未命中的记录仍保持级别空白。
+- 级别仅用于结果分类和筛选，不改变规则是否执行、审核状态或流程阻断。
+- 三张配置规则表增加“硬性/软性”下拉与筛选区域；默认配置生成器及公开工作簿说明同步更新。
+- 本机正式配置与本机默认配置快照中的旧级别值已按映射转换。配置检查仍只读；遇到其他旧配置时提示建议映射，不自动回写。
+- 其他业务字段和配置行内容保持不变；新增旧级别映射、只读提醒、下拉、筛选和输出契约测试。
+
+【影响文件】
+- S2-F01：`core/src/base_audit/systems/s2_report_collection/` 中的模型、配置读取、配置检查、环比/规则/质量引擎及导出模块。
+- S2 配置说明：`core/src/base_audit/config_guide.py`。
+- 配置模板：`config/2.报表采集系统_配置.xlsx`、`config/默认配置/2.报表采集系统_配置.xlsx`；本机忽略目录中的正式及默认配置同步更新。
+- 测试：`core/tests/test_period_v2.py`、`core/tests/test_s2_units.py`、`core/tests/test_s2_config_check.py`。
+- 版本：S2-F01 与 S2-CFG-01 的 CHANGELOG、`版本管理/VERSION_MANIFEST.json` 及版本守护测试。
+
+【组件版本】
+系统：S2 报表采集系统
+影响功能：S2-F01 执行报表规则 v7.2.0 → v8.0.0
+影响配置：S2-CFG-01 报表采集系统配置 v8.2.1 → v8.3.0
+未修改的相关组件：S1-*、S2-CFG-02、S3-*
+版本升级原因：Breaking——审核结果中级别枚举由三档调整为两档；旧配置输入仍兼容读取。
+
+【验证】
+- S2 回归命令：`python -m pytest core/tests/test_period_v2.py core/tests/test_s2_units.py core/tests/test_s2_config_check.py core/tests/test_period_compare.py core/tests/test_percentage_indicators.py core/tests/test_percentage_point_compare.py core/tests/test_config_guide.py core/tests/test_version_manifest.py -q`；155 passed。
+- 公开模板、默认配置、本机正式配置、本机默认配置均重新打开验证；级别列只含空白或硬性/软性，三个级别字段均有下拉与筛选范围。
+- 旧级别兼容映射与配置检查只读提醒测试通过；原配置数据字段/样式/批注对照检查通过。
+- 公开配置工作簿隐私检查通过。`tools/check_public_snapshot.py` 只检查已暂存文件；本轮未暂存，故未运行其暂存态入口。
+- `git diff --check` 通过。真实报表业务端到端重跑未执行；本轮未打包、未提交。
+
+Git提交：未提交。

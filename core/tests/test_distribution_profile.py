@@ -215,6 +215,312 @@ console.log('profile behavior passed');
 
 
 @pytest.mark.skipif(NODE is None, reason="未安装 Node.js，无法执行前端行为检查")
+def test_period_pair_targets_show_credit_codes_without_org_name_mapping() -> None:
+    html = FRONTEND.read_text(encoding="utf-8")
+    render = "function pairListFilters" + html.split("function pairListFilters", 1)[1].split("function openPcPath", 1)[0]
+    program = r"""
+const assert=require('node:assert/strict');
+const box={style:{},innerHTML:''};
+const document={getElementById:id=>id==='pairList'?box:null};
+const esc=value=>String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const shortPairBook=value=>value;
+""" + render + r"""
+renderPairList([
+  {orgName:'示例银行',org:'001122334455667788',socialCreditCode:'001122334455667788',form:'20201',side:'both',curName:'current.xlsx',preName:'previous.xlsx'},
+  {org:'9144BB',socialCreditCode:'9144BB',form:'20202',side:'pre',preName:'banks#20260331#01#20202.xlsx'},
+  {orgName:'非标准机构文件',org:'非标准机构文件',form:'20201',side:'cur',curName:'ordinary.xlsx'},
+  {orgName:'测试名称',org:'code',socialCreditCode:'"><svg onload=1>',form:'20201',side:'cur',curName:'safe.xlsx'}
+]);
+const codes=[...box.innerHTML.matchAll(/class="pair-target-code"[^>]*>(.*?)<\/span>/g)].map(match=>match[1]);
+assert.deepEqual(codes,[
+  '信用代码：001122334455667788','信用代码：9144BB','信用代码：未识别','信用代码：&quot;&gt;&lt;svg onload=1&gt;'
+]);
+assert.ok(box.innerHTML.includes('统一社会信用代码：001122334455667788'));
+assert.ok(box.innerHTML.includes('示例银行'));
+assert.ok(box.innerHTML.includes('1 对齐全，3 项单边'));
+assert.ok(box.innerHTML.includes('20202'));
+assert.equal(box.innerHTML.includes('<svg onload=1>'),false);
+renderPairList([]);
+assert.equal(box.style.display,'none');
+"""
+    result = subprocess.run([NODE, "-e", program], capture_output=True, text=True, encoding="utf-8")
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(NODE is None, reason="未安装 Node.js，无法执行前端行为检查")
+def test_period_pair_filters_combine_clear_and_preserve_full_audit_scope() -> None:
+    html = FRONTEND.read_text(encoding="utf-8")
+    render = "function pairListFilters" + html.split("function pairListFilters", 1)[1].split("function openPcPath", 1)[0]
+    confirm = "function runPeriodAudit" + html.split("function runPeriodAudit", 1)[1].split("async function doCreatePeriodCompare", 1)[0]
+    program = r"""
+const assert=require('node:assert/strict');
+const elements={
+  pairList:{innerHTML:'',style:{}},
+  pairFilters:{hidden:true},
+  pairFilterToggle:{textContent:'筛选',attributes:{},setAttribute(key,value){this.attributes[key]=value;}},
+  pairOrgFilter:{value:''},pairCreditFilter:{value:''},
+  pairFormFilter:{value:''},pairSideFilter:{value:''}
+};
+let optionWrites=0,optionHtml='';
+Object.defineProperty(elements.pairFormFilter,'innerHTML',{
+  get:()=>optionHtml,set:value=>{optionWrites++;optionHtml=value;}
+});
+let listWrites=0,listHtml='';
+elements.pairList.scrollTop=23;
+Object.defineProperty(elements.pairList,'innerHTML',{
+  get:()=>listHtml,set:value=>{listWrites++;listHtml=value;elements.pairList.scrollTop=0;}
+});
+const document={getElementById:id=>elements[id]||null};
+const esc=value=>String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const shortPairBook=value=>value;
+const state={pcCurDir:'current',pcPreDir:'previous',periodPairs:[
+  {orgName:'甲银行',socialCreditCode:'0011AA',form:'20201',side:'both',curName:'a.xlsx',preName:'b.xlsx'},
+  {orgName:'甲银行',socialCreditCode:'0011AA',form:'20202',side:'pre',preName:'b.xlsx'},
+  {orgName:'乙银行',socialCreditCode:'0022BB',form:'20201',side:'cur',curName:'c.xlsx'},
+  {orgName:'Gamma Bank',socialCreditCode:'0033CC',form:'20203',side:'both',curName:'d.xlsx',preName:'e.xlsx'},
+  {orgName:'无代码机构',org:'无代码机构',form:'20201',side:'cur',curName:'f.xlsx'}
+]};
+const before=JSON.stringify(state);
+let confirmation='';
+const showRunConfirm=(label,run,summary)=>{confirmation=summary;};
+const doCreatePeriodAudit=()=>{};
+const alert=message=>{throw new Error(message);};
+const names=()=>[...elements.pairList.innerHTML.matchAll(/class="pair-target-org">(.*?)<\/span>/g)].map(match=>match[1]);
+""" + render + confirm + r"""
+renderPairList(state.periodPairs);
+assert.equal(names().length,5);
+assert.ok(elements.pairList.innerHTML.includes('class="pair-row pair-header"'));
+assert.equal(elements.pairList.scrollTop,23,'重建列表后保留滚动位置');
+const initialListWrites=listWrites;
+renderPairList(state.periodPairs);
+assert.equal(listWrites,initialListWrites,'相同配对数据和筛选条件复用现有DOM');
+assert.equal(elements.pairList.scrollTop,23);
+assert.ok(optionHtml.includes('value="20201"'));
+assert.ok(optionHtml.indexOf('value="20201"')<optionHtml.indexOf('value="20202"'));
+togglePairFilters();
+assert.equal(elements.pairFilters.hidden,false);
+assert.equal(elements.pairFilterToggle.attributes['aria-expanded'],'true');
+elements.pairOrgFilter.value=' 甲 ';
+refreshPairFilters();
+assert.deepEqual(names(),['甲银行','甲银行']);
+elements.pairCreditFilter.value=' aa ';
+elements.pairFormFilter.value='20202';
+refreshPairFilters();
+assert.deepEqual(names(),['甲银行']);
+assert.ok(elements.pairList.innerHTML.includes('筛选 1/5 项，0 对齐全，1 项单边'));
+assert.equal(elements.pairFilterToggle.textContent,'筛选（3）');
+elements.pairSideFilter.value='pre';
+refreshPairFilters();
+assert.deepEqual(names(),['甲银行']);
+assert.equal(elements.pairFilterToggle.textContent,'筛选（4）');
+runPeriodAudit();
+assert.ok(confirmation.includes('对比对象：5 项'));
+const writes=optionWrites;
+renderPairList(state.periodPairs);
+assert.equal(elements.pairOrgFilter.value,' 甲 ');
+assert.equal(elements.pairCreditFilter.value,' aa ');
+assert.equal(elements.pairFormFilter.value,'20202');
+assert.equal(elements.pairSideFilter.value,'pre');
+assert.equal(optionWrites,writes);
+togglePairFilters();
+assert.equal(elements.pairFilters.hidden,true);
+assert.equal(elements.pairFilterToggle.attributes['aria-expanded'],'false');
+assert.deepEqual(names(),['甲银行']);
+elements.pairCreditFilter.value='BB';
+refreshPairFilters();
+assert.equal(names().length,0);
+assert.ok(elements.pairList.innerHTML.includes('没有符合筛选条件的对比对象'));
+assert.ok(elements.pairList.innerHTML.includes('筛选 0/5 项'));
+resetPairFilters();
+assert.equal(elements.pairOrgFilter.value,'');
+assert.equal(elements.pairCreditFilter.value,'');
+assert.equal(elements.pairFormFilter.value,'');
+assert.equal(elements.pairSideFilter.value,'');
+assert.equal(names().length,5);
+assert.equal(elements.pairFilterToggle.textContent,'筛选');
+elements.pairCreditFilter.value='无代码机构';
+refreshPairFilters();
+assert.equal(names().length,0,'机构名称不可充作信用代码进行筛选');
+resetPairFilters();
+elements.pairFormFilter.value='20201';
+refreshPairFilters();
+assert.deepEqual(names(),['甲银行','乙银行','无代码机构']);
+resetPairFilters();
+elements.pairOrgFilter.value='gAMMA';
+refreshPairFilters();
+assert.deepEqual(names(),['Gamma Bank']);
+resetPairFilters();
+assert.equal(JSON.stringify(state),before,'筛选和清空不得修改正式审核数据或范围');
+elements.pairFormFilter.value='20203';
+renderPairList([state.periodPairs[0]]);
+assert.equal(elements.pairFormFilter.value,'','目录表单集合变化时清除失效选项');
+assert.equal(names().length,1);
+renderPairList([{orgName:'测试',socialCreditCode:'0011',form:'"><svg onload=1>',side:'cur',curName:'safe.xlsx'}]);
+assert.equal(optionHtml.includes('<svg'),false);
+assert.equal(elements.pairList.innerHTML.includes('<svg'),false);
+renderPairList([]);
+assert.equal(elements.pairList.style.display,'none');
+assert.equal(elements.pairList.innerHTML,'');
+assert.equal(optionHtml,'<option value="">全部表单</option>');
+"""
+    result = subprocess.run([NODE, "-e", program], capture_output=True, text=True, encoding="utf-8")
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(NODE is None, reason="未安装 Node.js，无法执行前端行为检查")
+def test_s2_phase_progress_reflects_actual_state_and_hides_stale_values() -> None:
+    html = FRONTEND.read_text(encoding="utf-8")
+    assert 'id="periodProgress"' not in html
+    assert '.period-progress' not in html
+    assert 'id="progressDetail"' in html
+    progress_ui = "function periodElapsedLabel" + html.split("function periodElapsedLabel", 1)[1].split("function openPeriodResult", 1)[0]
+    progress_bar = "function countNew" + html.split("function countNew", 1)[1].split("const ICON", 1)[0]
+    program = r"""
+const assert=require('node:assert/strict');
+const elements={
+  progressDetail:{hidden:true,textContent:'',title:''},
+  progress:{hidden:true},progressFill:{style:{},className:''},progressPct:{textContent:''}
+};
+const document={getElementById:id=>elements[id]||null};
+const PROGRESS={decay:.80,holdMs:1400,maxPct:99.5};
+let run=null,runTimer=null,prevLogTail='';
+let timerSequence=0;
+const timers=new Map(),clearedTimers=[];
+const setTimeout=(callback,delay)=>{const id=++timerSequence;timers.set(id,{callback,delay});return id;};
+const clearTimeout=id=>{if(id!=null){clearedTimers.push(id);timers.delete(id);}};
+function fireProgressTimer(id){const timer=timers.get(id);assert.ok(timer,'expected a pending hold timer');timers.delete(id);timer.callback();}
+""" + progress_ui + progress_bar + r"""
+renderProgressDetail(null);
+assert.equal(elements.progressDetail.hidden,true);
+applyProgress({busy:true,periodProgress:{status:'running',label:'读取本期报表',current:4,total:10,percent:37.6,message:'C:\\reports\\甲.xls',elapsedSeconds:8},log:[{text:'S2 event'}]});
+assert.equal(elements.progressFill.style.width,'38%','底部进度使用后端实际百分比');
+assert.equal(run.period,true);
+assert.equal(elements.progressDetail.textContent,'读取本期报表 · 4 / 10 · 耗时 8 秒');
+assert.equal(elements.progressDetail.title,'C:\\reports\\甲.xls');
+assert.equal(elements.progressDetail.hidden,false);
+applyProgress({busy:true,periodProgress:{status:'running',label:'检查配置',current:0,total:0,percent:0,elapsedSeconds:1},log:[{text:'S2 event'}]});
+assert.equal(elements.progressDetail.textContent,'检查配置 · 耗时 1 秒','无计数阶段不显示0/0');
+applyProgress({busy:false,periodProgress:{status:'failed',percent:42.7},log:[{text:'S2 event'}]});
+assert.equal(elements.progressFill.style.width,'43%','底部失败进度保留当前百分比');
+assert.equal(elements.progressFill.className,'progress-fill error');
+const failedTimer=runTimer;
+assert.equal(timers.get(failedTimer).delay,PROGRESS.holdMs,'失败进度按原 hold 时长收起');
+applyProgress({busy:false,periodProgress:{status:'failed',percent:42.7},log:[{text:'S2 event'}]});
+assert.equal(runTimer,failedTimer,'重复失败轮询不重设 hold 定时器');
+assert.equal(clearedTimers.includes(failedTimer),false);
+applyProgress({busy:true,periodProgress:{status:'failed',percent:42.7},log:[{text:'S2 event'},{text:'Other feature event'}]});
+assert.ok(clearedTimers.includes(failedTimer),'新任务启动时清理失败进度的旧定时器');
+assert.equal(elements.progressFill.style.width,'20%','其他功能运行时按原日志估算通用进度');
+assert.equal(elements.progressFill.className,'progress-fill working');
+assert.equal(elements.progressDetail.hidden,true,'其他功能运行时清除S2阶段详情');
+
+run=null;runTimer=null;prevLogTail='';
+applyProgress({busy:true,periodProgress:{status:'running',percent:51},log:[{text:'Independent S2 failed job'}]});
+applyProgress({busy:false,periodProgress:{status:'failed',percent:42.7},log:[{text:'Independent S2 failed job'}]});
+const failedHideTimer=runTimer;
+assert.equal(elements.progressFill.style.width,'43%');
+fireProgressTimer(failedHideTimer);
+assert.equal(elements.progress.hidden,true,'失败进度在 hold 时长后隐藏');
+assert.equal(elements.progressDetail.hidden,true);
+
+run=null;runTimer=null;prevLogTail='';
+applyProgress({busy:true,periodProgress:{status:'running',percent:68},log:[{text:'Independent S2 completed job'}]});
+applyProgress({busy:false,periodProgress:{status:'completed',percent:68},log:[{text:'Independent S2 completed job'}]});
+assert.equal(elements.progressFill.style.width,'100%');
+assert.equal(elements.progressFill.className,'progress-fill success');
+const completedTimer=runTimer;
+assert.equal(timers.get(completedTimer).delay,PROGRESS.holdMs);
+applyProgress({busy:false,periodProgress:{status:'completed',percent:68},log:[{text:'Independent S2 completed job'}]});
+assert.equal(runTimer,completedTimer,'重复完成轮询不重设 hold 定时器');
+assert.equal(clearedTimers.includes(completedTimer),false);
+fireProgressTimer(completedTimer);
+assert.equal(elements.progress.hidden,true,'完成进度在 hold 时长后隐藏');
+assert.equal(elements.progressDetail.hidden,true);
+
+run=null;runTimer=null;prevLogTail='';
+applyProgress({busy:true,periodProgress:{status:'completed',percent:100},log:[{text:'Other feature event'}]});
+assert.equal(elements.progressFill.style.width,'20%','其他功能运行时旧 S2 结果不覆盖通用进度');
+assert.equal(elements.progressFill.className,'progress-fill working');
+"""
+    result = subprocess.run([NODE, "-e", program], capture_output=True, text=True, encoding="utf-8")
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(NODE is None, reason="未安装 Node.js，无法执行前端行为检查")
+@pytest.mark.parametrize(("selection", "expected_names", "expected_gaps"), [
+    ("", ["齐全甲", "仅上期乙", "仅本期丙", "齐全丁"], ["本期缺少", "上期缺少"]),
+    ("single", ["仅上期乙", "仅本期丙"], ["本期缺少", "上期缺少"]),
+    ("pre", ["仅上期乙"], ["本期缺少"]),
+    ("cur", ["仅本期丙"], ["上期缺少"]),
+    ("both", ["齐全甲", "齐全丁"], []),
+])
+def test_period_pair_status_filter_identifies_the_missing_period(selection, expected_names, expected_gaps) -> None:
+    html = FRONTEND.read_text(encoding="utf-8")
+    assert '<option value="pre">本期缺少</option>' in html
+    assert '<option value="cur">上期缺少</option>' in html
+    render = "function pairListFilters" + html.split("function pairListFilters", 1)[1].split("function openPcPath", 1)[0]
+    program = r"""
+const assert=require('node:assert/strict');
+const box={innerHTML:'',style:{}};
+const side={value:""" + json.dumps(selection) + r"""};
+const document={getElementById:id=>id==='pairList'?box:id==='pairSideFilter'?side:null};
+const esc=value=>String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const shortPairBook=value=>value;
+const state={periodPairs:[
+  {orgName:'齐全甲',form:'20201',side:'both',curName:'a.xlsx',preName:'b.xlsx'},
+  {orgName:'仅上期乙',form:'20202',side:'pre',preName:'b.xlsx'},
+  {orgName:'仅本期丙',form:'20201',side:'cur',curName:'c.xlsx'},
+  {orgName:'齐全丁',form:'20203',side:'both',curName:'d.xlsx',preName:'e.xlsx'}
+]};
+const before=JSON.stringify(state);
+""" + render + r"""
+refreshPairFilters();
+const names=[...box.innerHTML.matchAll(/class="pair-target-org">(.*?)<\/span>/g)].map(match=>match[1]);
+const gaps=[...box.innerHTML.matchAll(/class="pair-source-name">— (本期缺少|上期缺少)<\/span>/g)].map(match=>match[1]);
+assert.deepEqual(names,""" + json.dumps(expected_names, ensure_ascii=False) + r""");
+assert.deepEqual(gaps,""" + json.dumps(expected_gaps, ensure_ascii=False) + r""");
+assert.equal(JSON.stringify(state),before);
+resetPairFilters();
+assert.equal(side.value,'');
+assert.equal([...box.innerHTML.matchAll(/class="pair-target-org">/g)].length,4);
+"""
+    result = subprocess.run([NODE, "-e", program], capture_output=True, text=True, encoding="utf-8")
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(NODE is None, reason="未安装 Node.js，无法执行前端行为检查")
+def test_period_banks_warning_renders_and_reaches_execution_confirmation() -> None:
+    html = FRONTEND.read_text(encoding="utf-8")
+    render = "function renderPeriodSourceWarning" + html.split("function renderPeriodSourceWarning", 1)[1].split("function renderPairList", 1)[0]
+    confirm = "function runPeriodAudit" + html.split("function runPeriodAudit", 1)[1].split("async function doCreatePeriodCompare", 1)[0]
+    program = r"""
+const assert=require('node:assert/strict');
+const notice={textContent:'',style:{display:'none'}};
+const document={getElementById:id=>id==='periodSourceWarning'?notice:null};
+const warning='banks 名称需依赖机构参照映射，建议默认单sheet或按报表单sheet';
+const state={pcCurDir:'current',pcPreDir:'previous',periodPairs:[],periodSourceWarning:warning};
+let summary='';
+const showRunConfirm=(label,run,message)=>{summary=message;};
+const doCreatePeriodAudit=()=>{};
+const alert=message=>{throw new Error(message);};
+""" + render + confirm + r"""
+renderPeriodSourceWarning(state.periodSourceWarning);
+assert.equal(notice.style.display,'block');
+assert.equal(notice.textContent,warning);
+runPeriodAudit();
+assert.ok(summary.includes(warning));
+state.periodSourceWarning='';
+renderPeriodSourceWarning(state.periodSourceWarning);
+assert.equal(notice.style.display,'none');
+assert.equal(notice.textContent,'');
+runPeriodAudit();
+assert.equal(summary.includes(warning),false);
+"""
+    result = subprocess.run([NODE, "-e", program], capture_output=True, text=True, encoding="utf-8")
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(NODE is None, reason="未安装 Node.js，无法执行前端行为检查")
 def test_xml_tool_notes_use_one_collapse_mechanism() -> None:
     """说明使用统一卡片折叠，避免 details 原生切换与 collapsed 样式相互抵消。"""
     html = FRONTEND.read_text(encoding="utf-8")

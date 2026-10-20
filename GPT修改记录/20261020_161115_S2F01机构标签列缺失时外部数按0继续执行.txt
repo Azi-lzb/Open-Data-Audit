@@ -1,0 +1,36 @@
+# S2-F01：机构行标签列缺失时按 0 继续外部核对
+
+时间：2026-10-20 16:11:15
+
+【需求】
+执行 S2-F01 时，如果“集中系统数据”未识别到机构行标签列，不要报错退出；继续执行，外部系统数按 0 填入结果。
+
+【实现】
+- 导入器遇到机构行标签列缺失时写入专用、显式标记的零值兜底，不影响正常导入路径。
+- 外部核对引擎仅在识别到该专用标记时采用 0，并在审核说明标出“机构行标签列未识别，外部数按0参与比较”。
+- 普通机构映射缺失或指标值缺失仍保留原先的“未找到大集中系统数据”处理，不一概改成 0。
+- 增加导入层与引擎层测试，覆盖兜底值、差异计算及普通缺数语义。
+
+【验证】
+- `python -m pytest -q core/tests/test_period_v2.py -k external_import`：4 passed。
+- `python -m pytest -q core/tests/test_s2_units.py -k 'external_uses_explicit_zero_fallback or external_missing_value_is_not_treated_as_real_zero'`：2 passed。
+- `python -m pytest -q core/tests/test_version_manifest.py`：8 passed。
+- `python -m pytest -q -rs -m s2 core/tests`：333 passed、6 skipped、2 failed。两项既有本机配置差异：正式配置缺少校验规则的硬性/软性下拉；本机输出单位为“万元”，而该测试固定断言“元”。6 项因环境缺少 Flask 跳过。
+- 受影响 Python 文件 `compileall` 与 `git diff --check` 通过。
+- 未执行真实报表数据端到端对拍或麒麟 V10 真机验证。
+
+【影响文件】
+- `core/src/base_audit/systems/s2_report_collection/importer.py`
+- `core/src/base_audit/systems/s2_report_collection/external_engine.py`
+- `core/tests/test_period_v2.py`
+- `core/tests/test_s2_units.py`
+- `core/tests/test_version_manifest.py`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md`
+
+【组件版本】
+系统：S2 报表采集系统。
+影响功能：S2-F01 执行报表规则 v9.1.0 → v9.2.0。
+影响配置：S2-CFG-01 报表采集系统配置 v8.3.0 → v8.3.0（未变）；S2-CFG-02 大集中外部数据模板 v1.0.0 → v1.0.0（未变）。
+未修改的相关组件：S1-*、S3-*（全部未动）。
+版本升级原因：MINOR，增加机构行标签列缺失时使用明确 0 值并继续外部核对的兼容行为。

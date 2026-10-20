@@ -6,7 +6,7 @@ import ast
 import hashlib
 import re
 from collections import defaultdict
-from decimal import Decimal, localcontext
+from decimal import Decimal, InvalidOperation, localcontext
 from typing import Any
 
 from .models import AuditFinding, IndicatorRecord, RelatedRecord, ReportAuditConfig, RuleConfig, STATUS_ABNORMAL
@@ -27,6 +27,20 @@ def _num(value: Any) -> float | Decimal:
         return float(value) if value not in (None, "") else 0.0
     except (TypeError, ValueError):
         return 0.0
+
+
+def _format_display_number(value: Any) -> str:
+    """只格式化展示值；规则求值仍使用未舍入的原始值。"""
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float, Decimal)):
+        return f"{value:.2f}"
+    if isinstance(value, str):
+        try:
+            return f"{Decimal(value.replace(',', '').strip()):.2f}"
+        except (InvalidOperation, ValueError):
+            return value
+    return str(value)
 
 
 def _AND(*values): return all(bool(item) for item in values)
@@ -87,15 +101,17 @@ def _indicator_code(inner: str) -> str:
 
 
 def _evaluate(rule: RuleConfig, current: dict[str, IndicatorRecord], previous: dict[str, IndicatorRecord], *, config: ReportAuditConfig, amount_codes: set[str] | None = None) -> tuple[bool, str, str, set[str]]:
-    """返回 命中、代入表达式、错误、涉及指标。"""
+    """返回 命中、展示代入式、错误、涉及指标；规则求值使用内部精确代入式。"""
     involved: set[str] = set()
     errors: list[str] = []
+    display_replacements: list[str] = []
     def repl(match: re.Match) -> str:
         code = _indicator_code(match.group(2))
         involved.add(code)
         record = (current if match.group(1) == "[" else previous).get(code)
         if record is None:
             errors.append(f"缺少指标 {code} 的当期数据")
+            display_replacements.append("0.00")
             return "0.0"
         value = record.normalized_value
         # 行存在但没报有效数值（空串/文字）：与缺失同等对待，禁止拿 0
@@ -103,19 +119,26 @@ def _evaluate(rule: RuleConfig, current: dict[str, IndicatorRecord], previous: d
         # 误判成“低于监管线 异常”。
         if value is None or (isinstance(value, str) and not value.strip()):
             errors.append(f"缺少指标 {code} 的有效数值")
+            display_replacements.append("0.00")
             return "0.0"
         if isinstance(value, str):
             try:
                 number = float(value.replace(",", "").strip())
             except ValueError:
                 errors.append(f"指标 {code} 的值不是数值：{value!r}")
+                display_replacements.append(value)
                 return "0.0"
-            return str(_num(number))
+            parsed = _num(number)
+            display_replacements.append(_format_display_number(parsed))
+            return str(parsed)
         parsed = _num(value)
+        display_replacements.append(_format_display_number(parsed))
         return format(parsed, "f") if isinstance(parsed, Decimal) else repr(parsed)
     rendered = _PLACEHOLDER.sub(repl, rule.expression)
+    display_replacements_iter = iter(display_replacements)
+    display_rendered = _PLACEHOLDER.sub(lambda _match: next(display_replacements_iter), rule.expression)
     if errors:
-        return False, rendered, "；".join(sorted(set(errors))), involved
+        return False, display_rendered, "；".join(sorted(set(errors))), involved
     text = rendered.replace("===", "==").replace("<>", "!=")
     text = re.sub(r"(?<![<>=!])=(?!=)", "==", text)
     text = re.sub(r"\bAND\s*\(", "_AND(", text, flags=re.I)
@@ -123,7 +146,7 @@ def _evaluate(rule: RuleConfig, current: dict[str, IndicatorRecord], previous: d
     text = re.sub(r"\bNOT\s*\(", "_NOT(", text, flags=re.I)
     if re.search(r"\bThd\b", text, flags=re.I):
         if rule.threshold is None:
-            return False, rendered, "表达式使用 Thd 但规则未填写 Thd值(万元)", involved
+            return False, display_rendered, "表达式使用 Thd 但规则未填写 Thd值(万元)", involved
         threshold = Decimal(str(rule.threshold))
         # 配置列仍按万元填写；只在表达式依赖金额指标时，先把阈值精确
         # 换算到本次统一使用的输出单位，再参与规则计算。
@@ -143,8 +166,8 @@ def _evaluate(rule: RuleConfig, current: dict[str, IndicatorRecord], previous: d
                 {"_AND": _AND, "_OR": _OR, "_NOT": _NOT},
             ))
     except Exception as exc:
-        return False, rendered, f"表达式无法执行：{exc}", involved
-    return (not value if rule.invert else value), rendered, "", involved
+        return False, display_rendered, f"表达式无法执行：{exc}", involved
+    return (not value if rule.invert else value), display_rendered, "", involved
 
 
 def _related(records: dict[str, IndicatorRecord], codes: set[str]) -> tuple[RelatedRecord, ...]:
@@ -156,7 +179,7 @@ def _display_value(record: IndicatorRecord | None, *, missing: str = "缺少指�
         return missing
     if record.normalized_value in (None, ""):
         return "无数据"
-    return str(record.normalized_value)
+    return _format_display_number(record.normalized_value)
 
 
 def _expression_value_details(expression: str, current: dict[str, IndicatorRecord], previous: dict[str, IndicatorRecord]) -> str:
@@ -177,6 +200,12 @@ def _expression_value_details(expression: str, current: dict[str, IndicatorRecor
             label += f" {name}"
         entries.append(f"{label}={_display_value(record)}")
     return "；".join(entries)
+
+
+def _expression_trace(expression: str, rendered: str, *, invert: bool = False) -> str:
+    """同时展示配置原式和指标值代入后的表达式，便于人工追溯公式口径。"""
+    suffix = "（取反）" if invert else ""
+    return f"配置表达式：{expression}；代入表达式：{rendered}{suffix}"
 
 
 def _rule_type(rule: RuleConfig) -> str:
@@ -215,6 +244,8 @@ class RuleEngine:
                         current_value = current_record.normalized_value
                         previous_value = previous_record.normalized_value
                         difference = _num(current_value) - _num(previous_value)
+                        display_current = _format_display_number(current_value)
+                        display_previous = _format_display_number(previous_value)
                         findings.append(AuditFinding(
                             finding_id=_id("规则", rule.rule_id, institution_id, code, current_record.period),
                             audit_type="规则", status=STATUS_ABNORMAL, severity=rule.severity,
@@ -227,9 +258,9 @@ class RuleEngine:
                             # 审核说明必须是稳定的规则文案，便于按同类规则筛选；逐笔值放在计算过程。
                             rule_id=rule.rule_id, rule_description=rule.description, description=rule.description,
                             current_value=current_value, previous_value=previous_value, difference_value=difference,
-                            calculation_trace=f"{code}: {current_value} < {previous_value}",
+                            calculation_trace=f"{code}: {display_current} < {display_previous}",
                             rule_type=_rule_type(rule),
-                            value_details=f"{code} {current_record.indicator_name}: 本期={current_value}；上期={previous_value}",
+                            value_details=f"{code} {current_record.indicator_name}: 本期={display_current}；上期={display_previous}",
                             source_refs=(current_record.source, rule.source) if rule.source else (current_record.source,),
                             related_records=_related({**pre, **cur}, {code}),
                         ))
@@ -239,14 +270,14 @@ class RuleEngine:
                         code for code, indicator in config.indicators.items()
                         if indicator.data_type in AMOUNT_DATA_TYPES
                     }
-                    hit, rendered, error, involved = _evaluate(
+                    hit, display_rendered, error, involved = _evaluate(
                         rule, cur, pre, config=config, amount_codes=amount_codes,
                     )
                     if error:
                         # 审核说明必须写真实原因（缺少哪些指标的数据），
                         # 不得用规则描述冒充——否则“缺少指标”会显示成
                         # “低于监管线 异常”，完全误导。
-                        quality.append(AuditFinding(_id("规则配置", rule.rule_id, institution_id, error), "校验规则", STATUS_ABNORMAL, "关注", institution_name=anchor.institution_name, social_credit_code=anchor.social_credit_code, period=anchor.period, rule_id=rule.rule_id, rule_description="", description=f"规则无法执行：{error}（规则：{rule.description}）", calculation_trace=rendered, rule_type=_rule_type(rule), value_details=_expression_value_details(rule.expression, cur, pre)))
+                        quality.append(AuditFinding(_id("规则配置", rule.rule_id, institution_id, error), "校验规则", STATUS_ABNORMAL, "软性", institution_name=anchor.institution_name, social_credit_code=anchor.social_credit_code, period=anchor.period, rule_id=rule.rule_id, rule_description="", description=f"规则无法执行：{error}（规则：{rule.description}）", calculation_trace=_expression_trace(rule.expression, display_rendered), rule_type=_rule_type(rule), value_details=_expression_value_details(rule.expression, cur, pre)))
                         continue
                     if not hit:
                         continue
@@ -261,7 +292,7 @@ class RuleEngine:
                     form_code=primary.form_code, form_codes=forms, period=anchor.period,
                     indicator_code=primary.indicator_code, indicator_name=primary.indicator_name,
                     rule_id=rule.rule_id, rule_description=rule.description, description=rule.description,
-                    calculation_trace=rendered + ("（取反）" if rule.invert else ""),
+                    calculation_trace=_expression_trace(rule.expression, display_rendered, invert=rule.invert),
                     rule_type=_rule_type(rule), value_details=_expression_value_details(rule.expression, cur, pre),
                     source_refs=(primary.source, rule.source) if rule.source else (primary.source,), related_records=related,
                 ))
