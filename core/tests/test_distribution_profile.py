@@ -183,6 +183,8 @@ renderGeneral();
 assert.match(pane.innerHTML,/大集中通用配置/);
 renderGuide();
 assert.match(pane.innerHTML,/本期数值核对/);
+const guideCodes=()=>[...pane.innerHTML.matchAll(/class="guide-flow-num">(S\dF\d+)/g)].map(match=>match[1]);
+assert.deepEqual(guideCodes(),['S1F1','S1F2','S2F1','S3F1','S3F2','S3F3','S3F4','S3F5','S1F3','S1F4','S1F5']);
 reduced=true;
 const visibleFaq=editionFaqItems(faq);
 assert.ok(visibleFaq.length>0&&visibleFaq.length<faq.length);
@@ -204,8 +206,8 @@ assert.match(pane.innerHTML,/报表采集系统配置/);
 assert.doesNotMatch(pane.innerHTML,/大集中通用配置|大集中执行比较配置|大集中本期数值核对配置|大集中指标比较拆分配置/);
 renderGuide();
 assert.doesNotMatch(pane.innerHTML,/本期数值核对|两期数据 ⇨ 比较文件|机构说明 ⇨ 说明文件/);
-const numbers=[...pane.innerHTML.matchAll(/class="guide-flow-num">(\d+)/g)].map(match=>Number(match[1]));
-assert.deepEqual(numbers,numbers.map((_,index)=>index+1));
+// 交付版过滤后保留功能身份，不能按卡片位置重新编号。
+assert.deepEqual(guideCodes(),['S1F1','S1F2','S2F1','S1F3','S1F4','S1F5']);
 console.log('profile behavior passed');
 """
     result = subprocess.run(

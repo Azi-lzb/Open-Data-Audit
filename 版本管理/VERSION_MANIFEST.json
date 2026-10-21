@@ -2,7 +2,7 @@
   "product": {
     "id": "V3",
     "name": "审核工具",
-    "version": "26.1.6.0",
+    "version": "26.1.7.0",
     "version_scheme": "YY.MAJOR.MINOR.PATCH（年份.大版本.中版本.小版本）",
     "changelog": "版本管理/产品发布/CHANGELOG.md",
     "description": "V3 是产品身份/项目代号；整包发布版本使用年份.大版本.中版本.小版本，业务功能和配置组件版本独立。"

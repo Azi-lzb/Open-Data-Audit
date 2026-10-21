@@ -1,0 +1,68 @@
+【时间与执行者】
+2026-10-21 08:26:55（Asia/Shanghai），Codex。
+修改前 commit：b7d6428c09e2425515c2ec01bece737ccba99747；desktop 分支。
+开始时已跟踪文件干净；保留 .zcode/ 与 external/ 本地资料，不读取为业务输入、不打包、不提交。
+
+【用户要求】
+打包当前 S1/S2 限定版 Linux AMD64、ARM64 和 Windows Flask。
+使用本机 config-real 的当前/默认配置；旧发行包保留，新产品版本使用独立目录。
+
+【修改与构建决策】
+- 此次发布包含前次发行后新增的 S1/S2 功能，按 rules/11 将整包 V26.1.6.0 升为 V26.1.7.0；同步 VERSION_MANIFEST 与产品发布 CHANGELOG。
+- Windows 现代版依赖探测补入 python_calamine，避免已有 venv 因其余依赖已安装而漏装 Calamine；Win7 ASCII requirements 显式登记 python-calamine==0.3.1（Python>=3.8）。保持 BAT/Win7 requirements 的 ASCII/CRLF。
+- Linux 采用既有 Ubuntu16.04/glibc2.23 用户空间及 CPython3.12.14 构建，兼容审计目标 glibc≤2.28、GLIBCXX≤3.4.25；ARM64 通过 QEMU。
+- Linux 离线准备阶段发现 Calamine 需要 packaging~=24.1；补齐 packaging24.2 通用 wheel 后重试，不修改目标系统 glibc，不放宽兼容目标。
+- Windows 现代64位和 Win7兼容32位都重建；包内确认 Calamine 原生扩展和可执行文件架构。
+- 构建脚本、只读源码快照和证据在 test-output/release-20261021/（忽略目录）；源码快照记录208文件哈希，打包使用 config-real，排除 S3 配置。
+
+【组件版本】
+产品：V26.1.6.0 → V26.1.7.0（MINOR，发布既有新增功能）。
+S1-F02 v1.2.0、S2-F01 v10.6.0、S2-CFG-01 v8.4.0、其余功能/配置组件不变。
+CONFIG_VERSION仍2.3；未修改业务规则、VBA、原始报表或真实配置。
+
+【范围与回滚】
+跟踪文件变化：版本管理/VERSION_MANIFEST.json、版本管理/产品发布/CHANGELOG.md、shell-flask/windows-build/build-modern.bat、shell-flask/requirements-win7.txt；构建收尾将补充开发/更新日志。
+没有删除原始业务文件。Linux新产物用独立日期/版本目录；Windows新产物用独立版本目录；可继续使用旧V26.1.6.0包回滚。
+本轮用户只要求打包，不执行额外 commit/push/merge。
+构建结果及验证将在下文补记。
+
+【最终结果补记】
+审核工具 V26.1.7.0 — S1/S2 打包与验证
+时间：2026-10-21 08:32:59（Asia/Shanghai）
+业务代码基线：b7d6428c09e2425515c2ec01bece737ccba99747；本轮产品版本与打包依赖检查修正未提交。
+
+交付物：
+Linux AMD64/ARM64：shell-flask/dist/dual-arch-glibc228-20261021_S1-S2_V26.1.7.0
+每个架构各1个DEB和1个便携TAR.GZ，均有SHA256和build-info。
+Windows Flask：shell-flask/dist/Windows-Flask_V26.1.7.0_S1-S2.zip
+ZIP含现代Windows64位、Win7兼容32位两个EXE；SHA256：7877fb206ab507c75343c5f9b10997a417abaecb60ea97b2c472aa157fcfa198
+
+验证：
+- Linux四个发行包启动冒烟4/4通过，0失败；HTTP页面标题/图标/favicon/关闭后端口释放通过。
+- Windows两个EXE启动2/2通过，0失败；首页/图标/状态API/S1S2交付范围/关闭后端口释放通过。
+- Linux两架构逐ELF审计实际最低glibc均2.17，无GLIBCXX符号需求；验收目标glibc≤2.28、GLIBCXX≤3.4.25。
+- Linux在Ubuntu16.04/glibc2.23用户空间构建；ARM64通过QEMU。冻结入包CPython3.12.14，目标机无需安装Python。
+- Calamine原生扩展在两个EXE及两架构Linux包内存在，PE/ELF架构正确；Windows构建依赖已补齐。
+- 每份发行目录内仅含3份当前配置和3份默认配置，逐字节匹配config-real快照，无S3配置；S1/S2 profile正确。
+- Windows ZIP完整性检查和所有发行包侧车SHA256通过；208个构建输入的SHA256与快照一致。
+- 发布元数据定向：test_version_manifest.py、test_app_identity.py共27 passed。
+- 同一业务代码此前提交前core全量1054 passed/13 skipped/0 failed，三种真实导出格式双引擎对拍一致；本轮未重复全量pytest。
+- 未执行UOS/麒麟桌面真机、Windows7真机、原生ARM64或Office业务验收。包不包含LibreOffice。
+
+使用：
+Linux按目标CPU选择amd64或arm64；DEB用于安装，便携包解压后运行shell-flask/Linux-1-启动审核工具.sh。
+Windows解压整个ZIP，再选择对应EXE启动。
+配置源和原始业务数据未被构建覆盖。旧V26.1.6.0目录保留，可回滚。
+构建完成后追加的开发/更新日志和GPT修改记录属于本轮留痕，不重复冻结程序。
+
+证据：test-output/release-20261021/ 下 linux-build.log、linux-verify.log、windows-build.log、windows-verify.log（本机忽略目录）
+
+【产物校验和】
+59201c82def8cc2e246b3dbd1e5b8ab16011bdeeb56fc8d21a2d5286a4a5e24c  amd64/Audit-Tools-S1-S2_V26.1.7.0_2026.10.21.002308_ubuntu-16.04_py3.12.14_glibc2.17_amd64.deb
+fb41c0cf1c46d86cd3db19e535d31b6457fc29e9ea8df658348073eb0525dd9f  amd64/Audit-Tools-S1-S2_V26.1.7.0_2026.10.21.002308_ubuntu-16.04_py3.12.14_glibc2.17_amd64.tar.gz
+2ece6411bc2be20664bbf62b0b287aea61961ceae9e5297a325b99c826cf04c2  arm64/Audit-Tools-S1-S2_V26.1.7.0_2026.10.21.002836_ubuntu-16.04_py3.12.14_glibc2.17_arm64.deb
+b020176a7cb5072e34bbbc3423b13f49f287d82a90b58ae51fb0b0e06050f785  arm64/Audit-Tools-S1-S2_V26.1.7.0_2026.10.21.002836_ubuntu-16.04_py3.12.14_glibc2.17_arm64.tar.gz
+7877fb206ab507c75343c5f9b10997a417abaecb60ea97b2c472aa157fcfa198  Windows-Flask_V26.1.7.0_S1-S2.zip
+
+【删除与Git】
+未删除原始业务文件、旧版本或本地资料；本轮未commit/push/merge，留在desktop。

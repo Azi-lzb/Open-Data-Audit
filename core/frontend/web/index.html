@@ -293,7 +293,7 @@ select:disabled{opacity:.6;cursor:not-allowed}
 .menu-hint{display:block;margin:2px 2px 4px;padding:7px 9px 4px;border-top:1px solid var(--border);color:var(--text-3);font-size:11px;line-height:1.55;max-width:260px;white-space:normal}
 /* ---------- 主界面左侧导航（逐笔统计 / 报表采集 / 设置中心） ---------- */
 .app-shell{flex:1;min-height:0;display:flex;align-items:stretch}
-.sidenav{flex:none;width:172px;border-right:1px solid var(--border);background:var(--sidebar);display:flex;flex-direction:column;gap:4px;padding:14px 10px}
+.sidenav{flex:none;width:208px;border-right:1px solid var(--border);background:var(--sidebar);display:flex;flex-direction:column;gap:4px;padding:14px 10px}
 .sidenav-item{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:11px 13px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--text-2);font:inherit;font-size:13.5px;cursor:pointer;transition:background .15s,color .15s}
 .sidenav-item svg{flex:none;width:17px;height:17px}
 .sidenav-item:hover{background:var(--bg);color:var(--text)}
@@ -726,19 +726,19 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 <nav class="sidenav" id="sidenav">
   <button type="button" class="sidenav-item active" data-page="audit" data-system="S1" onclick="openAuditWorkbench()" title="DAG 执行器：使用已验收主流程">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="m7 11 10-5M7 13l10 5"/></svg>
-    逐笔统计系统
+    S1 逐笔统计系统
   </button>
   <button type="button" class="sidenav-item" data-page="collect" data-system="S2" onclick="openCollectWorkbench()" title="报表采集系统：季报跨期比较与大集中核对">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="16" x2="8" y2="12"/><line x1="13" y1="16" x2="13" y2="8"/><line x1="18" y1="16" x2="18" y2="13"/></svg>
-    报表采集系统
+    S2 报表采集系统
   </button>
   <button type="button" class="sidenav-item" data-page="central" data-system="S3" onclick="openCentralWorkbench()" title="大集中统计系统：执行比较、本期数值核对与指标比较拆分">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-    大集中统计系统
+    S3 大集中统计系统
   </button>
   <button type="button" class="sidenav-item" data-page="dijin" data-system="S4" onclick="openDijinWorkbench()" title="地金系统">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 10h1M14 10h1M9 14h1M14 14h1M10 21v-3h4v3"/></svg>
-    地金系统
+    S4 地金系统
   </button>
   <button type="button" class="sidenav-item" data-page="settings" onclick="openSettingsWorkbench()" title="设置中心">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1.51 1 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -833,12 +833,12 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 
   <div class="operation-stack">
     <div class="card actionbar">
-      <button class="btn primary" id="auditPrimaryButton" data-action="dag:汇总核查表校验" onclick="startAuditPrimary()" title="执行汇总核查表校验">汇总核查表校验</button>
-      <button class="btn" id="auditSummaryButton" data-action="dag:汇总校验结果说明" onclick="startAuditSummary()" title="执行汇总校验结果说明">汇总校验结果说明</button>
+      <button class="btn primary" id="auditPrimaryButton" data-action="dag:汇总核查表校验" onclick="startAuditPrimary()" title="执行汇总核查表校验">F1 汇总核查表校验</button>
+      <button class="btn" id="auditSummaryButton" data-action="dag:汇总校验结果说明" onclick="startAuditSummary()" title="执行汇总校验结果说明">F2 汇总校验结果说明</button>
       <div class="dag-extras-card" id="dagExtrasCard">
-        <button class="btn" onclick="startDagMerge()">组合工作表（核查表）</button>
-        <button class="btn" onclick="startDagFlow('dag:组合工作表')">组合工作表（按配置）</button>
-        <button class="btn" onclick="createTemplateMerge()">制作联合模板</button>
+        <button class="btn" onclick="startDagMerge()">F3 组合工作表（核查表）</button>
+        <button class="btn" onclick="startDagFlow('dag:组合工作表')">F4 组合工作表（按配置）</button>
+        <button class="btn" onclick="createTemplateMerge()">F5 制作联合模板</button>
       </div>
     </div>
 
@@ -898,7 +898,7 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
           </div>
         </div>
         <div class="field collect-execute-cell">
-          <button class="btn primary" data-action="periodAudit" onclick="runPeriodAudit()" title="按报表采集系统配置执行环比、校验规则和外部核对，生成审核清单">执行报表规则</button>
+          <button class="btn primary" data-action="periodAudit" onclick="runPeriodAudit()" title="按报表采集系统配置执行环比、校验规则和外部核对，生成审核清单">F1 执行报表规则</button>
         </div>
       </div>
     </div>
@@ -969,11 +969,11 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     </div>
     <div class="card collect-card">
       <div class="central-action-strip">
-          <button class="btn primary" data-action="centralCompare" onclick="runCentralComparison()" title="两期数据文件配对、环比、警戒与校验规则，生成比较文件.xlsx">两期数据 ⇨ 比较文件</button>
-          <button class="btn" data-action="centralExplain" onclick="runCentralExplanationExport()" title="先在比较文件最右侧的“输出说明”列填写“是”，再导出为简化说明文件">比较文件 ⇨ 说明文件</button>
-          <button class="btn primary" data-action="centralImportExplain" onclick="runCentralExplanationImport()" title="批量选择机构反馈说明文件，按机构代码、指标代码、指标名称、数据值、增减额回写变动原因">机构说明 ⇨ 说明文件</button>
-          <button class="btn" data-action="centralCross" onclick="runCentralCrossPeriod()" title="使用本期数值核对文件和输出目录，按本期数值核对规则生成数值核对文件">本期数值核对</button>
-          <button class="btn primary" data-action="centralForms" onclick="runCentralForms()" title="按机构回填本期/上期/增减额/环比并应用警戒颜色，空表删除、空行隐藏">比较文件 ⇨ 金融表单</button>
+          <button class="btn primary" data-action="centralCompare" onclick="runCentralComparison()" title="两期数据文件配对、环比、警戒与校验规则，生成比较文件.xlsx">F1 两期数据 ⇨ 比较文件</button>
+          <button class="btn" data-action="centralExplain" onclick="runCentralExplanationExport()" title="先在比较文件最右侧的“输出说明”列填写“是”，再导出为简化说明文件">F2 比较文件 ⇨ 说明文件</button>
+          <button class="btn primary" data-action="centralImportExplain" onclick="runCentralExplanationImport()" title="批量选择机构反馈说明文件，按机构代码、指标代码、指标名称、数据值、增减额回写变动原因">F3 机构说明 ⇨ 说明文件</button>
+          <button class="btn" data-action="centralCross" onclick="runCentralCrossPeriod()" title="使用本期数值核对文件和输出目录，按本期数值核对规则生成数值核对文件">F4 本期数值核对</button>
+          <button class="btn primary" data-action="centralForms" onclick="runCentralForms()" title="按机构回填本期/上期/增减额/环比并应用警戒颜色，空表删除、空行隐藏">F5 比较文件 ⇨ 金融表单</button>
       </div>
     </div>
     <div class="card collect-card">
@@ -1015,7 +1015,7 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 <section class="page" id="page-dijin">
   <main class="layout">
     <section class="card">
-      <h3>地金系统</h3>
+      <h3>S4 地金系统</h3>
       <p class="about-body">地金工具的功能与操作流程正在整理中。</p>
     </section>
   </main>
@@ -1996,17 +1996,17 @@ function updateDagJson(text){try{DAG_EDITOR.draft=JSON.parse(text)}catch(e){}}
 async function validateSaveDag(){let payload;try{payload=JSON.parse(document.getElementById('dagJson').value)}catch(e){alert('JSON 格式错误：'+e.message);return}const check=await bridge.api.validate_dag_workflow(payload);if(!check.valid){alert('DAG 校验失败：\n'+(check.errors||[]).join('\n'));return}const saved=await bridge.api.save_dag_workflow(payload);if(!saved.ok){alert('保存失败：\n'+(saved.errors||[]).join('\n'));return}showSettingsStatus('已保存 DAG：'+saved.path);await renderDagEditor()}
 /* ---- 操作指引：纯静态说明，不调用后端、不修改配置 ---- */
 const GUIDE_FLOWS=[
-  {n:'1',editionSystem:'S1',name:'汇总核查表校验',scenario:'审核同一种基础数据报表，生成“本期审核结果”和各机构审核副本。',source:'逐笔统计系统 → 待办：筛选对应任务后，使用“批量导出核查表”取得源文件。',prep:'选择源数据目录；确认模板目录已存放对应模板；如模板公式依赖集中数据/参照表，再选择外部文件。',steps:'① 选择源数据目录；② 首次选择后核对自动识别的模板，必要时手动选择；③ 在待审核文件中取消本次不需处理的文件；④ 点击“汇总核查表校验”。',output:'执行结果目录下的本期审核结果、需要保留时的审核副本、流程运行日志。',tip:'原始报送文件不会修改；通常不需要勾选“递归子文件夹”。'},
-  {n:'2',editionSystem:'S1',name:'汇总校验结果说明',scenario:'汇总机构报送的任务说明、业务说明、本地校验结果等文件；机构文件放在子文件夹时尤其适用。',source:'逐笔统计系统 → 待办：筛选对应任务后，使用“批量导出校验结果说明”取得源文件。',prep:'选择包含校验结果及报送说明的源数据目录，并选择对应的汇总模板。',steps:'① 选择源数据目录；② 勾选“递归子文件夹”（文件分散在机构子目录时）；③ 核对待处理文件；④ 点击“汇总校验结果说明”。',output:'执行结果目录下的“校验结果与报送说明汇总”工作簿，以及可选运行日志。',tip:'缺少的模板工作表会按表跳过；模板含“兜底模板”且配置了汇总区域和表头区域时，额外汇总未匹配且有数据的源工作表；已有表头错位的文件仍会跳过。'},
-  {n:'3',editionSystem:'S2',name:'执行报表规则',scenario:'对两期报送数据执行环比、校验规则和外部核对，生成三张分类审核表。',source:'金融基础数据报表采集 → 业务处理 → 报表数据查看：勾选机构和 20201、20202、20203 报表，使用默认“单 Sheet”导出。',prep:'在“报表采集系统”中选择本期目录、上期目录；需要大集中核对时再选择大集中数据，并确认比较配置。',steps:'① 打开“报表采集系统”；② 选择本期、上期目录和输出目录；③ 点击“检查配置”确认环比策略无阻断问题；④ 需要时选择大集中数据与比较配置；⑤ 点击“执行报表规则”。',output:'输出目录下的“报表审核清单_时间戳.xlsx”，包含“环比规则”“外部核对规则”“校验规则”三张表。',tip:'原始文件不会被修改；规则由“2.报表采集系统_配置.xlsx”维护，指标参照中的环比启用、策略组和最小变动值决定环比执行。'},
-  {n:'4',editionSystem:'S3',name:'两期数据 ⇨ 比较文件',scenario:'比较两期大集中导数，按配置执行环比、警戒和指标校验。',source:'大集中系统 → 指标查询：选择机构及所有指标，分别导出本期和上期数据，不要混在同一份文件中。',prep:'打开“大集中统计系统”，选择本期数据文件、上期数据文件和输出目录。',steps:'① 选择两期 CSV/XLSX 导数；② 核对输出目录；③ 点击“两期数据 ⇨ 比较文件”。',output:'输出目录下的“比较结果_时间戳.xlsx”，并自动带入“比较文件.xlsx”。',tip:'规则由大集中通用配置和“3.1大集中执行比较_配置.xlsx”共同维护。'},
-  {n:'5',editionSystem:'S3',name:'比较文件 ⇨ 说明文件',scenario:'将比较文件中需要机构说明的指标整理为简化说明文件。',prep:'先打开比较文件，在最右侧“输出说明”列对需说明的行填写“是”。',steps:'① 选择或确认“比较文件.xlsx”；② 填写“输出说明”；③ 点击“比较文件 ⇨ 说明文件”。',output:'输出目录下的“指标说明_时间戳.xlsx”，并自动带入“说明文件.xlsx”。',tip:'此操作只导出选中行，不改写比较文件。'},
-  {n:'6',editionSystem:'S3',name:'机构说明 ⇨ 说明文件',scenario:'将机构反馈的变动原因批量回写至同一份说明文件，方便集中审核。',prep:'选择或导出目标说明文件，并准备机构填报完成的说明文件。',steps:'① 确认“说明文件.xlsx”；② 点击“机构说明 ⇨ 说明文件”；③ 批量选择机构反馈文件。',output:'目标说明文件会原地更新；同目录会保留导入前时间戳备份。',tip:'按机构代码、机构名称、指标代码、指标名称、数据值和增减额匹配；存在冲突时不自动覆盖。'},
-  {n:'7',editionSystem:'S3',name:'本期数值核对',scenario:'按本期数值核对规则检查一份专用单期数据文件，覆盖多频度、多批次的跨表核对。',source:'大集中系统 → 指标查询：导出本次需要比较的指标，例如日报 1 批、月报 1 批。若要核对其他批次，还需在 3.2 配置中增加相应校验公式。',prep:'选择“本期数值核对文件”（CSV/XLSX）和输出目录。',steps:'① 选择本期数值核对文件；② 核对输出目录；③ 点击“本期数值核对”。',output:'输出目录下的“数值核对结果_时间戳.xlsx”。',tip:'不会使用“两期数据”的本期文件；规则由大集中通用配置和“3.2大集中本期数值核对_配置.xlsx”维护，引用上期 {...} 的规则已停用。'},
-  {n:'8',editionSystem:'S3',name:'比较文件 ⇨ 金融表单',scenario:'将比较文件按机构拆分并回填至内嵌金融表单，生成便于查看的机构工作簿。',prep:'选择或确认“比较文件.xlsx”和输出目录。',steps:'① 选择比较文件；② 核对输出目录；③ 点击“比较文件 ⇨ 金融表单”。',output:'输出目录下“指标比较拆分_时间戳”文件夹中的机构金融表单。',tip:'表单模板和转表规则在“3.3大集中指标比较拆分_配置.xlsx”中维护。'},
-  {n:'9',editionSystem:'S1',name:'组合工作表（核查表）',egg:true,scenario:'文件名规范、需要把同一机构的多类报表（如个人贷款和单位贷款）合成一本，供制作联合模板或跨表核查。',prep:'源文件主名第一个下划线前必须是机构全称。',steps:'① 选择源数据目录；② 需要时勾选递归；③ 点击“组合工作表（核查表）”。',output:'每家机构一本合并工作簿。',tip:'同名工作表只保留先复制的一张；本流程不需要模板、外部文件或数据期。'},
-  {n:'10',editionSystem:'S1',name:'组合工作表（按配置）',egg:true,scenario:'按设置中心中当前选择的组合方案分组，适合机构名称或文件命名不规则的情况。',prep:'连续点击“设置中心”五次，进入“组合工作表配置”维护方案与分组。',steps:'① 选择源数据目录；② 在设置中心保存组合方案；③ 点击“组合工作表（按配置）”。',output:'按当前方案生成组合工作簿。',tip:'文件名正则和文件名关键字两种分组方式均可用。'},
-  {n:'11',editionSystem:'S1',name:'制作联合模板',egg:true,scenario:'需要把多个模板的独有工作表合并成一本“联合模板”，集中存放集中系统数据、参照表等公共依赖工作表，供跨表核查或制作模板时使用；这是低频的模板制作动作。',prep:'准备一个“基准模板”（包含集中系统数据、参照表等公共依赖工作表）和若干要并入的模板文件。',steps:'① 点击主界面“制作联合模板”按钮；② 阅读中文说明并确认；③ 第 1 步选择“基准模板”；④ 第 2 步批量选择“并入模板”；⑤ 等待制作完成。',output:'基准模板同级的“联合模板”目录：联合模板文件与“联合模板检查报告”。',tip:'基准模板只会另存为最终联合模板，原文件不修改；同名工作表保留先出现的一张，后续跳过；本动作不使用页面路径，也不会自动识别模板，不要将普通业务模板误选为基准模板。'}
+  {n:'S1F1',editionSystem:'S1',name:'汇总核查表校验',scenario:'审核同一种基础数据报表，生成“本期审核结果”和各机构审核副本。',source:'逐笔统计系统 → 待办：筛选对应任务后，使用“批量导出核查表”取得源文件。',prep:'选择源数据目录；确认模板目录已存放对应模板；如模板公式依赖集中数据/参照表，再选择外部文件。',steps:'① 选择源数据目录；② 首次选择后核对自动识别的模板，必要时手动选择；③ 在待审核文件中取消本次不需处理的文件；④ 点击“汇总核查表校验”。',output:'执行结果目录下的本期审核结果、需要保留时的审核副本、流程运行日志。',tip:'原始报送文件不会修改；通常不需要勾选“递归子文件夹”。'},
+  {n:'S1F2',editionSystem:'S1',name:'汇总校验结果说明',scenario:'汇总机构报送的任务说明、业务说明、本地校验结果等文件；机构文件放在子文件夹时尤其适用。',source:'逐笔统计系统 → 待办：筛选对应任务后，使用“批量导出校验结果说明”取得源文件。',prep:'选择包含校验结果及报送说明的源数据目录，并选择对应的汇总模板。',steps:'① 选择源数据目录；② 勾选“递归子文件夹”（文件分散在机构子目录时）；③ 核对待处理文件；④ 点击“汇总校验结果说明”。',output:'执行结果目录下的“校验结果与报送说明汇总”工作簿，以及可选运行日志。',tip:'缺少的模板工作表会按表跳过；模板含“兜底模板”且配置了汇总区域和表头区域时，额外汇总未匹配且有数据的源工作表；已有表头错位的文件仍会跳过。'},
+  {n:'S2F1',editionSystem:'S2',name:'执行报表规则',scenario:'对两期报送数据执行环比、校验规则和外部核对，生成三张分类审核表。',source:'金融基础数据报表采集 → 业务处理 → 报表数据查看：勾选机构和 20201、20202、20203 报表，使用默认“单 Sheet”导出。',prep:'在“报表采集系统”中选择本期目录、上期目录；需要大集中核对时再选择大集中数据，并确认比较配置。',steps:'① 打开“报表采集系统”；② 选择本期、上期目录和输出目录；③ 点击“检查配置”确认环比策略无阻断问题；④ 需要时选择大集中数据与比较配置；⑤ 点击“执行报表规则”。',output:'输出目录下的“报表审核清单_时间戳.xlsx”，包含“环比规则”“外部核对规则”“校验规则”三张表。',tip:'原始文件不会被修改；规则由“2.报表采集系统_配置.xlsx”维护，指标参照中的环比启用、策略组和最小变动值决定环比执行。'},
+  {n:'S3F1',editionSystem:'S3',name:'两期数据 ⇨ 比较文件',scenario:'比较两期大集中导数，按配置执行环比、警戒和指标校验。',source:'大集中系统 → 指标查询：选择机构及所有指标，分别导出本期和上期数据，不要混在同一份文件中。',prep:'打开“大集中统计系统”，选择本期数据文件、上期数据文件和输出目录。',steps:'① 选择两期 CSV/XLSX 导数；② 核对输出目录；③ 点击“两期数据 ⇨ 比较文件”。',output:'输出目录下的“比较结果_时间戳.xlsx”，并自动带入“比较文件.xlsx”。',tip:'规则由大集中通用配置和“3.1大集中执行比较_配置.xlsx”共同维护。'},
+  {n:'S3F2',editionSystem:'S3',name:'比较文件 ⇨ 说明文件',scenario:'将比较文件中需要机构说明的指标整理为简化说明文件。',prep:'先打开比较文件，在最右侧“输出说明”列对需说明的行填写“是”。',steps:'① 选择或确认“比较文件.xlsx”；② 填写“输出说明”；③ 点击“比较文件 ⇨ 说明文件”。',output:'输出目录下的“指标说明_时间戳.xlsx”，并自动带入“说明文件.xlsx”。',tip:'此操作只导出选中行，不改写比较文件。'},
+  {n:'S3F3',editionSystem:'S3',name:'机构说明 ⇨ 说明文件',scenario:'将机构反馈的变动原因批量回写至同一份说明文件，方便集中审核。',prep:'选择或导出目标说明文件，并准备机构填报完成的说明文件。',steps:'① 确认“说明文件.xlsx”；② 点击“机构说明 ⇨ 说明文件”；③ 批量选择机构反馈文件。',output:'目标说明文件会原地更新；同目录会保留导入前时间戳备份。',tip:'按机构代码、机构名称、指标代码、指标名称、数据值和增减额匹配；存在冲突时不自动覆盖。'},
+  {n:'S3F4',editionSystem:'S3',name:'本期数值核对',scenario:'按本期数值核对规则检查一份专用单期数据文件，覆盖多频度、多批次的跨表核对。',source:'大集中系统 → 指标查询：导出本次需要比较的指标，例如日报 1 批、月报 1 批。若要核对其他批次，还需在 3.2 配置中增加相应校验公式。',prep:'选择“本期数值核对文件”（CSV/XLSX）和输出目录。',steps:'① 选择本期数值核对文件；② 核对输出目录；③ 点击“本期数值核对”。',output:'输出目录下的“数值核对结果_时间戳.xlsx”。',tip:'不会使用“两期数据”的本期文件；规则由大集中通用配置和“3.2大集中本期数值核对_配置.xlsx”维护，引用上期 {...} 的规则已停用。'},
+  {n:'S3F5',editionSystem:'S3',name:'比较文件 ⇨ 金融表单',scenario:'将比较文件按机构拆分并回填至内嵌金融表单，生成便于查看的机构工作簿。',prep:'选择或确认“比较文件.xlsx”和输出目录。',steps:'① 选择比较文件；② 核对输出目录；③ 点击“比较文件 ⇨ 金融表单”。',output:'输出目录下“指标比较拆分_时间戳”文件夹中的机构金融表单。',tip:'表单模板和转表规则在“3.3大集中指标比较拆分_配置.xlsx”中维护。'},
+  {n:'S1F3',editionSystem:'S1',name:'组合工作表（核查表）',egg:true,scenario:'文件名规范、需要把同一机构的多类报表（如个人贷款和单位贷款）合成一本，供制作联合模板或跨表核查。',prep:'源文件主名第一个下划线前必须是机构全称。',steps:'① 选择源数据目录；② 需要时勾选递归；③ 点击“组合工作表（核查表）”。',output:'每家机构一本合并工作簿。',tip:'同名工作表只保留先复制的一张；本流程不需要模板、外部文件或数据期。'},
+  {n:'S1F4',editionSystem:'S1',name:'组合工作表（按配置）',egg:true,scenario:'按设置中心中当前选择的组合方案分组，适合机构名称或文件命名不规则的情况。',prep:'连续点击“设置中心”五次，进入“组合工作表配置”维护方案与分组。',steps:'① 选择源数据目录；② 在设置中心保存组合方案；③ 点击“组合工作表（按配置）”。',output:'按当前方案生成组合工作簿。',tip:'文件名正则和文件名关键字两种分组方式均可用。'},
+  {n:'S1F5',editionSystem:'S1',name:'制作联合模板',egg:true,scenario:'需要把多个模板的独有工作表合并成一本“联合模板”，集中存放集中系统数据、参照表等公共依赖工作表，供跨表核查或制作模板时使用；这是低频的模板制作动作。',prep:'准备一个“基准模板”（包含集中系统数据、参照表等公共依赖工作表）和若干要并入的模板文件。',steps:'① 点击主界面“制作联合模板”按钮；② 阅读中文说明并确认；③ 第 1 步选择“基准模板”；④ 第 2 步批量选择“并入模板”；⑤ 等待制作完成。',output:'基准模板同级的“联合模板”目录：联合模板文件与“联合模板检查报告”。',tip:'基准模板只会另存为最终联合模板，原文件不修改；同名工作表保留先出现的一张，后续跳过；本动作不使用页面路径，也不会自动识别模板，不要将普通业务模板误选为基准模板。'}
 ];
 /* 设置中心卡片标题条：点击收起/展开卡片内容（事件委托，重渲染后仍有效）。 */
 document.getElementById('settingsPane').addEventListener('click',function(e){
@@ -2238,10 +2238,10 @@ async function kylinMaintenanceAction(action){
 function renderGuide(){
   const pane=document.getElementById('settingsPane');
   let html='';
-  html+=GUIDE_FLOWS.filter(f=>!f.egg||auditExtrasUnlocked()).filter(f=>!f.editionSystem||isSystemVisible(f.editionSystem)).map((f,index)=>{
+  html+=GUIDE_FLOWS.filter(f=>!f.egg||auditExtrasUnlocked()).filter(f=>!f.editionSystem||isSystemVisible(f.editionSystem)).map(f=>{
       const rows=[['适用',f.scenario],['源数据获取',f.source],['准备',f.prep],['步骤',f.steps],['输出',f.output],['提示',f.tip]];
       return '<details class="guide-flow-card" open>'
-        +'<summary><span class="guide-flow-num">'+(index+1)+'</span><span>'+esc(f.name)+'</span></summary>'
+        +'<summary><span class="guide-flow-num">'+esc(f.n)+'</span><span>'+esc(f.name)+'</span></summary>'
         +'<div class="guide-flow-body"><div class="guide-flow-rows">'
         +rows.filter(r=>r[1]).map(r=>'<div class="guide-flow-row"><span class="guide-key">'+r[0]+'</span><span class="guide-val">'+esc(r[1])+'</span></div>').join('')
         +'</div></div></details>';
@@ -3403,10 +3403,18 @@ function confirmRun(ok){
 /* 执行前确认：设置开启时，主按钮先弹出待处理文件清单，确认后才开始执行。
    label 为流程/动作名；run 为确认后要执行的动作。 */
 let confirmAllFiles=[];
+// 只转换确认框显示名称；执行前检查仍使用原有动作名称。
+const RUN_DISPLAY_LABELS={
+  '汇总核查表校验':'S1F1 汇总核查表校验','汇总校验结果说明':'S1F2 汇总校验结果说明',
+  '组合工作表（核查表）':'S1F3 组合工作表（核查表）','组合工作表（按配置）':'S1F4 组合工作表（按配置）',
+  '执行报表规则':'S2F1 执行报表规则','大集中执行比较':'S3F1 两期数据 ⇨ 比较文件',
+  '导出选定指标说明':'S3F2 比较文件 ⇨ 说明文件','本期数值核对':'S3F4 本期数值核对',
+  '指标比较拆分':'S3F5 比较文件 ⇨ 金融表单'
+};
 function showRunConfirm(label,run,summary,files){
   if(!state||!state.confirmBeforeRun||state.busy){run();return}
   pendingConfirm={type:'run',run};
-  document.getElementById('confirmTitle').textContent='执行确认：'+label;
+  document.getElementById('confirmTitle').textContent='执行确认：'+(RUN_DISPLAY_LABELS[label]||label);
   document.getElementById('confirmOk').textContent='开始执行';
   document.getElementById('confirmMsg').textContent=summary;
   confirmAllFiles=files||[];
@@ -3687,7 +3695,7 @@ function setMergeMode(on,combine){
 }
 function createTemplateMerge(){
   pendingConfirm={type:'templateMerge'};
-  document.getElementById('confirmTitle').textContent='制作联合模板';
+  document.getElementById('confirmTitle').textContent='S1F5 制作联合模板';
   document.getElementById('confirmOk').textContent='开始制作';
   document.getElementById('confirmMsg').textContent='制作联合模板是低频的模板制作动作，不使用当前页面路径，也不会自动识别模板。\n\n'
     +'第1步 选择“基准模板”：它只会另存为最终联合模板，原文件不会被修改；应选择包含集中系统数据、参照表等公共依赖工作表的模板，不要将普通业务模板误选为基准模板。\n'

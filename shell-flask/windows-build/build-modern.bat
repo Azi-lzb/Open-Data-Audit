@@ -64,7 +64,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-"%PY%" -c "import flask, openpyxl, lxml, xlrd, win32com.client, PyInstaller" >nul 2>nul
+"%PY%" -c "import flask, openpyxl, lxml, xlrd, python_calamine, win32com.client, PyInstaller" >nul 2>nul
 if errorlevel 1 (
     echo [BOOT] Installing modern 64-bit build dependencies into .venv ...
     "%PY%" -m pip install --disable-pip-version-check --upgrade pip

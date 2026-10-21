@@ -1,0 +1,42 @@
+时间：2026-10-21 09:13:53
+执行者：Codex
+修改前/后 commit：b7d6428c09e2425515c2ec01bece737ccba99747（本轮未提交）
+
+【目的与边界】
+用户要求在系统导航显示 S1/S2/S3 等编号，各系统的顶级功能按钮显示 F1/F2 等编号，方便沟通定位。
+修改前 desktop 已有上一轮发行构建的未提交 WIP：两个 Windows 构建文件、产品清单/CHANGELOG、双日志及构建修改记录；另有 .zcode/、external/ 未跟踪目录。本轮保留这些内容，双日志仅追加本轮信息。
+
+【修改文件】
+1. core/frontend/web/index.html
+   系统导航显示 S1 逐笔统计系统、S2 报表采集系统、S3 大集中统计系统、S4 地金系统；导航宽度 172→208px。
+   S1 五个功能按既有清单显示 F1—F5；S2 执行报表规则显示 F1；S3 五个功能显示 F1—F5。
+   操作指引标记改用固定 SxFy 编号，限定版过滤及隐藏功能开关不再改变编号。
+   执行确认框仅在显示层映射为 SxFy 名称，保留原始动作名称、执行前检查、DAG ID、Bridge API 和按钮属性。
+   制作联合模板确认框标题补充 S1F5；S4 为既有预览页，未新增功能编号。
+2. core/tests/test_distribution_profile.py
+   调整既有操作指引断言，验证完整版 11 个功能编号和 S1/S2 限定版过滤后的固定编号。不新增低影响文案专用测试模块。
+3. 日志/开发日志.txt、日志/更新日志.txt
+   追加本轮界面变更及验证说明。
+
+【组件版本】
+系统：S1、S2、S3 共用界面，兼及 S4 导航预览。
+影响功能：仅展示既有编号，11 个业务功能的输入、输出、执行路径和业务语义未变，功能组件版本不升级。
+影响配置：无，不修改任何配置工作簿；配置组件版本不变。
+产品版本：保留 V26.1.7.0，本轮未发布新发行包；后续发布时再按实际发布范围升级。
+
+【验证】
+python -m pytest -q -rs core/tests/test_distribution_profile.py：20 passed / 0 skipped / 0 failed / 0 errors，含完整页面 JavaScript 语法检查和交付显示逻辑。
+HTML 解析核对：四个系统标签、11 个功能标签；所有按钮属性与 HEAD 完全一致；maybeConfirmRun 执行前检查代码与 HEAD 完全一致；指引编号与 VERSION_MANIFEST 的 11 个功能一致。
+python -m py_compile core/tests/test_distribution_profile.py、git diff --check：通过。
+python -m pytest -q -rs core/tests：1054 passed / 13 skipped / 0 failed / 0 errors，5 subtests passed，208.52 秒；一次全量覆盖 S1/S2/S3 受影响组。
+跳过原因：7 项 Linux/UOS 专属探测、6 项当前全局 Python 缺少 Flask 的路由验收。
+报告：test-output/full-test-reports/UI编号_windows_20261021_091319.txt。
+未执行：浏览器实际点击/截图、UOS/麒麟桌面真机、重新打包。
+
+【配置、迁移、产物与 Git】
+不涉及配置或 VBA 迁移，不读取或修改原始业务文件。本轮未修改上一轮已经生成的 Linux/Windows 发行产物，源码界面与既有发行包因此存在本次展示文案差异。
+未 commit、push、merge 或修改 main。
+
+【删除与回滚】
+删除清单：无。
+回滚仅撤销上述共享 HTML 和测试的本轮差异，以及本轮双日志条目/本记录；不要撤销上一轮发行构建的 WIP。
