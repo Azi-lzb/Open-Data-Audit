@@ -14,12 +14,84 @@ sys.path.insert(0, str(ROOT / "src"))
 from base_audit.discovery import (
     TemplateCatalog,
     _compact,
+    annotate_summary_matches,
+    classify_source_files,
     detect_period,
     recommend_template,
     source_workbooks,
 )
 from base_audit.settings import SettingsStore, UserSettings, add_favorite, remember_path
 from base_audit.template import normalize_template_name
+
+
+def test_f2_partial_hint_does_not_relax_f1_classification_or_auto_selection(tmp_path):
+    inputs, templates = tmp_path / "inputs", tmp_path / "templates"
+    inputs.mkdir(); templates.mkdir()
+    template = templates / "汇总模板.xlsx"
+    source = inputs / "源文件.xlsx"
+    make_xlsx(template, "任务说明", "业务说明")
+    make_xlsx(source, "任务说明", "附表甲", "附表乙", "附表丙")
+    before = classify_source_files(templates, inputs, tmp_path / "index.json")
+    assert before[0]["template"] == "未识别"
+    rows = [dict(row) for row in before]
+    annotate_summary_matches(rows, template)
+    assert {k: v for k, v in rows[0].items() if k != "summaryMatch"} == before[0]
+    hint = rows[0]["summaryMatch"]
+    assert hint["partial"] and hint["matched"] == ["任务说明"]
+    assert hint["missing"] == ["业务说明"] and len(hint["extra"]) == 3
+    assert hint["sourceCount"] == 4
+    assert recommend_template(templates, inputs, tmp_path / "index.json").template_path is None
+
+
+def test_f2_hint_tracks_active_template_and_does_not_claim_fallback_matches(tmp_path):
+    template, source = tmp_path / "模板.xlsx", tmp_path / "源.xlsx"
+    make_xlsx(template, "任务说明", "业务说明", "兜底模板")
+    make_xlsx(source, "任务说明")
+    rows = [{"path": str(source), "template": "未识别"}]
+    annotate_summary_matches(rows, template)
+    assert not rows[0]["summaryMatch"]["partial"]
+    assert rows[0]["summaryMatch"]["matched"] == ["任务说明"]
+    assert rows[0]["summaryMatch"]["missing"] == ["业务说明"]
+    assert rows[0]["summaryMatch"]["fallbackAvailable"]
+    make_xlsx(template, "另一种业务", "兜底模板")
+    annotate_summary_matches(rows, template)
+    assert rows[0]["summaryMatch"]["matched"] == []
+    assert rows[0]["summaryMatch"]["extra"] == ["任务说明"]
+    assert rows[0]["summaryMatch"]["fallbackAvailable"]
+    annotate_summary_matches(rows, None)
+    assert "summaryMatch" not in rows[0]
+
+
+def test_source_sheet_subset_matches_template_with_other_sheets(tmp_path):
+    inputs, templates = tmp_path / "inputs", tmp_path / "templates"
+    inputs.mkdir(); templates.mkdir()
+    template, source = templates / "综合模板.xlsx", inputs / "源文件.xlsx"
+    make_xlsx(template, "单位贷款", "个人贷款", "机构说明", "兜底模板")
+    make_xlsx(source, "单位贷款")
+
+    rows = classify_source_files(templates, inputs, tmp_path / "index.json")
+    suggestion = recommend_template(templates, inputs, tmp_path / "index.json")
+
+    assert rows[0]["template"] == template.name
+    assert suggestion.matched
+    assert suggestion.template_path == template
+    assert suggestion.confidence == 1.0
+    assert "源文件工作表全部包含于模板" in suggestion.details
+
+
+def test_f2_extra_sheets_with_fallback_are_shown_as_fallback_candidates(tmp_path):
+    template, source = tmp_path / "模板.xlsx", tmp_path / "源.xlsx"
+    make_xlsx(template, "既有表", "兜底模板")
+    make_xlsx(source, "新增表")
+    rows = [{"path": str(source), "template": "未识别"}]
+
+    annotate_summary_matches(rows, template)
+
+    hint = rows[0]["summaryMatch"]
+    assert hint["matched"] == []
+    assert hint["extra"] == ["新增表"]
+    assert hint["fallbackAvailable"]
+    assert hint["partial"]
 
 
 WORKBOOK_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -190,7 +262,7 @@ class DiscoveryTests(unittest.TestCase):
             result = recommend_template(template_dir, input_dir, root / "index.json")
         self.assertTrue(result.matched)
         self.assertEqual(result.template_path.name, "！任意名称.xlsx")
-        self.assertIn("工作表集合匹配率", result.details)
+        self.assertIn("源文件工作表全部包含于模板", result.details)
         self.assertIn("已忽略未能识别", result.details)
 
     def test_unmatched_summary_workbook_first_is_ignored(self) -> None:

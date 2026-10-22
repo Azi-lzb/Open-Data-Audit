@@ -296,6 +296,7 @@ set -- --noconfirm --clean --onedir --name "$LINUX_NAME" \
     --add-data "$ROOT/日志/更新日志.txt:日志" \
     --add-data "$ROOT/docs/常见问题.json:docs" \
     --collect-submodules base_audit \
+    --collect-submodules s1audit_configured \
     --collect-all flask \
     --collect-all openpyxl \
     --collect-all xlrd \
@@ -430,6 +431,18 @@ print(f"[配置] {len(names)}册配置已复制；本机审核历史、机构参
 PY
 fi
 
+# S5 layouts belong to the full edition only; S1/S2 deliveries keep their scope.
+if [ "$PROFILE_ID" = full ] && [ -d "$CONFIG_SOURCE/S5_模板文件" ]; then
+    cp -R "$CONFIG_SOURCE/S5_模板文件" "$PAYLOAD/config/"
+fi
+
+# S1 and S5 share these named-range templates. Keep them in both full and S1/S2
+# internal packages so the first launch can point both template directories here.
+if [ "$CONFIG_PROFILE" = internal-config ] && [ -d "$CONFIG_SOURCE/模板文件_命名区域" ]; then
+    cp -R "$CONFIG_SOURCE/模板文件_命名区域" "$PAYLOAD/config/"
+    echo "[配置] 已附带模板文件_命名区域（供 S1/S5 自动匹配模板）。"
+fi
+
 "$BUILD_PY" "$SCRIPT_DIR/distribution_profile.py" filter-config "$PROFILE_ID" \
     "$PAYLOAD/config" || exit $?
 
@@ -453,7 +466,7 @@ cat > "$STAGE/usr/share/applications/audit-tools.desktop" <<DESKTOP
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=audit-tools V$APP_VERSION
+Name=AuditTools V$APP_VERSION
 Name[zh_CN]=审核工具 V$APP_VERSION
 Comment=后台启动本机 Flask 审核工具
 Exec=audit-tools --background
@@ -554,7 +567,7 @@ X-Audit-Tools-Artifact-Prefix: $ARTIFACT_PREFIX
 Depends: libc6 (>= $MIN_GLIBC), libstdc++6, xdg-utils, iproute2
 Conflicts: $DEB_CONFLICTS
 Replaces: $DEB_CONFLICTS
-Maintainer: V3 Project
+Maintainer: HZPBC
 Description: 审核工具 V$APP_VERSION
  Chinese-language audit tool with an embedded Python runtime.
 CONTROL

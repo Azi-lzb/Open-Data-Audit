@@ -1,0 +1,44 @@
+时间：2026-10-21 17:26（Asia/Shanghai）
+执行者：Codex
+修改前 commit：4c84c3f2890fb0b7961c3f115533ca19f5f474c5
+修改后 commit：4c84c3f2890fb0b7961c3f115533ca19f5f474c5（未提交）
+WIP：开始前工作区已有多项 S1/S5、界面、打包、版本和日志改动。本次只改下列 S2-F01 文件，没有清理、覆盖、暂存或提交其他 WIP。
+
+目的：确认并修复 S2-F01 大集中外部文件的普通报表/时序表识别；使已匹配报表项目但数值为空时能提示用户检查数据，而不是把空白当成 0。
+
+修改内容：
+- 时序格式必须同时有“数据日期”和“行名称”表头。仅有“行名称”时按纯报表读取，避免复制出来的普通报表因首列标题被写为“行名称”而误报“时序表头不完整”；纯报表在前 4 列支持显式“行名称”或“报表项目”标签头，也保留原来空白标签头识别。
+- 时序数据行有指标数值但行名称为空时，错误补充说明无法匹配报表项目，并提示检查导出不完整或行名称误删。
+- 记录普通/时序工作表中的行标签、指标列和空白数值位置。报表项目已匹配但目标值为空时，审核结果明确提示“数值单元格为空白（空白不按 0 处理）”并建议补齐/重新导出；缺少目标指标列时也给出单独说明。原来真实数值 0 的处理不变。
+- 外部数据仍仅支持 `.xlsx`，必须有“集中系统数据”工作表；机构参照表可选，无外部映射时沿用 S2 配置回退。未改配置工作簿和输出列结构。
+
+修改文件：
+- `core/src/base_audit/systems/s2_report_collection/importer.py`
+- `core/src/base_audit/systems/s2_report_collection/external_engine.py`
+- `core/tests/test_period_v2.py`
+- `core/tests/TEST_GROUPS.md`
+- `core/tests/test_version_manifest.py`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md`
+- `版本管理/产品发布/CHANGELOG.md`
+
+配置及数据影响：无配置结构变化；S2-CFG-01 不变。没有读取或修改用户业务文件；没有重新打包。
+
+测试：
+- `python -m pytest -q core/tests/test_period_v2.py core/tests/test_s2_units.py`：150 passed。
+- `python -m pytest -q -m s2 core/tests`：439 passed、6 skipped、0 failed、3 subtests passed。
+- `python -m compileall -q core/src/base_audit/systems/s2_report_collection core/tests/test_period_v2.py core/tests/test_version_manifest.py`：通过。
+- VERSION_MANIFEST JSON 解析及目标文件 `git diff --check`：通过。
+- 前一轮 S2 组运行曾遇到 Windows 构建目录重命名 WinError 5；隔离重跑该打包测试通过，之后本轮 S2 组完整运行也通过。
+- 未做真实大集中业务文件复核、UOS/麒麟实机测试或打包验收。
+
+【组件版本】
+系统：S2 报表采集系统
+影响功能：S2-F01 执行报表规则 v10.6.0 → v10.6.1
+影响配置：S2-CFG-01 报表采集系统配置 v8.4.0 → v8.4.0（未变）
+整包版本：V26.1.7.3 → V26.1.7.4
+
+风险与回滚：版本字段需要与对应代码一起回滚。回滚本次行为可恢复 importer.py、external_engine.py 和测试/记录文件到本次修改前版本；不触及工作区其他 WIP。
+
+删除清单：无。
+Git提交：未提交。

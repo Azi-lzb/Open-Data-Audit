@@ -1,0 +1,50 @@
+时间：2026-10-21 23:00:53
+执行者：Codex
+项目：3.open-data-audit
+分支：desktop
+修改前 commit：4c84c3f2890fb0b7961c3f115533ca19f5f474c5
+修改后 commit：4c84c3f2890fb0b7961c3f115533ca19f5f474c5（尚未提交）
+WIP：工作区原有多项 S1/S2/S3/S5、打包和日志改动；本轮仅在本记录列出的文件中增量修改，没有暂存或提交其他 WIP。
+
+【目的】
+S5“检查配置”同步扫描启用规则时会阻塞 UI，用户看不到弹窗和进度。本轮把检查放到后台任务，加入进度查询与弹窗结果，并将完整报告保存到通用“执行结果”目录。按用户最新决定，仅检查启用规则，禁用规则跳过。
+
+【修改文件】
+- `core/src/base_audit/systems/s5_configured_statistics/service.py`：规则引用扫描跳过禁用规则；检查支持进度回调；零启用规则时返回未检查/不完整状态。
+- `core/src/base_audit/systems/s5_configured_statistics/web_api.py`：启动后台检查任务、提供状态读取、写时间戳文本报告、限制界面返回的问题量并使用锁保护状态快照；报告在 `执行结果`，不进 `S5_执行结果`。
+- `core/src/s1audit_configured/workbook_config.py`：`load_configuration()` 增加可选进度回调，原有调用路径无回调时行为不变。
+- `core/src/base_audit/web_app.py`：检查运行期间阻止并行启动其他工作簿任务。
+- `core/frontend/web/index.html`：新增检查弹窗、阶段进度、问题摘要和“打开检查报告”按钮。
+- `core/tests/s5/test_s5_integration.py`：覆盖启用/禁用规则、异步任务、报告目录与弹窗元素。
+- `core/tests/test_version_manifest.py`：登记 S5-F01 新版本。
+- `版本管理/VERSION_MANIFEST.json`、产品与 S5-F01 CHANGELOG：S5-F01 v2.3.2 → v2.4.0，产品 V26.1.7.8 → V26.1.7.9，S5-CFG-01 不变；登记共享加载器实现路径。
+- `日志/更新日志.txt`、`日志/开发日志.txt`：追加带系统标签的更新记录，并修复两个未被日期解析器识别的裸日期行。
+
+【检查行为】
+- 启用规则使用正式配置加载器校验审核表达式、取值字典、字典依赖与表达式变量键引用；模板路径仍通过运行时定位器扫描；外部 V_EXT 指标按外部工作簿布局校验表头唯一性。
+- 禁用规则不解析表达式、不收集 V_CUR/V_PRE/V_EXT 地址。
+- 当前配置没有启用规则时，只报告配置结构可读，表达式/字典键/地址检查均为 not_checked，整体不标记完整通过。
+- 完整明细报告生成在所选输出目录旁的 `执行结果/S5配置检查_时间戳_任务号.txt`；默认输出路径若为 `<源目录>/S5_执行结果`，报告目录为 `<源目录>/执行结果`。不覆盖业务原文件。
+- 本机真实配置仅只读统计：审核规则 2,392 条全启用；没有修改 `config-real/`。未用本轮工具完整扫描真实配置的全部规则/地址，也未做 UOS 真机 UI 验收。
+
+【组件版本】
+系统：S5 逐笔统计系统（配置版）
+影响功能：S5-F01 汇总核查表校验 v2.3.2 → v2.4.0（MINOR：增加异步检查、进度、结果报告）
+影响配置：S5-CFG-01 v2.0.0 → v2.0.0（未变）
+相关共享调用：S1-F01 行为和配置未变；共享加载器新增可选进度回调，S1 回归通过。
+产品版本：V26.1.7.8 → V26.1.7.9（PATCH）
+
+【验证】
+- `python -X utf8 -m pytest -q -rs -m s5 core/tests`：310 passed、6 skipped、865 deselected、8 warnings、3 subtests passed、0 failed。6 项跳过为缺少 Flask 的路由验收；8 条警告为未安装可选 Calamine 后预期回退 openpyxl。
+- `python -X utf8 -m pytest -q -rs -m s1 core/tests`：498 passed、13 skipped、670 deselected、3 subtests passed、0 failed。
+- `python -X utf8 -m pytest -q core/tests/s5/test_s5_integration.py -k 'configuration_check_runs_in_background or skips_disabled_rules' core/tests/test_version_manifest.py core/tests/test_web_app.py::WebAppCompatibilityTests::test_get_update_log_parses_structured_entries`：2 passed、41 deselected。因 `-k` 对合并目标一并生效，清单/日志测试已由 S5 全量回归覆盖。
+- `python -X utf8 -m pytest -q core/tests/test_version_manifest.py core/tests/test_web_app.py::WebAppCompatibilityTests::test_get_update_log_parses_structured_entries`：9 passed。
+- Python `compileall` 与 `git diff --check` 通过。
+- `node --check`：共享前端 1 个 inline script 通过语法检查。
+- 未运行 core 全量测试、未打包、未提交。
+
+【删除与回滚】
+- 无删除文件。
+- 回滚本轮时仅回退上述 S5 检查代码、共享加载器可选回调、UI/测试、版本清单和对应日志记录；不要用旧文件覆盖当前工作区其他未提交 WIP，也不要单独回退版本号而保留功能代码。
+
+Git提交：未提交。

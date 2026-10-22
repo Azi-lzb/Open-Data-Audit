@@ -1,5 +1,106 @@
 # S2-F01 执行报表规则
 
+## v10.7.0 — 2026-10-21
+
+变更类型：Feature / MINOR
+
+前版本：v10.6.4；新版本：v10.7.0。
+
+- 首次启动时，若发行配置中带有“大集中外部数据模板”，默认填入 S2 的大集中系统数据路径。
+- 用户选定的其他文件仍优先使用并持久化；手动清空会保留为未启用状态，不会在重启后自动恢复默认文件。
+- S2 外部文件读取、规则计算与结果格式不变；S2-CFG-01 v8.4.0、S2-CFG-02 v1.0.0 未变。
+
+影响文件：`core/src/base_audit/web_app.py`、`core/src/base_audit/settings.py`、`shell-flask/Linux-2-打包DEB与TARGZ.sh`、相关测试。
+
+验证：S1/S2 联合回归 733 passed、13 skipped、2 failed。两项失败均来自本机忽略的 config-real 内容与固定测试期望不一致（指标参照 0/105、通用单位设置 0/3）；本轮未改真实配置。路径与发行配置定向测试 85 passed、3 subtests passed。未重新打包。
+
+GPT修改记录：`GPT修改记录/20261021_221251_S1S2S5默认外部文件与命名区域模板路径.txt`。
+
+Git提交：未提交。
+
+## v10.6.4 — 2026-10-21
+
+变更类型：Bugfix / PATCH
+
+前版本：v10.6.3；新版本：v10.6.4。
+
+- 行名称为空时，只有指标列实际有值才提示行标签缺失并忽略该行。
+- 时序表中日期、报表名称、报表代码、版本号、报表组或行顺序号等元数据存在，但行名称和指标列为空，按正常无数据行忽略，不再误报。
+- 只有整行全空且位于有效数据区内部时，才给出空行已忽略的软提示；尾部空行不提示。空格和不间断空格按空白处理。
+- 普通报表读取时不再把已知元数据列当作指标列。
+
+影响文件：`core/src/base_audit/systems/s2_report_collection/importer.py`、`core/tests/test_period_v2.py`、`core/tests/TEST_GROUPS.md`。
+
+配置影响：无；输出仍使用既有“校验规则”工作表记录提示。
+
+测试：`test_v2_external_blank_row_label_is_ignored_with_soft_warning` 两种布局用例 2 passed；`python -m pytest -q -rs -m s2 core/tests`：445 passed / 6 skipped / 0 failed / 3 subtests passed（719 deselected）；版本清单 8 passed；compileall、MANIFEST JSON 与 `git diff --check` 通过。真实业务数据及平台真机未执行。
+
+GPT修改记录：`GPT修改记录/20261021_213956_S2S5外部空标签行误报修正.txt`。
+
+Git提交：未提交。
+
+## v10.6.3 — 2026-10-21
+
+变更类型：Bugfix / PATCH
+
+前版本：v10.6.2；新版本：v10.6.3。
+
+- 时序布局中有行名称、但数据日期空白或格式无效的记录不再导致整份外部文件导入中止；该行会被忽略，并在运行结果中给出行号和原因提示。
+- 仍只取与本期完整报告日期匹配的数据，不会把异常日期或其他日期的数据当成本期；若没有本期有效记录，对应规则仍明确提示缺少本期数据。
+- 重复时序记录和不完整时序表头仍作为结构问题阻断，避免猜测取数。
+- 普通报表和时序布局的空值、非数值值及空行/空标签处理保持一致，按 v10.6.2 规则提示并继续处理。
+
+影响文件：`core/src/base_audit/systems/s2_report_collection/importer.py`、`core/tests/test_period_v2.py`、`core/tests/TEST_GROUPS.md`。
+
+配置影响：无；输出仍使用既有“校验规则”工作表记录提示。
+
+测试：定向共用测试 159 passed；`python -m pytest -q -rs -m s2 core/tests`：445 passed / 6 skipped / 0 failed / 3 subtests passed；版本清单 8 passed；compileall、MANIFEST JSON 与 `git diff --check` 通过。平台真机及真实业务数据未执行。
+
+GPT修改记录：`GPT修改记录/20261021_210609_S2S5外部异常数据继续处理与最终提示.txt`。
+
+Git提交：未提交。
+
+## v10.6.2 — 2026-10-21 17:43
+
+变更类型：Bugfix / PATCH
+
+前版本：v10.6.1；新版本：v10.6.2。
+
+- 外部文件中报表项目已匹配时，空白或非数值指标单元格按 0 参与外部核对；结果“校验规则”增加软性提示，写明行号、报表项目、指标列及按 0 处理，请复核是否误删或改动。
+- “行名称”为空且该行无指标值时忽略该行并软提示；“行名称”为空但有指标值时跳过该行、不阻断审核，并提示检查名称是否误删。普通报表中间全空行同样软提示，尾部格式空行不产生提示。
+- 审核完成状态和运行记录显示外部数据提示条数，并引导查看“校验规则”工作表。
+- 保留既有时序行为：仍规范化完整日期，并仅匹配与本期报送日期一致的数据；未新增日期校验。
+
+影响文件：`core/src/base_audit/systems/s2_report_collection/{importer,external_engine,validation,service}.py`、`core/src/base_audit/web_app.py`、S2 回归测试与测试组清单。
+
+配置影响：无（S2-CFG-01 v8.4.0 不变）。结果仍为三张分类审核表；新增提示写入既有“校验规则”工作表。
+
+测试：S2 回归组 443 passed / 6 skipped / 0 failed / 3 subtests passed；新增普通/时序空值与非数值、空名称行、完成提示及结果工作簿验证。其余检查见本次 GPT 修改记录。未重新打包。
+
+GPT修改记录：`GPT修改记录/20261021_174327_S2F1外部数据空值按零并提示.txt`。
+
+Git提交：未提交。
+
+## v10.6.1 — 2026-10-21 17:26
+
+变更类型：Bugfix / PATCH
+
+前版本：v10.6.0；新版本：v10.6.1。
+
+- 外部文件时序格式仅在表头同时含“数据日期”和“行名称”时识别。纯报表格式若将原本空白的首列标题写成“行名称”，现在仍按普通报表解析，并使用该列匹配报表项目；只有“数据日期”而没有“行名称”仍提示时序表头不完整。
+- 时序数据行有指标值但“行名称”为空时，错误提示说明无法匹配报表项目，并建议检查导出不完整或名称误删。
+- 普通/时序格式中，报表项目已匹配但对应指标数值单元格为空时，结果明确提示该值为空白且不会按 0 处理，并建议检查数据或重新导出。缺少指标列也单独说明。空值仍按缺数审核，不作为 0 参与比较。
+
+影响文件：`core/src/base_audit/systems/s2_report_collection/{importer,external_engine}.py`、`core/tests/test_period_v2.py`、`core/tests/TEST_GROUPS.md`、`core/tests/test_version_manifest.py`、`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：无（S2-CFG-01 v8.4.0 不变）。输出结构不变；外部数据仍只支持包含“集中系统数据”工作表的 `.xlsx` 文件；机构参照表可选，无外部映射时回退 S2 配置。
+
+测试：`python -m pytest -q core/tests/test_period_v2.py core/tests/test_s2_units.py`，150 passed；`python -m pytest -q -m s2 core/tests`，439 passed / 6 skipped / 0 failed / 3 subtests passed。`compileall`、MANIFEST JSON 解析及目标文件 `git diff --check` 通过。未执行真实业务数据复核或重新打包。
+
+GPT修改记录：`GPT修改记录/20261021_172655_S2F1外部文件识别与缺数提示.txt`。
+
+Git提交：未提交。
+
 ## v10.6.0 — 2026-10-20 23:52
 
 变更类型：Feature / MINOR

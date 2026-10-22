@@ -1,0 +1,55 @@
+时间：2026-10-21 15:53（Asia/Shanghai）
+执行者：Codex
+修改前 / 修改后 commit：4c84c3f2890fb0b7961c3f115533ca19f5f474c5（未提交）
+分支：desktop
+WIP：仓库已有多项 S5、分发配置和日志未提交修改；本次仅追加发布架构约定与 Calamine 构建收集项，未覆盖其他 WIP。
+
+目的：
+- 在各发行包中带入 python-calamine==0.3.1。
+- 将 Linux 容器构建的 glibc 基线降到 UOS 20 可用的 2.28，避免 Ubuntu 22.04 构建产物超出目标 ABI。
+- 依用户最新要求，后续 Linux 发布暂只打 AMD64；交付物只保留审核工具 DEB 和便携 TAR.GZ，不附 LibreOffice 离线大包、SHA256 或 build-info sidecar。
+
+修改文件：
+- AGENTS.md：新增 Linux 暂只发布 AMD64，以及只交付 DEB/TAR.GZ 的约定。
+- shell-pywebview/build_exe.py：显式收集延迟导入的 python_calamine 扩展。
+- shell-flask/Dockerfile.arm64-builder：构建基础镜像改为 Debian 10（glibc 2.28），并使用归档 Debian 源。
+- shell-flask/Linux-7-Docker双架构打包.sh：镜像标签改为 glibc228 系列。
+- GPT修改记录/20261021_155352_Calamine_AMD64打包与发布约定.txt：本记录。
+
+版本影响：
+【组件版本】
+系统：S1/S2/S3/S5 共用构建与发行
+影响功能：业务功能未变；产品 V26.1.7.0 原样重新打包
+影响配置：无；配置工作簿结构未改
+未修改的相关组件：S1-F01 至 S5-F01 的业务代码与配置内容
+版本升级原因：纯打包环境与发布治理调整，不升级产品、功能或配置版本
+
+构建产物：
+- Linux AMD64 完整版：审核工具 DEB + 便携 TAR.GZ。
+- Linux AMD64 S1-S2 版：审核工具 DEB + 便携 TAR.GZ。
+- Windows Flask 完整版、S1-S2版（Win10/11 x64 与 Win7 x86）。
+- Windows PyWebView 完整版、S1-S2版。
+- Linux 交付整理目录：shell-flask/dist/交付-AMD64-仅DEB与TARGZ-20261021/，完整版和 S1-S2 各仅含一个 DEB 与一个 TAR.GZ。
+- Linux 包按本机 config-real 配置构建，属于内部包，不应外发。
+
+验证：
+- Windows core 全量：1137 passed、13 skipped、0 failed；5 subtests passed。
+- WSL AMD64 core 全量：1131 passed、19 skipped、0 failed；5 subtests passed。使用 /tmp 作为 pytest 临时目录，避免 /mnt/c 的权限位语义影响权限测试。
+- Linux 4 个发行产物（full/S1-S2 × DEB/TAR.GZ）启动冒烟全部通过：SHA 校验、冻结程序启动、HTTP 200、页面标题和图标资源检查、端口释放；0 失败。
+- Windows PyInstaller 归档检查：Flask 4 个 EXE、PyWebView 2 个 EXE 均包含 Calamine 原生扩展。
+- Linux 便携包归档内容确认 python_calamine 0.3.1 与 x86_64 原生扩展存在。
+- Debian 10 构建容器 glibc 2.28；冻结包 ELF 实测最高 glibc 要求 2.25。
+- S1-S2 离线 LO 包曾在构建临时目录完成组装检查，但不纳入交付目录；AMD64 ARM64 包均未交付，按用户新要求仅保留 AMD64。
+
+未执行 / 已知限制：
+- 未做 ARM64 发布包；未做 UOS/麒麟真机验收。
+- COM/Excel/WPS 与 Node.js 前端检查按环境条件跳过。
+- Linux 原始打包目录仍保留构建阶段生成的 LO 离线包和 sidecar；用户专用交付目录仅包含 DEB 与 TAR.GZ。尝试删除原目录内的中间文件时，自动操作策略以“blocked by policy”拒绝了删除命令，因此未删除那些中间产物。
+
+删除清单和回滚：
+- 未删除源代码、配置或包文件；被中断的 Linux-7 临时 staging 已由构建脚本退出清理。
+- 如需回滚 AGENTS 约定，移除新增“Linux 发布架构”两条即可。
+- 如需回滚构建器，仅恢复 Dockerfile 的基础镜像/apt 源与 Linux-7 的镜像标签改动；不要整文件覆盖，以免丢失已有 WIP。
+
+Git：
+- 未提交、未推送。

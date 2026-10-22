@@ -1,9 +1,13 @@
-# Linux-7 的 amd64 / arm64 通用构建环境；由 Docker Buildx 的 --platform 选择架构。
-# ARM64 可在 x86-64 WSL2 上通过 Docker Desktop 的 QEMU 模拟构建。
-FROM ubuntu:22.04
+# Debian 10 的 glibc 2.28 与用户的 UOS 20 兼容基线一致；不能用 Ubuntu 22.04
+# (glibc 2.35) 冻结后再声称兼容 glibc 2.28。
+# amd64 / arm64 由 Docker Buildx 的 --platform 选择；ARM64 可经 QEMU 构建。
+FROM debian:buster-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
+# Debian 10 已归档到 archive.debian.org；关闭旧索引的有效期检查。
+RUN sed -i 's|deb.debian.org/debian|archive.debian.org/debian|g; s|security.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list \
+    && printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99no-check-valid-until \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
        binutils ca-certificates curl dpkg tar xz-utils \
     && rm -rf /var/lib/apt/lists/*

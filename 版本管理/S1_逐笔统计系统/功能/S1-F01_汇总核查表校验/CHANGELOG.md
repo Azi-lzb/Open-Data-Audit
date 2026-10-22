@@ -1,6 +1,65 @@
 # S1-F01 汇总核查表校验
 
-当前版本：v2.2.1
+当前版本：v2.5.0
+
+## v2.5.0 — 2026-10-22 00:27
+
+变更类型：Feature / MINOR
+
+前版本：v2.4.0；新版本：v2.5.0。
+
+- S1 待处理文件列表新增 F1 模板匹配状态和报表模板筛选；筛选只控制显示，原有勾选保留，全选/取消仅作用于当前显示文件。
+- S1 文件选择读取限定在 S1 待处理列表，避免与隐藏的 S5 文件列表共享选择框。
+
+影响文件：`core/frontend/web/index.html`、`core/tests/test_distribution_profile.py`、`core/tests/TEST_GROUPS.md`。
+
+配置影响：无；S1-CFG-01 v2.0.0 未变。
+
+测试：`python -X utf8 -m pytest -q -rs -m s1 core/tests`：502 passed / 13 skipped / 0 failed / 682 deselected，3 subtests passed。跳过项为 Linux/UOS 专属探测与缺少 Flask 的外壳路由测试。前端筛选和选择行为 Node 定向测试通过。
+
+GPT修改记录：`GPT修改记录/20261022_002708_S1筛选与S5检查文案.txt`。
+
+Git提交：未提交。
+
+## v2.4.0 — 2026-10-21 23:54
+
+变更类型：Feature / MINOR
+
+前版本：v2.3.0；新版本：v2.4.0。
+
+- 模板匹配按源工作簿的工作表覆盖判断；模板额外保留其他表时，不再因此降低匹配状态。
+- 自动推荐仍优先选择工作表集合最相近的模板；多个候选相近时继续要求人工确认。
+
+影响文件：`core/src/base_audit/discovery.py`、相关 S1 测试。
+
+配置影响：无；S1-CFG-01 v2.0.0 未变。
+
+测试：S1 回归 501 passed / 13 skipped / 0 failed，3 subtests passed；最终模板表排除调整后 `test_discovery.py` 20 passed。
+
+GPT修改记录：`GPT修改记录/20261021_235428_S1S5待处理文件匹配状态优化.txt`。
+
+Git提交：未提交。
+
+## v2.3.0 — 2026-10-21
+
+变更类型：Feature / MINOR
+
+前版本：v2.2.1；新版本：v2.3.0。
+
+修改内容：
+- 首次启动时，若发行配置中带有“外部文件-大集中相关数据”工作簿，默认填入“大集中系统数据”路径。
+- 首次启动时优先把“模板文件_命名区域”设为模板目录；用户选过且仍存在的模板目录优先保留。
+- S1 选定的输入、模板目录、外部文件与输出路径立即持久化；用户清空外部文件后，不会在下次启动自动恢复默认文件。
+
+影响文件：`core/src/base_audit/web_app.py`、`core/src/base_audit/settings.py`、`core/tests/test_web_app.py`。
+
+配置影响：无工作簿或审核规则变化；S1-CFG-01 v2.0.0（未变）。
+
+验证：路径与发行配置定向测试 85 passed、3 subtests passed；S1/S2 联合回归 733 passed、13 skipped、2 failed。两项失败均来自本机忽略的 config-real 内容与固定测试期望不一致（指标参照 0/105、通用单位设置 0/3）；本轮未改真实配置。未重新打包。
+
+GPT修改记录：`GPT修改记录/20261021_221251_S1S2S5默认外部文件与命名区域模板路径.txt`。
+
+Git提交：未提交。
 
 ## v2.2.1 — 2026-10-15 13:45
 

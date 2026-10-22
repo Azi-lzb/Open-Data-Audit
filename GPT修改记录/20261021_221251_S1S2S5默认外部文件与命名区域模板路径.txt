@@ -1,0 +1,50 @@
+【时间】2026-10-21 22:12:51（Asia/Shanghai）
+【执行者】Codex
+【修改前 commit】4c84c3f
+【修改后 commit】4c84c3f（未提交）
+【工作区状态】开始时工作区已有多项其他未提交 WIP，包含此前 S1/S2/S5、S3、界面和打包改动。本轮只在相关文件中完成路径默认、打包目录、测试与版本留痕；未清理、覆盖、暂存或提交其他 WIP，也未改动被忽略的 config-real 内容。
+
+【目的】用户希望发行配置中的大集中外部参照工作簿和命名区域模板目录随包提供并首次自动回填；S1/S5 默认模板目录使用 `config-real/模板文件_命名区域`。同时确认 S1、S2、S3 路径选择可记住，避免每次启动重新查找。
+
+【修改内容】
+- S1/S2 首次打开时优先使用发行配置目录中的大集中外部参照工作簿；兼容清单登记的带日期名称和 config-real 中稳定的未编号名称。用户已选且仍有效的文件优先保留。
+- S1/S2 手动清空默认外部文件后写入单独的“已明确清空”设置标记，重启时不再自动回填；再次选文件后恢复正常记忆行为。
+- S1 首次模板目录优先为 `模板文件_命名区域`；S5 首次模板目录和外部参照文件也回填到随包配置。原有有效自定义路径仍优先。
+- S1 成功选择文件夹或文件后立即保存，避免等到下一次执行才落盘。
+- S3 的本期、上期和数值核对导数路径原本已独立保存并立即复用；本轮未把 S3 的周期性 14 列导数误绑定到 S1/S2 外部参照工作簿。
+- Windows Flask/PyWebView 构建器原已整体复制本机 config-real；Linux internal-config 构建原已复制 config-real 顶层工作簿，本轮新增在 full 和 s1s2 包中复制共享的 `模板文件_命名区域`。未打包产物。
+- 增加路径默认值、即时持久化、显式清空、发行配置复制相关测试；更新 VERSION_MANIFEST、S1/S2/S5 及产品 CHANGELOG、双日志。
+
+【影响文件】
+- `core/src/base_audit/settings.py`
+- `core/src/base_audit/web_app.py`
+- `core/src/base_audit/systems/s5_configured_statistics/web_api.py`
+- `core/tests/test_web_app.py`
+- `core/tests/test_distribution_profile.py`
+- `core/tests/test_version_manifest.py`
+- `shell-flask/Linux-2-打包DEB与TARGZ.sh`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md`
+- `版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md`
+- `版本管理/S5_逐笔统计系统配置版/功能/S5-F01_配置规则审核/CHANGELOG.md`
+- `版本管理/产品发布/CHANGELOG.md`
+- `日志/开发日志.txt`、`日志/更新日志.txt`
+- 本修改记录
+
+【组件版本】
+产品：V26.1.7.5 → V26.1.7.6（PATCH）。
+S1-F01：v2.2.1 → v2.3.0（MINOR，首次默认外部参照、模板目录及清空状态持久化）。
+S2-F01：v10.6.4 → v10.7.0（MINOR，首次默认外部参照并保留显式清空状态）。
+S5-F01：v2.2.2 → v2.3.0（MINOR，默认共享模板目录及外部参照工作簿）。
+S2-CFG-01、S2-CFG-02、S3 功能与全部配置组件版本未变；没有修改配置工作簿或 VBA。
+
+【验证】
+- `python -m pytest -q tests/test_web_app.py tests/test_distribution_profile.py tests/test_version_manifest.py`：85 passed，3 subtests passed。
+- `python -m pytest -q -rs -m s5 tests`：301 passed，6 skipped，865 deselected，3 subtests passed，0 failed。可选 python-calamine 缺失时自动回退 openpyxl，产生非阻断 RuntimeWarning。
+- `python -m pytest -q -rs -m "s1 or s2" tests`：733 passed，13 skipped，424 deselected，3 subtests passed；另有 2 项失败，均是现有本机忽略的 config-real 内容与固定断言不一致：机构指标参照实际为 0 行而测试期望 105 行；通用设置单位项实际为 0 行而测试期望 3 行。本轮未修改 config-real，未将其当作本次代码回归缺陷处理。
+- S3 `test_central_selections_are_persisted_separately` 在路径/发行配置定向测试中通过。
+- 未运行全量 core 测试、未构建 DEB/TAR.GZ/Windows 包、未在目标系统安装或做桌面视觉验收。
+
+【删除清单】无。
+【回滚提示】仅按本记录对应的小块差异回滚；相关源文件已含本轮之前的未提交 WIP，禁止整文件恢复到 HEAD。版本回滚需同步恢复本记录所列组件和产品版本及 CHANGELOG。
+【Git】未暂存、未提交、未推送。

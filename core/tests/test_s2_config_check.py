@@ -31,6 +31,7 @@ def test_formal_and_default_s2_configs_pass_read_only_check() -> None:
         resolve_test_config("2.报表采集系统_配置.xlsx"),
         resolve_test_config("默认配置/2.报表采集系统_配置.xlsx"),
     ):
+        is_local_real_config = "config-real" in path.parts
         report = check_s2_config(path)
         assert report["passed"], format_config_report(report)
         checks = {check["id"]: check for check in report["checks"]}
@@ -43,11 +44,16 @@ def test_formal_and_default_s2_configs_pass_read_only_check() -> None:
         assert "实际检查项目：" in formatted
         assert "检查范围说明：" in formatted
         assert "不读取本期、上期报表或大集中外部数据文件" in formatted
-        assert report["indicator_count"] == 105
-        assert report["strategy_count"] == 56
         config = load_config(path)
-        band = next(item for item in config.bands if item.strategy_group == "BAL01" and item.rule_id == "B008")
-        assert (band.lower, band.upper) == (30, 50)
+        if is_local_real_config:
+            assert report["indicator_count"] == 105
+            assert report["strategy_count"] == 56
+            band = next(item for item in config.bands if item.strategy_group == "BAL01" and item.rule_id == "B008")
+            assert (band.lower, band.upper) == (30, 50)
+        else:
+            # 发布用默认配置只保留空表头；检查器应接受它并报告零条配置。
+            assert report["indicator_count"] == 0
+            assert report["strategy_count"] == 0
         book = load_workbook(path, read_only=False, data_only=False)
         try:
             sheet = book["环比策略"]
@@ -57,10 +63,13 @@ def test_formal_and_default_s2_configs_pass_read_only_check() -> None:
             assert "%" not in sheet["D10"].number_format
             for business_name in ("指标参照", "机构参照", "环比策略", "校验规则", "外部核对规则"):
                 business = book[business_name]
-                assert all(cell.fill.fill_type == "solid" and cell.fill.fgColor.rgb.endswith("1F4E78") for cell in business[1])
-                assert all(cell.font.bold and cell.font.color.rgb.endswith("FFFFFF") for cell in business[1])
+                if is_local_real_config:
+                    assert all(cell.fill.fill_type == "solid" and cell.fill.fgColor.rgb.endswith("1F4E78") for cell in business[1])
+                    assert all(cell.font.bold and cell.font.color.rgb.endswith("FFFFFF") for cell in business[1])
+                else:
+                    assert all(cell.value not in (None, "") for cell in business[1])
                 body_cells = [cell for row in business.iter_rows(min_row=2) for cell in row if cell.value not in (None, "")]
-                assert body_cells
+                assert bool(body_cells) is is_local_real_config
                 source_columns = [cell.column for cell in business[1] if cell.value == "来源标志"]
                 if business_name == "机构参照" and source_columns:
                     source_column = source_columns[0]
@@ -95,38 +104,45 @@ def test_formal_and_default_s2_configs_pass_read_only_check() -> None:
                     )
                     for cell in body_cells
                 )
-            for sheet_name, header_name in (("环比策略", "审核级别"), ("校验规则", "级别"), ("外部核对规则", "级别")):
-                sheet = book[sheet_name]
-                column = next(cell.column for cell in sheet[1] if cell.value == header_name)
-                column_letter = get_column_letter(column)
-                coordinate_range = f"{column_letter}2:{column_letter}1000"
-                assert sheet.auto_filter.ref == f"A1:{get_column_letter(sheet.max_column)}{sheet.max_row}"
-                assert any(
-                    validation.formula1 == '"硬性,软性"'
-                    and coordinate_range in str(validation.sqref)
-                    for validation in sheet.data_validations.dataValidation
-                ), f"{sheet_name} 缺少硬性/软性下拉选项"
+            if is_local_real_config:
+                for sheet_name, header_name in (("环比策略", "审核级别"), ("校验规则", "级别"), ("外部核对规则", "级别")):
+                    sheet = book[sheet_name]
+                    column = next(cell.column for cell in sheet[1] if cell.value == header_name)
+                    column_letter = get_column_letter(column)
+                    coordinate_range = f"{column_letter}2:{column_letter}1000"
+                    assert sheet.auto_filter.ref == f"A1:{get_column_letter(sheet.max_column)}{sheet.max_row}"
+                    assert any(
+                        validation.formula1 == '"硬性,软性"'
+                        and coordinate_range in str(validation.sqref)
+                        for validation in sheet.data_validations.dataValidation
+                    ), f"{sheet_name} 缺少硬性/软性下拉选项"
             assert [cell.value for cell in book["外部核对规则"][1]] == [
                 "规则编号", "指标代码", "比较方式", "外部指标名称", "容差", "级别", "启用",
             ]
             general = book["通用设置"]
             unit_values = {row[0]: row[1] for row in general.iter_rows(min_row=2, values_only=True) if row[0] in {"源数据单位", "外部文件单位", "输出文件单位"}}
-            assert unit_values == {
-                "源数据单位": config.unit_settings.source_unit,
-                "外部文件单位": config.unit_settings.external_file_unit,
-                "输出文件单位": config.unit_settings.output_file_unit,
-            }
-            assert set(unit_values) == {"源数据单位", "外部文件单位", "输出文件单位"}
-            assert set(unit_values.values()) <= {"元", "万元", "亿元"}
-            assert unit_values["源数据单位"] == "元"
-            # 正式配置和默认快照可采用不同输出单位，以上方配置/解析一致性为准。
-            assert general["B6"].value in {"是", "否"}
-            assert general["B7"].value in {"是", "否"}
-            assert (general["B6"].value == "是") is config.hide_unchanged_period_rows
-            assert (general["B7"].value == "是") is config.hide_matching_external_rows
-            assert general["B8"].value == config.text_change_severity
-            assert general["B9"].value == config.current_missing_severity
-            assert general["B10"].value == config.previous_missing_severity
+            if is_local_real_config:
+                assert unit_values == {
+                    "源数据单位": config.unit_settings.source_unit,
+                    "外部文件单位": config.unit_settings.external_file_unit,
+                    "输出文件单位": config.unit_settings.output_file_unit,
+                }
+                assert set(unit_values) == {"源数据单位", "外部文件单位", "输出文件单位"}
+                assert set(unit_values.values()) <= {"元", "万元", "亿元"}
+                assert unit_values["源数据单位"] == "元"
+                assert general["B6"].value in {"是", "否"}
+                assert general["B7"].value in {"是", "否"}
+                assert (general["B6"].value == "是") is config.hide_unchanged_period_rows
+                assert (general["B7"].value == "是") is config.hide_matching_external_rows
+                assert general["B8"].value == config.text_change_severity
+                assert general["B9"].value == config.current_missing_severity
+                assert general["B10"].value == config.previous_missing_severity
+            else:
+                assert not unit_values
+                assert config.unit_settings.source_unit == "元"
+                assert config.unit_settings.external_file_unit == "元"
+                assert config.unit_settings.output_file_unit == "元"
+                assert general.max_row == 1
         finally:
             book.close()
 

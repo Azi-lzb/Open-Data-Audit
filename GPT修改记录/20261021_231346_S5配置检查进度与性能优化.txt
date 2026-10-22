@@ -1,0 +1,43 @@
+时间：2026-10-21 23:13
+执行者：Codex
+项目：3.open-data-audit
+分支：desktop
+修改前 commit：以当前仓库 HEAD 为准（工作区含多项既有 WIP）
+修改后 commit：未提交
+WIP：保留已有未提交工作；本轮仅增量修改本记录所列 S5 检查、版本与日志文件，没有暂存或提交。
+
+【目的】
+用户反馈 S5 检查启用配置后无明显反馈，进入 S5 后似乎会自动检查并停在 58%。定位发现进度条覆盖审核规则解析，但后续 `_configuration_rule_locations()` 使用 openpyxl 只读模式逐格随机访问；大量 `.cell()` 会反复扫描工作表。模板和外部地址检查还重复解析整套规则引用。
+
+【修改文件】
+- `core/src/base_audit/systems/s5_configured_statistics/service.py`：规则定位索引改为只读 `iter_rows()` 顺序读取，避免随机访问；增加规则索引与引用提取进度阶段；模板和外部文件检查共用同一份启用规则地址引用，避免重复解析。
+- `core/frontend/web/index.html`：首次进入 S5 时保留自动检查并显示弹窗；已创建检查任务后再次打开 S5 不会重复自动启动检查；手动点“检查配置”或重新选择配置仍可再次检查。
+- `core/tests/s5/test_s5_integration.py`：覆盖规则索引/地址引用进度单调前进，以及 S5 导航自动检查只触发一次。
+- `core/tests/test_version_manifest.py`：S5-F01 版本断言更新至 2.4.1。
+- `版本管理/VERSION_MANIFEST.json`、S5-F01 与产品 CHANGELOG：S5-F01 v2.4.0→v2.4.1（PATCH），产品 V26.1.7.9→V26.1.7.10；S5-CFG-01 不变。
+- `日志/更新日志.txt`、`日志/开发日志.txt`：补充 S5 检查进度优化记录。
+
+【读取方式与实测】
+- S5 配置规则工作簿当前经 `load_configuration()` 使用 openpyxl 普通工作簿模式读取，再交给项目正式 Python 表达式/字典解析器验证；错误定位索引使用 openpyxl 只读模式顺序扫描。
+- 模板和大集中外部数据通过共享 `SourceReader`，默认是 python-calamine 值矩阵 + OOXML 公式/结构元数据，遇到不兼容时回退 openpyxl。将配置读取直接替换成 Calamine 或纯 OOXML 不是本次必要优化；当前瓶颈是只读随机扫描和重复解析，已经处理。
+- 本机真实 `config-real/5.逐笔统计系统_审核配置.xlsx` 只读实测 2,392 条启用规则：表达式/字典键检查通过；使用 `外部文件-大集中相关数据.xlsx` 验证到 43/43 个 V_EXT 指标表头；无模板路径时模板地址项目如实显示“未检查”。总耗时 3.98 秒。未改写真实配置或业务工作簿。
+
+【验证】
+- `python -X utf8 -m pytest -q -rs -m s5 core/tests`：311 passed、6 skipped、865 deselected、8 warnings、3 subtests passed、0 failed。6 项跳过因当前 pytest 环境无 Flask；8 条警告来自指定回退用例，属于预期 Calamine fallback。
+- `python -X utf8 -m pytest -q core/tests/s5/test_s5_integration.py -k 'configuration_check or maintenance_tools_are_hidden'`：9 passed、26 deselected。
+- 版本清单/更新日志定向测试：9 passed。
+- S5 相关 Python `compileall`、`git diff --check` 通过；前端行为测试使用 Node 执行通过。
+- 未重新打包、未提交、未运行 S1/S2/S3/S5 以外的全量测试。
+
+【组件版本】
+系统：S5 逐笔统计系统（配置版）
+影响功能：S5-F01 汇总核查表校验 v2.4.0 → v2.4.1（PATCH：大配置检查进度与性能修复）
+影响配置：S5-CFG-01 v2.0.0 → v2.0.0（未变）
+未修改的相关组件：S1、S2、S3、S5-F02/F03/F04 业务逻辑及配置均未修改
+产品版本：V26.1.7.9 → V26.1.7.10（PATCH）
+
+【删除与回滚】
+- 无删除文件。
+- 回滚时只回退上述 S5 检查相关改动、版本登记与日志记录；不得覆盖工作区其他既有 WIP。
+
+Git提交：未提交。

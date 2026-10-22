@@ -1,0 +1,45 @@
+时间：2026-10-21 12:55（Asia/Shanghai）
+执行者：Codex
+项目：3.open-data-audit
+分支：desktop
+修改前/后 commit：均为 4c84c3f2890fb0b7961c3f115533ca19f5f474c5（本轮未提交）
+WIP：保留已有 S5 接入、S1F2 显示、打包和配置候选等未提交修改；只在当前 S5 页面、S5 适配层、版本留痕与版本守护断言上追加本轮内容。
+
+修改目的：将 audit3 的 V_CUR/V_PRE 表达式参考、V_EXT 外部表达式、校验公式转配置候选三个维护工具并入 S5，默认隐藏，连续点击左侧 S5 导航 5 次（2 秒内）切换显示状态。
+
+实现内容：
+- S5 页面新增三个隐藏维护入口及各自的文件、模板、外部文件、输出目录、单位和业务选项；维护工具设置独立保存在 data/s5/维护工具设置.json。
+- 把表达式参考和公式候选生成器迁入 S5 专属目录，共用 S5 配置审核的 s1audit_configured 读取、布局及表达式基础模块；输出默认进入 data/s5/维护输出，不写入正式审核配置。
+- V_CUR/V_EXT 生成参考副本；公式迁移生成独立候选工作簿和模板标注副本，候选规则默认禁用，并保留 audit3 的转换报告和待人工处理信息。
+- S5 配置维护任务运行期间，通过共享执行忙碌检查阻止启动另一项审核任务；未改 S1/S2/S3 的业务逻辑和配置。
+- 更新 S5-F01 版本、CHANGELOG、公开 README 和版本守护测试期望；S5-CFG-01 与配置工作簿未变。
+
+修改文件：
+- core/frontend/web/index.html
+- core/src/base_audit/web_app.py
+- core/src/base_audit/systems/s5_configured_statistics/web_api.py
+- core/src/base_audit/systems/s5_configured_statistics/expression_export.py（新增）
+- core/src/base_audit/systems/s5_configured_statistics/formula_candidates.py（新增）
+- core/src/base_audit/systems/s5_configured_statistics/README.md
+- core/tests/test_version_manifest.py
+- 版本管理/VERSION_MANIFEST.json
+- 版本管理/S5_逐笔统计系统配置版/功能/S5-F01_配置规则审核/CHANGELOG.md
+
+【组件版本】
+系统：S5 逐笔统计系统（配置版）
+影响功能：S5-F01 汇总核查表校验 v2.0.0 → v2.1.0
+影响配置：S5-CFG-01 v2.0.0 → v2.0.0（未变）
+未修改的相关组件：S1-*、S2-*、S3-*、S4；S1/S2/S3 业务逻辑和配置未改
+版本升级原因：MINOR，新增只读输入、独立输出的 S5 配置维护能力。
+
+验证：
+- Python compileall：S5 配置版模块与 web_app.py 通过。
+- Python 模块导入：S5 WebApi mixin、表达式参考生成器、公式候选生成器通过。
+- Node `--check`：内嵌 JavaScript 语法通过。
+- VERSION_MANIFEST JSON / S5-F01 版本值检查通过。
+- git diff --check 通过。
+- 未运行 pytest、未执行实际工作簿转换、未重新打包。
+
+已知限制：V_CUR/V_EXT 表达式参考目前只接受 XLSX；公式候选工具接受 XLSX/XLSM。候选规则需要人工核对后复制到正式 S5 配置；工具不会直接写入正式配置。当前只完成静态和导入检查，实际工作簿输出尚未验证。
+
+回滚提示：移除本记录对应的 S5 隐藏维护按钮、S5 维护 API 和两个生成器模块，并恢复 S5-F01 版本记录与版本守护断言。不要回滚本文件之外的既有 WIP。

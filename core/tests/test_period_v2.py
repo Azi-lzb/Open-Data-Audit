@@ -1138,8 +1138,10 @@ def test_v2_external_import_time_series_uses_named_headers_and_full_dates(
     assert values.date_labels == {("2026-06-30", "甲行"), ("2026-07-31", "甲行"), ("2026-06-30", "乙行")}
     assert {key: value.value for key, value in values.items()} == {
         ("2026-06-30", "甲行", "存款"): Decimal("0"),
+        ("2026-06-30", "甲行", "贷款"): Decimal("0"),
         ("2026-07-31", "甲行", "存款"): Decimal("123.4567890123456789"),
         ("2026-07-31", "甲行", "贷款"): Decimal("10"),
+        ("2026-06-30", "乙行", "存款"): Decimal("0"),
         ("2026-06-30", "乙行", "贷款"): Decimal("3"),
     }
     item = values[("2026-07-31", "甲行", "存款")]
@@ -1153,18 +1155,13 @@ def test_v2_external_import_time_series_uses_named_headers_and_full_dates(
     ("headers", "rows", "message"),
     [
         (["数据日期", "存款"], [{"数据日期": "20260630", "存款": 1}], "时序表头不完整"),
-        (["行名称", "存款"], [{"行名称": "甲行", "存款": 1}], "时序表头不完整"),
         (["数据日期", "行名称", "行名称", "存款"], [], "有且只有一列“行名称”"),
         (["数据日期", "行名称", "存款", "存款"], [], "指标列“存款”重复"),
         (["数据日期", "行名称"], [], "缺少指标列"),
-        (None, [{"数据日期": "2026-02-30", "行名称": "甲行", "存款": 1}], "数据日期.*无效"),
-        (None, [{"数据日期": "202611", "行名称": "甲行", "存款": 1}], "数据日期.*无效"),
-        (None, [{"数据日期": "20260630", "存款": 0}], "行名称.*为空"),
         (None, [
             {"数据日期": "20260630", "行名称": "甲行", "版本号": 1, "存款": 1},
             {"数据日期": "2026-06-30", "行名称": "甲行", "版本号": 2, "存款": 2},
         ], "第3、4行.*重复"),
-        (None, [{"数据日期": "20260630", "行名称": "甲行", "存款": "错误数值"}], "指标“存款”.*无法读取"),
     ],
 )
 def test_v2_external_import_time_series_rejects_ambiguous_or_invalid_data(
@@ -1179,13 +1176,32 @@ def test_v2_external_import_time_series_rejects_ambiguous_or_invalid_data(
         import_external_workbook(path)
 
 
+@pytest.mark.parametrize("raw_date", [None, "", "2026-02-30", "202611"])
+def test_v2_external_time_series_invalid_row_date_is_warned_and_ignored(
+    tmp_path: Path, raw_date,
+) -> None:
+    from base_audit.systems.s2_report_collection.importer import import_external_workbook
+
+    path = tmp_path / "central_invalid_date.xlsx"
+    _time_series_external_xlsx(path, [
+        {"数据日期": raw_date, "行名称": "甲行", "存款": 999},
+        {"数据日期": "20260630", "行名称": "甲行", "存款": 100},
+    ])
+
+    values, _org_map = import_external_workbook(path)
+
+    assert values["2026-06-30", "甲行", "存款"].value == Decimal("100")
+    assert any("第2行、行名称“甲行”" in warning for warning in values.warnings)
+    assert any("本行未参与时序匹配" in warning for warning in values.warnings)
+
+
 @pytest.mark.parametrize(
     ("source_date", "expected", "missing_text"),
     [
         ("20260630", Decimal("100"), ""),
         ("2026-06-29", Decimal("333"), ""),
         ("2026/07/31", Decimal("0"), ""),
-        ("2026-07-30", None, "无可读取数值"),
+        ("2026-07-30", Decimal("0"), ""),
         ("2026-08-31", None, "没有数据日期 2026-08-31"),
         ("2026-06", None, "不是完整日期"),
         ("202611", None, "不是完整日期"),
@@ -1232,11 +1248,11 @@ def test_v2_external_time_series_matches_exact_current_date_and_preserves_missin
 
 
 @pytest.mark.parametrize(
-    ("report_item", "missing_text"),
-    [("甲行", "无可读取数值"), ("不存在的项目", "未找到报表项目"), ("", "缺少机构映射或报表项目")],
+    ("report_item", "expected", "missing_text"),
+    [("甲行", Decimal("0"), ""), ("不存在的项目", None, "未找到报表项目"), ("", None, "缺少机构映射或报表项目")],
 )
-def test_v2_external_time_series_with_all_blank_values_stays_missing(
-    tmp_path: Path, report_item: str, missing_text: str,
+def test_v2_external_time_series_blank_matched_values_are_zero_with_soft_warning(
+    tmp_path: Path, report_item: str, expected, missing_text: str,
 ) -> None:
     from base_audit.systems.s2_report_collection.importer import import_external_workbook
 
@@ -1252,14 +1268,158 @@ def test_v2_external_time_series_with_all_blank_values_stays_missing(
         {record.logical_key: record}, values, {"9144": report_item}, config,
     )[0]
 
-    assert values == {} and values.time_series is True
-    assert finding.external_value is None and finding.status == "异常"
+    assert values.time_series is True
+    assert values[("2026-06-30", "甲行", "存款")].value == Decimal("0")
     assert finding.report_item == report_item
-    assert missing_text in finding.calculation_trace
-    assert finding.rule_description == finding.description == (
-        "大集中系统数据未找到该报表项目，请先完善大集中数据的报表定义"
-        if report_item else "请完善报表采集系统配置或外部文件中的机构参照映射"
+    assert finding.external_value == expected
+    if expected is None:
+        assert finding.status == "异常"
+        assert missing_text in finding.calculation_trace
+    else:
+        assert finding.difference_value == Decimal("0")
+        assert finding.status == "正常"
+    assert len(values.warnings) == 1
+    assert "“存款”为空白" in values.warnings[0]
+    assert "已按 0 参与外部核对" in values.warnings[0]
+    assert "请核查是否误删或改动了数据" in values.warnings[0]
+
+
+def test_v2_external_plain_layout_treats_blank_value_as_zero_with_soft_warning(tmp_path: Path) -> None:
+    from base_audit.systems.s2_report_collection.importer import import_external_workbook
+
+    path = tmp_path / "central_plain_blank.xlsx"
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "集中系统数据"
+    sheet.append(["导出说明：普通报表格式"])
+    sheet.append(["行名称", "存款"])
+    sheet.append(["甲行", None])
+    reference = book.create_sheet("机构参照表")
+    reference.append(["社会信用代码", "报表项目"])
+    reference.append(["9144", "甲行"])
+    book.save(path)
+    book.close()
+
+    values, org_map = import_external_workbook(path)
+    record = replace(_record("20202001", Decimal("0")), social_credit_code="9144")
+    config = ReportAuditConfig(
+        indicators={"20202001": IndicatorConfig("20202001", data_type="余额")},
+        external_rules=[ExternalCheckRule("D001", "20202001", "大集中", "存款", "等于", 0, "硬性")],
     )
+    finding = ExternalComparisonEngine().run(
+        {record.logical_key: record}, values, org_map, config,
+    )[0]
+
+    assert values.time_series is False
+    assert values.blank_values == {("甲行", "存款")}
+    assert values[("甲行", "存款")].value == Decimal("0")
+    assert finding.external_value == Decimal("0") and finding.status == "正常"
+    assert finding.report_item == "甲行"
+    assert len(values.warnings) == 1
+    assert "第3行、报表项目“甲行”" in values.warnings[0]
+    assert "“存款”为空白" in values.warnings[0]
+    assert "已按 0 参与外部核对" in values.warnings[0]
+
+
+@pytest.mark.parametrize("time_series", [False, True])
+def test_v2_external_non_numeric_value_is_zero_and_warned(tmp_path: Path, time_series: bool) -> None:
+    from base_audit.systems.s2_report_collection.importer import import_external_workbook
+
+    path = tmp_path / ("central_time.xlsx" if time_series else "central_plain.xlsx")
+    if time_series:
+        _time_series_external_xlsx(path, [{"数据日期": "20260630", "行名称": "甲行", "存款": "误填文字"}])
+        key = ("2026-06-30", "甲行", "存款")
+    else:
+        book = Workbook()
+        sheet = book.active
+        sheet.title = "集中系统数据"
+        sheet.append(["行名称", "存款"])
+        sheet.append(["甲行", "误填文字"])
+        book.save(path)
+        book.close()
+        key = ("甲行", "存款")
+
+    values, _org_map = import_external_workbook(path)
+
+    assert values[key].value == Decimal("0")
+    assert len(values.warnings) == 1
+    assert "内容“误填文字”不是数值" in values.warnings[0]
+    assert "已按 0 参与外部核对" in values.warnings[0]
+
+
+@pytest.mark.parametrize("time_series", [False, True])
+def test_v2_external_blank_row_label_is_ignored_with_soft_warning(tmp_path: Path, time_series: bool) -> None:
+    from base_audit.systems.s2_report_collection.importer import import_external_workbook
+
+    path = tmp_path / ("central_time.xlsx" if time_series else "central_plain.xlsx")
+    if time_series:
+        _time_series_external_xlsx(path, [
+            {
+                "数据日期": "20260630", "报表名称": "金融基础数据核对模板",
+                "报表代码": "R104400000g0e", "版本号": "20265", "锁定信息": "-",
+                "报表组": "219", "行顺序号": "84w0(大丰银行)", "存款": "\u00a0",
+            },
+            {},
+            {
+                "数据日期": "20260630", "报表名称": "金融基础数据核对模板",
+                "报表代码": "R104400000g0e", "版本号": "20265", "锁定信息": "-",
+                "报表组": "219", "行顺序号": "84w0(大新银行深圳分行)",
+            },
+            {"数据日期": "20260630", "存款": 100},
+        ])
+        expected_warnings = [
+            "集中系统数据第3行：行名称及指标数据均为空，已忽略该行；如属导出空行，可忽略。",
+            "集中系统数据第5行：行名称为空，但指标列“存款”有数据；本行无法匹配报表项目，未参与外部核对。请检查行名称是否被误删。",
+        ]
+    else:
+        book = Workbook()
+        sheet = book.active
+        sheet.title = "集中系统数据"
+        sheet.append(["行名称", "存款"])
+        sheet.append([None, None])
+        sheet.append([None, 100])
+        book.save(path)
+        book.close()
+        expected_warnings = [
+            "集中系统数据第2行：行名称及指标数据均为空，已忽略该行；如属导出空行，可忽略。",
+            "集中系统数据第3行：行名称为空，但指标列“存款”有数据；本行无法匹配报表项目，未参与外部核对。请检查行名称是否被误删。",
+        ]
+
+    values, _org_map = import_external_workbook(path)
+
+    assert values == {}
+    assert values.time_series is time_series
+    assert values.warnings == expected_warnings
+
+
+def test_v2_service_exports_external_import_warnings_as_soft_findings(tmp_path: Path) -> None:
+    config, cur, pre, central = tmp_path / "config.xlsx", tmp_path / "cur", tmp_path / "pre", tmp_path / "central.xlsx"
+    cur.mkdir(); pre.mkdir(); _config(config)
+    _source(cur / "9144#2026-06-30#01#20202#甲银行.xlsx", deposit=2_000_000, loan=1_000_000, asset=1_000_000, debt=600_000, equity=400_000)
+    _source(pre / "9144#2026-03-31#01#20202#甲银行.xlsx", deposit=1_000_000, loan=1_000_000, asset=1_000_000, debt=600_000, equity=400_000)
+    _time_series_external_xlsx(central, [{"数据日期": "20260630", "行名称": "甲行"}])
+    progress: list[dict[str, object]] = []
+
+    result = PeriodAuditV2Service().run(
+        current_dir=cur, previous_dir=pre, config_path=config, output_dir=tmp_path / "out",
+        central_path=central, on_progress=progress.append,
+    )
+
+    warnings = [finding for finding in result.findings if finding.rule_type == "外部数据导入"]
+    assert len(warnings) == 1
+    assert warnings[0].audit_type == "校验规则" and warnings[0].severity == "软性"
+    assert "已按 0 参与外部核对" in warnings[0].description
+    assert "外部数据提示 1 条" in next(item["message"] for item in progress if item["stage"] == "complete")
+    book = load_workbook(result.paths.result, read_only=True, data_only=True)
+    try:
+        sheet = book["校验规则"]
+        headers = [cell.value for cell in sheet[1]]
+        assert any(
+            "已按 0 参与外部核对" in str(row[headers.index("审核说明")].value)
+            for row in sheet.iter_rows(min_row=2)
+        )
+    finally:
+        book.close()
 
 
 def test_v2_service_exports_current_time_series_value_without_modifying_inputs(tmp_path: Path) -> None:

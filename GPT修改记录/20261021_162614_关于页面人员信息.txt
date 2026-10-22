@@ -1,0 +1,29 @@
+时间：2026-10-21 16:26:14（Asia/Shanghai）
+执行者：Codex
+工作分支：desktop；本轮未提交、未推送、未合并。
+
+【需求】
+在“关于”弹窗增加一行灰色小字，显示 Instructor: cyc、Developer: lzb、Tester: yyy。
+
+【实现】
+- 在版本号下方增加人员信息行，字号 11px，颜色使用主题次级文字色，右对齐。
+- 保留现有关于页面布局和五连击维护入口。
+- 为 About 弹窗行为测试补充内容与样式断言。
+
+【修改文件】
+- `core/frontend/web/index.html`
+- `core/tests/test_distribution_profile.py`
+- `日志/更新日志.txt`、`日志/开发日志.txt`
+- `版本管理/VERSION_MANIFEST.json`、`版本管理/产品发布/CHANGELOG.md`
+- `rules/11_版本管理与组件编号.md`
+- 本修改记录
+
+【组件版本】
+产品：V26.1.7.1 → V26.1.7.2（PATCH；关于弹窗增加人员信息）。
+S1/S2/S3/S5 功能与配置组件：全部未变；无业务配置工作簿改动。
+
+【验证】
+- `python -X utf8 -m pytest -q --tb=short core/tests/test_distribution_profile.py`：23 passed in 5.61s。
+
+【WIP 保护】
+保留工作区已有 S5、Calamine、打包及其他 UI 修改；本轮只追加 About 信息和对应版本留痕。未重新打包、未提交。

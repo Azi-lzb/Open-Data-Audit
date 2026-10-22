@@ -41,6 +41,7 @@ if str(CORE / "src") not in sys.path:
 from base_audit.app_identity import app_title, executable_stem, faq_path, icon_path, load_product_info, manifest_path, update_log_path
 
 COMMON_HIDDEN = [
+    "s1audit_configured.batch",
     "base_audit.excel_com",
     "base_audit.service",
     "base_audit.merge_org",
@@ -211,29 +212,35 @@ def write_version_file(name: str, product: dict) -> Path:
     """生成 PyInstaller PE 版本资源；版本只读取统一产品清单。"""
     version = str(product["version"])
     numeric = _numeric_version(version)
-    strings = {
-        "CompanyName": "V3",
-        "FileDescription": app_title(),
+    shared_strings = {
+        "CompanyName": "HZPBC",
         "FileVersion": version,
-        "InternalName": name,
+        "InternalName": "AuditTools",
         "OriginalFilename": name + ".exe",
-        "ProductName": str(product["name"]),
         "ProductVersion": version,
     }
-    rows = ",\n        ".join(
-        f"StringStruct({key!r}, {value!r})"
-        for key, value in strings.items()
-    )
+    string_tables = []
+    for language, localized_name in (("080404B0", "审核工具"), ("040904B0", "AuditTools")):
+        strings = {
+            "FileDescription": localized_name,
+            **shared_strings,
+            "ProductName": localized_name,
+        }
+        rows = ",\n                ".join(
+            f"StringStruct({key!r}, {value!r})"
+            for key, value in strings.items()
+        )
+        string_tables.append(
+            f"StringTable({language!r}, [\n                {rows}\n            ])"
+        )
     source = (
         "VSVersionInfo(\n"
         f"    ffi=FixedFileInfo(filevers={numeric!r}, prodvers={numeric!r}),\n"
         "    kids=[\n"
-        "        StringFileInfo([\n"
-        "            StringTable('040904B0', [\n"
-        f"                {rows}\n"
-        "            ])\n"
-        "        ]),\n"
-        "        VarFileInfo([VarStruct('Translation', [1033, 1200])])\n"
+        "        StringFileInfo([\n            "
+        + ",\n            ".join(string_tables)
+        + "\n        ]),\n"
+        "        VarFileInfo([VarStruct('Translation', [2052, 1200, 1033, 1200])])\n"
         "    ]\n"
         ")\n"
     )

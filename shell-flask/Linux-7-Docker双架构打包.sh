@@ -100,7 +100,7 @@ build_arch() {
         *) fail "不支持的构建架构：$ARCH" ;;
     esac
 
-    IMAGE=audit-tools-linux-builder:22.04-$ARCH
+    IMAGE=audit-tools-linux-builder:glibc228-$ARCH
     BUILD_DIR=$STAGE/$ARCH
     mkdir -p "$BUILD_DIR"
 

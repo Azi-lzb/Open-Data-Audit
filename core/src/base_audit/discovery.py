@@ -296,6 +296,19 @@ def _sheet_score(template_sheets: tuple[str, ...], source_sheets: tuple[str, ...
     return 0.8 * source_coverage + 0.2 * template_precision
 
 
+def _all_source_sheets_in_template(
+    template_sheets: tuple[str, ...] | set[str], source_sheets: tuple[str, ...] | set[str]
+) -> bool:
+    """Whether every source data sheet has a same-named template sheet.
+
+    A source workbook may legitimately contain only part of a template's
+    workbook sheet set. Helper/configuration sheets are not source data.
+    """
+    template_data = set(template_sheets) - {"审核规则", "兜底模板"}
+    source_data = set(source_sheets) - {"审核规则", "兜底模板"}
+    return bool(source_data) and source_data.issubset(template_data)
+
+
 def _candidate_text(
     scores: list[tuple[float, TemplateProfile, float, float]],
 ) -> str:
@@ -340,9 +353,12 @@ def recommend_template(
             ),
             key=lambda item: item[0], reverse=True,
         )
-        if ranked and ranked[0][0] >= 0.90:
-            if len(ranked) == 1 or ranked[0][0] - ranked[1][0] >= 0.04:
-                per_file_choices.setdefault(ranked[0][1].path, []).append(ranked[0][0])
+        if ranked:
+            top_score, top_profile = ranked[0]
+            covered = _all_source_sheets_in_template(top_profile.sheet_names, source_sheets)
+            if top_score >= 0.90 or covered:
+                if len(ranked) == 1 or top_score - ranked[1][0] >= 0.04:
+                    per_file_choices.setdefault(top_profile.path, []).append(1.0 if covered else top_score)
     if len(per_file_choices) > 1:
         return TemplateSuggestion(
             None,
@@ -364,9 +380,13 @@ def recommend_template(
                 per_file_choices.items(), key=lambda item: sum(item[1]) / len(item[1]), reverse=True
             )
         )
+        if confidence >= 1.0:
+            match_detail = "源文件工作表全部包含于模板"
+        else:
+            match_detail = f"工作表集合匹配率 {confidence:.0%}"
         details = (
-            f"自动匹配：{Path(selected.path).name}（{len(selected_scores)} 个源文件的工作表集合"
-            f"匹配率 {confidence:.0%}；已忽略未能识别的非报送工作簿）"
+            f"自动匹配：{Path(selected.path).name}（{len(selected_scores)} 个源文件；{match_detail}；"
+            "已忽略未能识别的非报送工作簿）"
         )
         return TemplateSuggestion(Path(selected.path), confidence, True, details, alternatives)
 
@@ -384,25 +404,63 @@ def recommend_template(
         (Path(profile.path).name, round(total, 3))
         for total, profile, _, _ in scores[:3]
     )
+    source_covered = _all_source_sheets_in_template(top.sheet_names, source_sheets)
     structure_decisive = (
         sheets_score >= 0.95
         and (len(scores) == 1 or sheets_score - scores[1][3] >= 0.20)
-    )
+    ) or (source_covered and (len(scores) == 1 or sheets_score - scores[1][3] >= 0.20))
     unique_enough = top_total - runner_up >= 0.05 or structure_decisive
-    matched = top_total >= 0.90 and unique_enough
+    matched = (top_total >= 0.90 or source_covered) and unique_enough
     if matched:
-        details = (
-            f"自动匹配：{Path(top.path).name}（工作表集合匹配率 {top_total:.0%}，"
-            f"取最高匹配率候选；前三候选：{_candidate_text(scores)}）"
-        )
+        if source_covered:
+            details = (
+                f"自动匹配：{Path(top.path).name}（源文件工作表均包含于模板；"
+                "模板中未出现在源文件里的其他工作表不影响匹配）"
+            )
+        else:
+            details = (
+                f"自动匹配：{Path(top.path).name}（工作表集合匹配率 {top_total:.0%}，"
+                f"取最高匹配率候选；前三候选：{_candidate_text(scores)}）"
+            )
         return TemplateSuggestion(
-            Path(top.path), top_total, True, details, alternatives
+            Path(top.path), 1.0 if source_covered else top_total, True, details, alternatives
         )
     if top_total >= 0.80 and not unique_enough:
         details = "有多个相近模板，已停止自动选择，请手动确认。候选：" + _candidate_text(scores)
     else:
         details = "未找到可信度足够的模板，请手动选择"
     return TemplateSuggestion(None, top_total, False, details, alternatives)
+
+
+def annotate_summary_matches(rows, template_path: Path | None) -> None:
+    """Add F2-only worksheet-name hints; never change F1 classification/ranking.
+
+    This is a preview, not a header/region preflight or a promise that extra
+    sheets will be included. F2 still validates its actual summary regions.
+    """
+    for row in rows:
+        row.pop("summaryMatch", None)
+    if not rows or template_path is None or not template_path.is_file():
+        return
+    template_names = set(read_xlsx_sheet_names(template_path))
+    template_sheets = template_names - {"审核规则", "兜底模板"}
+    fallback_available = "兜底模板" in template_names
+    for row in rows:
+        source_sheets = set(read_xlsx_sheet_names(Path(row["path"]))) - {"审核规则", "兜底模板"}
+        common = template_sheets & source_sheets
+        extra = source_sheets - template_sheets
+        missing = template_sheets - source_sheets
+        if not common and not fallback_available:
+            continue
+        row["summaryMatch"] = {
+            "template": template_path.name,
+            "matched": sorted(common),
+            "extra": sorted(extra),
+            "missing": sorted(missing),
+            "sourceCount": len(source_sheets),
+            "fallbackAvailable": fallback_available,
+            "partial": bool(extra),
+        }
 
 
 def classify_source_files(
@@ -419,7 +477,10 @@ def classify_source_files(
             score = _sheet_score(profile.sheet_names, source_sheets)
             ranked.append((score, profile))
         ranked.sort(key=lambda item: item[0], reverse=True)
-        if ranked and ranked[0][0] >= 0.90:
+        if ranked and (
+            ranked[0][0] >= 0.90
+            or _all_source_sheets_in_template(ranked[0][1].sheet_names, source_sheets)
+        ):
             template_name = Path(ranked[0][1].path).name
         else:
             template_name = "未识别"

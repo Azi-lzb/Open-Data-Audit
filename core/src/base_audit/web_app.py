@@ -19,6 +19,7 @@ from .developer_access import (
 )
 
 from .discovery import (
+    annotate_summary_matches,
     classify_source_files,
     detect_period,
     explanation_files,
@@ -118,6 +119,35 @@ def pywebview_file_types(file_types: tuple[tuple[str, str], ...]) -> tuple[str, 
     return tuple(f"{label} ({';'.join(patterns.split())})" for label, patterns in file_types)
 
 
+def _remembered_path_or_default(
+    remembered: object, bundled_default: Path | None, *, disabled: bool = False,
+    directory: bool = False,
+) -> str:
+    """Use a remembered path when it still exists; otherwise use a bundled default.
+
+    An explicit clear is stored separately from an unset path so optional external
+    checks can stay disabled after the user clears the default reference workbook.
+    """
+    if disabled:
+        return ""
+    value = str(remembered or "").strip()
+    if value:
+        try:
+            target = Path(value)
+            if target.is_dir() if directory else target.is_file():
+                return value
+        except OSError:
+            pass
+    if bundled_default is not None:
+        try:
+            exists = bundled_default.is_dir() if directory else bundled_default.is_file()
+            if exists:
+                return str(bundled_default)
+        except OSError:
+            pass
+    return value
+
+
 # 诊断摘要展示用的中文名与分组（与高级设置 UI 的分组一致）。设置字段新增时
 # 若未登记中文名，文本与导出按字段名兜底展示，不会报错。
 DIAGNOSTIC_ENV_GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
@@ -173,6 +203,7 @@ DIAGNOSTIC_SETTINGS_GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] 
 DIAGNOSTIC_SETTINGS_SKIP = frozenset({
     "history_config", "period_config_file", "central_common_config",
     "central_comparison_config", "central_cross_config", "central_forms_config",
+    "last_external_file_default_disabled", "period_central_file_default_disabled",
     "favorite_input_dirs", "favorite_template_dirs", "favorite_external_files",
     "favorite_output_dirs", "recent_input_dirs", "recent_template_dirs",
     "recent_external_files", "recent_output_dirs", "combine_sheets_plans",
@@ -196,7 +227,10 @@ def serialize_execution_start(method):
     return guarded
 
 
-class WebApi:
+from .systems.s5_configured_statistics.web_api import S5WebApiMixin
+
+
+class WebApi(S5WebApiMixin):
     def __init__(self, project_root: Path, *, file_picker_default: str = "系统原生") -> None:
         self.project_root = project_root
         self._execution_start_lock = threading.RLock()
@@ -221,6 +255,10 @@ class WebApi:
         if self.settings_store.sanitized:
             self.settings_store.save(self.settings)
         config_dir = release_config_dir(project_root)
+        try:
+            bundled_external_reference = self._external_reference_config_path()
+        except RuntimeError:
+            bundled_external_reference = config_dir / "外部文件-大集中相关数据.xlsx"
         # 用户给发行目录中的默认配置加了序号前缀。旧名称文件即使仍残留，
         # 也不能让历史绑定继续指向旧副本；清空后统一落到当前默认名称。
         renamed_defaults = {
@@ -265,12 +303,13 @@ class WebApi:
             if self.settings.history_config
             else release_config_dir(project_root) / HISTORY_WORKBOOK_NAME
         )
-        bundled_templates = project_root / "templates"
+        bundled_templates = config_dir / "模板文件_命名区域"
+        legacy_bundled_templates = project_root / "templates"
         formal_templates = project_root / "2026-07-31" / "模板文件"
         # 模板目录仅在本机真实存在时才预填；否则留空，避免发行包/新环境
         # 显示不存在的死路径。六册配置的默认绑定不受影响。
         default_template_dir = next(
-            (str(p) for p in (bundled_templates, formal_templates) if p.is_dir()),
+            (str(p) for p in (bundled_templates, legacy_bundled_templates, formal_templates) if p.is_dir()),
             "",
         )
         saved_input = self.settings.last_input_dir
@@ -282,10 +321,18 @@ class WebApi:
             "status": "就绪",
             "log": [],
             "input": saved_input,
-            "templateDir": self.settings.last_template_dir or default_template_dir,
+            "templateDir": _remembered_path_or_default(
+                self.settings.last_template_dir,
+                Path(default_template_dir) if default_template_dir else None,
+                directory=True,
+            ),
             "template": "",
             "templateManual": False,
-            "external": self.settings.last_external_file,
+            "external": _remembered_path_or_default(
+                self.settings.last_external_file,
+                bundled_external_reference,
+                disabled=self.settings.last_external_file_default_disabled,
+            ),
             # 未绑定自定义配置时回填默认路径；运行语义不变（此前运行时同样回退该文件）。
             "historyConfig": self.settings.history_config or str(self.history_path),
             "output": saved_output,
@@ -369,7 +416,11 @@ class WebApi:
             # 报表采集系统路径：独立保存，不和逐笔统计系统的输入/输出混用。
             "pcCurDir": self.settings.period_current_dir,
             "pcPreDir": self.settings.period_previous_dir,
-            "pcCentral": self.settings.period_central_file,
+            "pcCentral": _remembered_path_or_default(
+                self.settings.period_central_file,
+                bundled_external_reference,
+                disabled=self.settings.period_central_file_default_disabled,
+            ),
             "pcConfig": self.settings.period_config_file or str(release_config_dir(project_root) / CONFIG_WORKBOOK_NAME),
             "pcOutput": self.settings.period_output_dir,
             "pcOutputAuto": self.settings.period_output_auto,
@@ -405,6 +456,7 @@ class WebApi:
         "configIssues": {},
         }
         self._cancel_event = threading.Event()
+        self._init_s5()
         # state 建好后才能启动后台环境探测：线程回调会写入 self.state。
         self._start_environment_probe()
         initialize_history_workbook(self.history_path)
@@ -467,6 +519,13 @@ class WebApi:
         return self._refresh_period_config_check()
 
     def get_state(self) -> dict[str, Any]:
+        selected_template = self.state.get("template", "")
+        if selected_template != getattr(self, "_summary_hint_template", None):
+            annotate_summary_matches(
+                self.state.get("sourceFiles", []),
+                Path(selected_template) if selected_template else None,
+            )
+            self._summary_hint_template = selected_template
         period_progress = self.state.get("periodProgress", {})
         if period_progress.get("status") == "running":
             period_progress["elapsedSeconds"] = max(0, time.monotonic() - getattr(self, "_period_started_at", time.monotonic()))
@@ -808,7 +867,17 @@ class WebApi:
             raise RuntimeError(
                 "版本清单未登记有效的 S2-CFG-02 大集中外部数据模板，无法定位配置文件"
             ) from exc
-        return release_config_dir(self.project_root) / basename
+        config_dir = release_config_dir(self.project_root)
+        target = config_dir / basename
+        if target.is_file():
+            return target
+        # Some internal config-real snapshots use the stable, unversioned name
+        # while the public manifest retains the dated workbook filename.
+        if basename.startswith("外部文件-大集中相关数据"):
+            alias = config_dir / "外部文件-大集中相关数据.xlsx"
+            if alias.is_file():
+                return alias
+        return target
 
     def _save_config_default(self, source: Path, *, key: str, label: str) -> dict[str, Any]:
         """Save one complete active workbook as the future reset source."""
@@ -1299,8 +1368,16 @@ class WebApi:
         return self._libreoffice_installer.start_kylin_maintenance(action)
 
     def _execution_busy(self) -> bool:
-        """安装期间不能启动会使用或探测 Office 的新任务。"""
+        """已有任务或维护操作运行时，不启动会并行访问工作簿的新任务。"""
         if self.state["busy"]:
+            return True
+        s5_check_task = (self.state.get("s5") or {}).get("configurationCheckTask") or {}
+        if s5_check_task.get("task_state") in {"queued", "running"}:
+            self.state["status"] = "S5 配置检查正在运行，请完成后再启动其他工作簿任务。"
+            return True
+        s5_tool_task = (self.state.get("s5") or {}).get("maintenanceTask") or {}
+        if s5_tool_task.get("task_state") == "running":
+            self.state["status"] = "S5 配置维护工具正在运行，请完成后再执行其他任务。"
             return True
         phase_getter = getattr(self._libreoffice_installer, "operation_phase", None)
         phase = phase_getter() if callable(phase_getter) else self._libreoffice_installer.snapshot().get("phase")
@@ -1346,7 +1423,7 @@ class WebApi:
                 continue
             if "更新日志" in line and "审核工具" in line:
                 continue  # 文件大标题行
-            if line.startswith("（本日志"):
+            if line.startswith(("（本日志", "（系统标签")):
                 continue  # 文件头部的维护说明行
             stripped = line.strip("─ ").strip()
             if stripped and (line.startswith("─") or line.startswith("═")):
@@ -1480,6 +1557,7 @@ class WebApi:
             elif field == "output":
                 self.state["outputAuto"] = False
                 self.state["outputPinned"] = True
+            self._save_settings()
         return value
 
     def choose_file(self, field: str, path: str = "") -> str:
@@ -1493,6 +1571,9 @@ class WebApi:
             self.state[field] = value
             if field == "template":
                 self.state["templateManual"] = True
+            elif field == "external":
+                self.settings.last_external_file_default_disabled = False
+            self._save_settings()
         return value
 
     def clear_path(self, field: str) -> dict[str, Any]:
@@ -1521,6 +1602,10 @@ class WebApi:
             self.settings.history_config = ""
         else:
             self.state[field] = ""
+            if field == "external":
+                self.settings.last_external_file_default_disabled = True
+            elif field == "pcCentral":
+                self.settings.period_central_file_default_disabled = True
 
         if field == "input":
             self.state["sourceFiles"] = []
@@ -2500,6 +2585,8 @@ class WebApi:
         value = str(selected[0]) if selected else ""
         if value:
             self.state[kind] = str(Path(value).resolve())
+            if kind == "pcCentral":
+                self.settings.period_central_file_default_disabled = False
             if kind == "pcCurDir" and self.state.get("pcOutputAuto", True):
                 self.state["pcOutput"] = str(Path(value).resolve() / "执行结果")
             elif kind == "pcOutput":
@@ -2702,7 +2789,7 @@ class WebApi:
                 elif stage == "save":
                     self._log(f"S2F1：{label}；{detail_text()}")
                 elif stage == "complete":
-                    self._log("S2F1：三张分类审核表已保存，审核流程完成")
+                    self._log(f"S2F1：审核完成；{message}" if message else "S2F1：三张分类审核表已保存，审核流程完成")
                 else:
                     suffix = f"；{message}" if message else ""
                     self._log(f"S2F1：开始{label}{suffix}")
@@ -2729,12 +2816,21 @@ class WebApi:
                 "indicators": result.summary.indicators, "abnormal": result.summary.abnormal_findings,
                 "byType": result.summary.by_type, "result": str(result.paths.result),
             }
+            external_warning_count = sum(
+                1 for finding in getattr(result, "findings", ())
+                if getattr(finding, "rule_type", "") == "外部数据导入"
+            )
             # 已有配对不变时复用清单；只为此前读取失败的空清单重试元数据扫描。
             if not self.state.get("periodPairs"):
                 self._update_period_progress({"stage": "pairs", "label": "刷新对比对象", "percent": 99})
                 self._refresh_period_pairs()
-            self._update_period_progress({"stage": "complete", "label": "审核完成", "percent": 100, "message": "已生成三张分类审核表"}, status="completed")
+            complete_message = "已生成三张分类审核表"
+            if external_warning_count:
+                complete_message += f"；外部数据提示 {external_warning_count} 条，详情见结果文件“校验规则”工作表"
+            self._update_period_progress({"stage": "complete", "label": "审核完成", "percent": 100, "message": complete_message}, status="completed")
             self.state["status"] = f"跨期比较完成：异常 {result.summary.abnormal_findings} 条"
+            if external_warning_count:
+                self.state["status"] += f"；外部数据提示 {external_warning_count} 条，详见“校验规则”"
             by_type = "、".join(f"{name} {count} 条" for name, count in result.summary.by_type.items()) or "无异常分类"
             total_findings = getattr(result.summary, "total_findings", None)
             if total_findings is None:
@@ -2743,6 +2839,7 @@ class WebApi:
                 f"S2F1审核完成：机构 {result.summary.institutions} 家，表单 {result.summary.forms} 张，"
                 f"指标 {result.summary.indicators} 项，审核结果 {total_findings} 条，"
                 f"异常 {result.summary.abnormal_findings} 条（{by_type}）；结果文件：{result.paths.result}"
+                + (f"；外部数据提示 {external_warning_count} 条，详情见“校验规则”工作表" if external_warning_count else "")
             )
         except Exception as exc:
             self._update_period_progress({**self.state.get("periodProgress", {}), "message": str(exc)}, status="failed")
@@ -2754,14 +2851,18 @@ class WebApi:
             self.state["busy"] = False
 
     def update(self, values: dict[str, Any]) -> dict[str, Any]:
+        path_values_changed = False
         for key in ("input", "templateDir", "template", "external", "output"):
             if key in values:
                 new_value = str(values[key]).strip()
                 previous = self.state.get(key, "")
+                path_values_changed = path_values_changed or new_value != previous
                 if key == "output" and new_value != self.state.get("output", ""):
                     self.state["outputAuto"] = False
                     self.state["outputPinned"] = True
                 self.state[key] = new_value
+                if key == "external" and new_value:
+                    self.settings.last_external_file_default_disabled = False
                 if key == "input" and new_value != previous:
                     self.state["selectedFilesInitialized"] = False
                 if key == "template" and new_value and new_value != previous:
@@ -2951,6 +3052,8 @@ class WebApi:
             if tolerance != self.state.get("centralTolerance"):
                 self.state["centralTolerance"] = tolerance
                 self._save_settings()
+        if path_values_changed:
+            self._save_settings()
         return self.state
 
     def recognize(self) -> dict[str, Any]:
@@ -3108,6 +3211,13 @@ class WebApi:
                     if Path(row["path"]).resolve() == path.resolve() and row["path"] not in known:
                         files.append(row)
                         known.add(row["path"])
+
+        # F2's display permits partial sheet overlap. Keep the F1 template
+        # classifier and recommendation untouched, including manual selection.
+        annotate_summary_matches(
+            self.state.get("sourceFiles", []),
+            Path(self.state["template"]) if self.state.get("template") else None,
+        )
 
     def _worker(self, action: str, strict: bool = True) -> None:
         started = time.monotonic()

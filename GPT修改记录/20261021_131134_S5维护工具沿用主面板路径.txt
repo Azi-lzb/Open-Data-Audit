@@ -1,0 +1,52 @@
+时间：2026-10-21 13:11（Asia/Shanghai）
+执行者：Codex
+项目：3.open-data-audit
+分支：desktop
+修改前/后 commit：均为 4c84c3f2890fb0b7961c3f115533ca19f5f474c5（未提交）
+WIP：保留此前 S5 接入、S1F2、S2 性能与测试、发行配置及日志等未提交改动；本轮只按用户要求调整 S5 隐藏维护工具路径，并增加 S5 普通/时序外部格式支持。
+
+修改目的：三个隐藏维护工具复用 S5 主面板已经选择或识别的路径，避免重复选文件；V_EXT 与 S5-F1 同时支持普通报表布局和时序布局。
+
+实现内容：
+- V_CUR/V_PRE 表达式参考和校验公式转配置候选读取 S5 当前匹配模板；V_EXT 读取 S5 当前大集中系统数据；公式候选如含外部查找也复用当前外部文件。
+- 隐藏工具页展示当前路径，修改路径时返回 S5-F1 主面板；维护设置不再保存副本输入路径，仅保存输出目录、单位等选项。历史设置中的旧输入路径字段会被忽略。
+- S5 外部布局识别表头“数据日期”和“行名称”，按本期报告期筛选记录；缺少对应日期时明确报错，不使用其他日期。普通报表布局沿用原读取方式。
+- 时序识别通过可选标志限定在 S5；S1 的 `RuntimeContext` 默认关闭该能力，S1 运行路径保持原样。
+- V_EXT 参考副本允许同一报表项目对应多个日期行，并逐行核对生成表达式位置。公式候选使用 S5 当前外部文件，候选仍按现有转换能力和人工复核约定处理。
+
+修改文件：
+- core/frontend/web/index.html
+- core/src/base_audit/systems/s5_configured_statistics/web_api.py
+- core/src/base_audit/systems/s5_configured_statistics/expression_export.py
+- core/src/base_audit/systems/s5_configured_statistics/formula_candidates.py
+- core/src/base_audit/systems/s5_configured_statistics/service.py
+- core/src/base_audit/systems/s1audit_configured/external_layout.py
+- core/src/s1audit_configured/sources.py
+- core/src/s1audit_configured/model.py
+- core/src/s1audit_configured/batch.py
+- core/tests/s5/test_s5_integration.py
+- core/tests/TEST_GROUPS.md
+- core/src/base_audit/systems/s5_configured_statistics/README.md
+- 版本管理/VERSION_MANIFEST.json
+- 版本管理/S5_逐笔统计系统配置版/功能/S5-F01_配置规则审核/CHANGELOG.md
+- 本记录
+
+配置及业务影响：未修改 S5-CFG-01 工作簿、S1/S2/S3 配置或 S2 导入逻辑。S5-F01 当前 WIP 版本维持 v2.1.0，本轮是同一未发布功能批次的路径与输入格式完善；S5-CFG-01 维持 v2.0.0。S1-F01 版本不变，时序支持默认关闭。
+
+验证：
+- `python -m pytest -q -rs -m s5 core/tests`：284 passed，6 skipped，860 deselected，3 subtests passed。
+- `python -m pytest -q -rs -m s1 core/tests`：492 passed，13 skipped，645 deselected，3 subtests passed。
+- `python -m pytest -q core/tests/s5/test_s5_integration.py core/tests/s5/test_s5_configured_engine.py -k external`：12 passed，37 deselected。
+- `python -m compileall -q core/src/s1audit_configured core/src/base_audit/systems/s5_configured_statistics`：通过。
+- `python -m pytest -q core/tests/test_version_manifest.py`：8 passed（含扩展后的 S5 实现路径清单）。
+- Node 检查前端内嵌 JavaScript：通过；`git diff --check`：通过。
+- 仅使用合成工作簿验证两种外部布局；未使用本机真实业务外部文件，未运行 Office/WPS/LibreOffice 真机验收或打包。
+
+【组件版本】
+系统：S5 逐笔统计系统（配置版）
+影响功能：S5-F01 汇总核查表校验维持 v2.1.0（与本轮之前同一未发布 MINOR 功能批次）
+影响配置：S5-CFG-01 维持 v2.0.0（未变）
+未修改的相关组件：S1-F01/S1-CFG-01 版本不变；S2、S3 与 S4 未修改
+版本升级原因：本轮不另行升级；同一 v2.1.0 未发布批次完善维护工具路径复用和 S5 时序外部格式支持。
+
+回滚提示：如需回滚本轮，在保留原有 S5 隐藏工具 WIP 的前提下，撤销本记录列出的本轮差异；不要删除此前 S5 维护工具模块或重置其他项目 WIP。

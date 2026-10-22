@@ -1,0 +1,43 @@
+时间：2026-10-21 17:09:41（Asia/Shanghai）
+执行者：Codex
+工作分支：desktop；本轮未提交、未推送、未合并。
+
+【需求】
+将 S5 配置维护工具放到 F1“汇总核查表校验”下方，命名为 F2 模板 V_CUR 表达式、F3 外部文件 V_EXT 表达式、F4 模板校验公式转配置；修复每次启动默认隐藏及五击切换。
+
+【实现】
+- 三个入口移入 F1 运行按钮下方，按钮、维护页标题统一采用 F2/F3/F4 名称。
+- 为 S5 页面内带 `.card` 样式的隐藏节点显式设置 `display:none!important`，避免 `.card{display:flex}` 覆盖 `hidden` 属性。
+- 移除 localStorage 持久状态；每次运行实例从隐藏状态开始，连续点击 S5 导航 5 次切换显示/隐藏。
+- 将三个入口登记为 S5-F02/F03/F04 独立功能组件；原先已退役的同编号 S5-F02 模板公式审核历史仍保留，当前 F2 是新的 V_CUR 维护工具。
+- 版本清单测试增加产品版本与发布 CHANGELOG 首条版本一致性检查。
+- 隐藏入口时若维护工具正在打开，则关闭维护页并回到 F1。
+- 新增 S5 前端行为测试，覆盖默认隐藏、少于五击不显示、五击显示、打开工具、再次五击隐藏并回到 F1。
+
+【修改文件】
+- `core/frontend/web/index.html`
+- `core/tests/s5/test_s5_integration.py`
+- `core/tests/test_version_manifest.py`
+- `core/pytest.ini`、`core/tests/TEST_GROUPS.md`
+- `rules/11_版本管理与组件编号.md`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/S5_逐笔统计系统配置版/功能/S5-F01_配置规则审核/CHANGELOG.md`
+- `版本管理/S5_逐笔统计系统配置版/功能/S5-F02_模板V_CUR表达式/CHANGELOG.md`
+- `版本管理/S5_逐笔统计系统配置版/功能/S5-F03_外部文件V_EXT表达式/CHANGELOG.md`
+- `版本管理/S5_逐笔统计系统配置版/功能/S5-F04_模板校验公式转配置/CHANGELOG.md`
+- `版本管理/产品发布/CHANGELOG.md`
+- `日志/更新日志.txt`、`日志/开发日志.txt`
+- 本修改记录
+
+【组件版本】
+产品：V26.1.7.2 → V26.1.7.3（PATCH；S5 维护入口命名、布局和默认隐藏/切换行为修正）。
+S5-F01：v2.1.0 → v2.1.1（PATCH）；S1/S2/S3 及所有配置组件不变。
+S5-F02/F03/F04：各登记 v1.0.0（Baseline）；旧同编号 S5-F02 审核流程继续标记为退役历史。
+无配置工作簿改动。
+
+【验证】
+- `python -X utf8 -m pytest -q --tb=short core/tests/test_distribution_profile.py core/tests/s5/test_s5_integration.py core/tests/test_version_manifest.py`：47 passed in 9.08s。
+- 8 个警告均为测试环境未安装可选 `python-calamine` 时按设计回退到 openpyxl，不影响本轮 UI 验收。
+
+【WIP 保护】
+保留工作区已有 S5、Calamine、打包和 UI 改动；未覆盖其他 WIP。未重新打包、未提交。

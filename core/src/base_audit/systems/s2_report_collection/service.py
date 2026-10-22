@@ -15,7 +15,7 @@ from .importer import import_external_workbook, import_period_directory
 from .models import AuditFinding, AuditSummary, V2RunPaths
 from .period_engine import PeriodComparisonEngine
 from .rule_engine import RuleEngine
-from .validation import validate_config_warnings, validate_import
+from .validation import validate_config_warnings, validate_external_warnings, validate_import
 
 
 @dataclass(frozen=True)
@@ -73,12 +73,19 @@ class PeriodAuditV2Service:
             message=f"完成：生成 {len(rule_findings)} 条校验结果，另有 {len(rule_quality)} 条规则数据提示",
         )
         external_findings: list[AuditFinding] = []
+        external_warning_count = 0
         if central_path is not None:
             progress("external_read", "读取大集中数据", 73, message=f"正在读取：{central_path.name}")
             values, org_map = import_external_workbook(central_path)
+            external_warning_findings = validate_external_warnings(values.warnings)
+            quality.extend(external_warning_findings)
+            external_warning_count = len(external_warning_findings)
             progress(
                 "external_read", "读取大集中数据", 76,
-                message=f"完成：读取 {len(values)} 条指标数据，机构参照 {len(org_map)} 条",
+                message=(
+                    f"完成：读取 {len(values)} 条指标数据，机构参照 {len(org_map)} 条，"
+                    f"外部数据提示 {external_warning_count} 条"
+                ),
             )
             progress(
                 "external", "执行外部核对", 77,
@@ -108,7 +115,10 @@ class PeriodAuditV2Service:
                 "外部核对规则数": str(sum(1 for rule in config.external_rules if rule.enabled)),
             },
         )
-        progress("complete", "审核完成", 100)
+        complete_message = "已生成三张分类审核表"
+        if external_warning_count:
+            complete_message += f"；外部数据提示 {external_warning_count} 条，详情见“校验规则”工作表"
+        progress("complete", "审核完成", 100, message=complete_message)
         return V2RunResult(tuple(findings), summary, paths)
 
     def check_config(self, config_path: Path) -> tuple[str, ...]:

@@ -1,0 +1,58 @@
+时间：2026-10-21 23:54:28（Asia/Shanghai）
+执行者：Codex
+分支：desktop
+修改前提交：4c84c3f
+修改后提交：4c84c3f（未提交）
+
+【WIP 状态】
+开始时工作区已有多处未提交修改及未跟踪文件，涉及此前的 S2、S5、打包和日志工作。本轮保留这些 WIP；只编辑本次匹配判断、待处理文件显示、对应测试和版本留痕，没有暂存、提交或清理其他工作。
+
+【需求】
+减少 S1/S5 待处理文件列表中因模板工作表未完整出现而产生的“部分匹配”误读。匹配以源工作簿实际工作表为准：源工作簿的工作表全部存在于模板时应为匹配；模板额外保留的工作表不应降低匹配状态。S1-F02 的源工作表可能动态变化，需要提示新增表及其兜底处理能力。
+
+【实现】
+- S1 模板自动推荐与待处理文件分类增加源工作表覆盖判断。模板额外工作表不再让匹配文件变成未识别；多个相近候选仍使用原有分差保护并要求人工确认。
+- S1-F02 预览不再把模板中未出现在源文件的工作表显示为部分匹配。源文件新增工作表改为“有新增工作表”；模板有“兜底模板”时显示“可尝试兜底”。悬停提示说明新增工作表是否会被兜底尝试，且表头/汇总区域仍由实际执行校验。没有兜底模板时明确说明新增表不参与汇总。
+- S5 匹配状态忽略模板中未出现在源文件的工作表；源文件额外工作表显示为“含模板外工作表”，与真正没有同名数据表的“未匹配”分开。筛选仍保留对应状态，但不再使用醒目的“部分匹配”文案。
+- S5 的匹配数量改为“同名源工作表数 / 源工作表总数”，模板额外表不再稀释比例。模板候选歧义保护保留。
+- 更新 S1/S5 测试、测试分组说明、S5 README、版本清单、组件及产品 CHANGELOG。
+
+【组件版本】
+系统：S1 逐笔统计系统、S5 逐笔统计系统（配置版）
+影响功能：S1-F01 v2.3.0 → v2.4.0（源工作表覆盖匹配能力）
+影响功能：S1-F02 v1.2.1 → v1.2.2（F2 列表文案及兜底提示）
+影响功能：S5-F01 v2.5.0 → v2.6.0（源工作表覆盖匹配及状态/比例展示）
+影响配置：S1-CFG-01、S5-CFG-01 均未变；无配置工作簿内容修改。
+整包版本：V26.1.7.11 → V26.1.7.12。
+未修改的相关组件：S2、S3 及其他配置组件未因本轮需求升级。
+版本升级原因：S1-F01/S5-F01 增加兼容的源工作表覆盖匹配行为（MINOR）；S1-F02 修正局部显示语义（PATCH）；产品版本按本次用户可见修复升 PATCH。
+
+【修改文件】
+- `core/src/base_audit/discovery.py`
+- `core/src/base_audit/systems/s5_configured_statistics/recognition.py`
+- `core/frontend/web/index.html`
+- `core/tests/test_discovery.py`
+- `core/tests/test_web_app.py`
+- `core/tests/s5/test_s5_recognition.py`
+- `core/tests/s5/test_s5_integration.py`
+- `core/tests/test_version_manifest.py`
+- `core/tests/TEST_GROUPS.md`
+- `core/src/base_audit/systems/s5_configured_statistics/README.md`
+- `版本管理/VERSION_MANIFEST.json`
+- S1-F01、S1-F02、S5-F01 组件 CHANGELOG 与 `版本管理/产品发布/CHANGELOG.md`
+- 本 GPT 修改记录
+
+【验证】
+- 在 `core/` 执行 `python -X utf8 -m pytest -q -rs -m s1 tests`：501 passed / 13 skipped / 0 failed，3 subtests passed。13 项因 Linux/UOS 平台探测或未安装 Flask 跳过。
+- 在 `core/` 执行 `python -X utf8 -m pytest -q -rs -m s5 tests`：322 passed / 6 skipped / 0 failed，3 subtests passed。6 项因未安装 Flask 跳过；8 条 Calamine fallback warning 是测试环境缺少 python-calamine 时按设计回退 openpyxl。
+- 最后排除模板控制表名的小调整后，`core/tests/test_discovery.py`：20 passed。
+- `python -X utf8 -m pytest -q tests/test_version_manifest.py`：8 passed。
+- Python `compileall`、Node.js 对内嵌 JavaScript 语法解析及 `git diff --check` 通过。
+- 未用真实机构报表复核；未打包；未提交。
+
+【风险与回滚提示】
+- 多个模板都包含源文件的全部工作表时，候选相近保护会继续拒绝自动唯一选择，不会随覆盖判断放宽。
+- S1-F02 的源新增工作表只有在模板含“兜底模板”时才会尝试兜底；没有兜底模板时仍按既有逻辑不汇总这些新增表，列表会明确提示。
+- 当前修改尚未提交；相关文件同时含本轮之前的 WIP。若需回滚，只反向撤销本记录列出的局部修改，不要整文件恢复或清空工作区。
+
+删除清单：无。

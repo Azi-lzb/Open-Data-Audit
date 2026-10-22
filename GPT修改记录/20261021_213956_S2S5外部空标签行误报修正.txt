@@ -1,0 +1,44 @@
+【时间】2026-10-21 21:39:56（Asia/Shanghai）
+【执行者】Codex
+【修改前 commit】4c84c3f
+【修改后 commit】4c84c3f（未提交）
+【工作区状态】修改前工作区已有多项其他未提交 WIP。本轮只对下列 S2/S5 文件按需修改，未清理、覆盖、暂存或提交其他 WIP。
+
+【目的】修正用户指出的空行名称误报：时序大集中数据中，行名称与指标值为空但日期、报表名称、报表代码、版本号、报表组、行顺序号等元数据有值是正常情况，不应报“行名称及指标数据均为空”。普通报表和 S5 两种布局继续区分“指标有值但标签缺失”和“整行全空”。
+
+【修改内容】
+- S2 时序/普通布局：只有指标列实际有值且行名称为空时，提示该行未参与核对并请检查标签；只有整行全空且是内部空行时才提示忽略；尾部全空行不提示。纯空格和不间断空格按空白处理，普通报表已知元数据列不再作为指标列。
+- S5 普通/时序布局：空行检测改为检查整行；只有指标空且整行全空的内部行产生软提示，元数据存在但标签和指标均空时不提示；有指标值但标签空仍提示并跳过。
+- 新增/调整 S2 与 S5 回归样例，包含用户示例中的时序元数据列、全空内部行、缺标签但指标有值，以及 S5 Direct OOXML/openpyxl 两种输出引擎。
+- 更新 TEST_GROUPS、S2-F01/S5-F01 CHANGELOG、VERSION_MANIFEST 与版本守护测试。
+
+【影响文件】
+- `core/src/base_audit/systems/s2_report_collection/importer.py`
+- `core/src/s1audit_configured/external_layout.py`
+- `core/tests/test_period_v2.py`
+- `core/tests/s5/test_s5_integration.py`
+- `core/tests/test_version_manifest.py`
+- `core/tests/TEST_GROUPS.md`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md`
+- `版本管理/S5_逐笔统计系统配置版/功能/S5-F01_配置规则审核/CHANGELOG.md`
+- 本修改记录
+
+【组件版本】
+系统：S2 报表采集系统；影响功能：S2-F01 执行报表规则 v10.6.3 → v10.6.4（PATCH）。
+系统：S5 逐笔统计系统（配置版）；影响功能：S5-F01 汇总核查表校验 v2.2.0 → v2.2.1（PATCH）。
+影响配置：S2-CFG-01、S5-CFG-01 均未变。
+未修改的相关组件：S1、S3、S2/S5 配置组件均未修改。
+版本升级原因：修复空标签行识别对时序元数据的误报，不改变匹配或审核结论口径。
+
+【验证】
+- 定向：`python -m pytest -q core/tests/test_period_v2.py::test_v2_external_blank_row_label_is_ignored_with_soft_warning core/tests/s5/test_s5_integration.py::test_external_layout_anomalies_warn_and_continue_for_both_layouts`：10 passed。
+- S2：`python -m pytest -q -rs -m s2 core/tests`：445 passed，6 skipped，719 deselected，3 subtests passed。
+- S5：`python -m pytest -q -rs -m s5 core/tests`：299 passed，6 skipped，865 deselected，3 subtests passed；有 8 条可选 python-calamine 未安装、已回退 openpyxl 的 RuntimeWarning。
+- `python -m pytest -q core/tests/test_version_manifest.py`：8 passed。
+- `python -m compileall -q core/src core/tests`、VERSION_MANIFEST JSON 解析、`git diff --check` 均通过。
+- 未执行真实业务文件验收、UOS/麒麟/LibreOffice 真机测试或打包测试。
+
+【删除清单】无。
+【回滚提示】仅按本记录的代码、测试与版本文档差异分块回滚；目标文件修改前已含未提交 WIP，不要整文件恢复到 HEAD，以免覆盖既有工作。
+【Git】未暂存、未提交、未推送。

@@ -1,0 +1,37 @@
+时间：2026-10-21 16:12:28（Asia/Shanghai）
+执行者：Codex
+工作分支：desktop；本轮未提交、未推送、未合并。
+
+【需求】
+1. 为用户可见更新日志的每条内容标明系统归属，使 S1/S2 发行版不显示 S3、S5 的更新。
+2. 将 Windows 打包程序属性改为中文名“审核工具”、英文名“AuditTools”、公司名“HZPBC”；Linux DEB 桌面菜单英文名和包维护者信息也统一为 AuditTools / HZPBC。
+
+【实现】
+- `日志/更新日志.txt`：为全部 87 条更新内容添加 `[S1]`、`[S2]`、`[S3]`、`[S5]`、组合标签或 `[通用]`；混合系统的历史条目按系统拆分，避免 S1/S2 发行版显示 S3/S5 更新说明。
+- `core/frontend/web/index.html`：解析并显示系统徽章。S1/S2 发行版只展示包内 enabledSystems 命中的标签和通用内容；未标记条目保留关键词回退。更新日志范围依赖发行包配置，五连击解锁维护 UI 不会扩大日志范围。
+- `core/src/base_audit/web_app.py`：把更新日志标签说明识别为文件头维护说明，不生成无日期条目。
+- `shell-flask/build_exe.py`、`shell-pywebview/build_exe.py`：Windows PE 版本资源使用简体中文（0804）和英文（0409）双语表。中文 FileDescription/ProductName 为“审核工具”，英文为“AuditTools”，InternalName 为“AuditTools”，CompanyName 为“HZPBC”。
+- `shell-flask/Linux-2-打包DEB与TARGZ.sh`、`shell-flask/README.md`：Linux 桌面菜单英文名改为 AuditTools，DEB Maintainer 字段改为 HZPBC，中文菜单仍显示审核工具。
+- 补充发行过滤、解锁后日志边界、日志标签完整性和双语 PE 属性测试及测试分组说明。
+
+【修改文件】
+- `日志/更新日志.txt`、`日志/开发日志.txt`
+- `core/frontend/web/index.html`、`core/src/base_audit/web_app.py`
+- `core/tests/test_distribution_profile.py`、`core/tests/test_web_app.py`、`core/tests/TEST_GROUPS.md`
+- `shell-flask/build_exe.py`、`shell-pywebview/build_exe.py`、`shell-flask/Linux-2-打包DEB与TARGZ.sh`、`shell-flask/README.md`
+- `版本管理/VERSION_MANIFEST.json`、`版本管理/产品发布/CHANGELOG.md`、`rules/11_版本管理与组件编号.md`
+- 本修改记录
+
+【组件版本】
+产品：V26.1.7.0 → V26.1.7.1（PATCH；系统标签过滤与程序产品标识调整）。
+S1/S2/S3/S5 功能组件及配置组件：全部未变；无业务配置工作簿改动。
+
+【验证】
+- `python -X utf8 -m pytest -q --tb=short core/tests/test_distribution_profile.py core/tests/test_web_app.py core/tests/test_version_manifest.py`：82 passed，3 subtests passed。
+- Maintainer 元数据最终修改后复跑 `python -X utf8 -m pytest -q --tb=short core/tests/test_distribution_profile.py`：23 passed。
+- `python -X utf8 -m py_compile core/src/base_audit/web_app.py core/tests/test_distribution_profile.py core/tests/test_web_app.py shell-flask/build_exe.py shell-pywebview/build_exe.py`：通过。
+- 页面 JavaScript 语法检查包含在 `test_distribution_profile.py` 内，通过；Linux DEB 构建脚本 `bash -n`、`VERSION_MANIFEST.json` JSON 校验及 `git diff --check` 通过。
+- 未重新打包；现有发行产物不包含本轮修改，后续构建会使用 V26.1.7.1 和新程序信息。
+
+【WIP 保护】
+工作区原有 S5、Calamine、S1/S2 界面与打包变更保持不动。本轮仅在相关已修改文件中追加本需求所需的局部代码和留痕；未清理、回滚或覆盖其他 WIP。

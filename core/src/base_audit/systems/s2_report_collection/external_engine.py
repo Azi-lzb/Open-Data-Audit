@@ -39,6 +39,8 @@ class ExternalComparisonEngine:
 
         findings: list[AuditFinding] = []
         time_series = isinstance(external, ExternalValues) and external.time_series
+        external_row_labels = external.row_labels if isinstance(external, ExternalValues) else set()
+        external_indicator_names = external.indicator_names if isinstance(external, ExternalValues) else set()
         missing_label_fallback = external.get(MISSING_INSTITUTION_LABEL_FALLBACK_KEY)
         if (
             time_series
@@ -75,10 +77,27 @@ class ExternalComparisonEngine:
                         missing_reason = "缺少机构映射或报表项目"
                     elif (data_date, row_label) not in external.date_labels:
                         missing_reason = f"数据日期 {data_date} 未找到报表项目“{row_label}”"
-                    else:
-                        missing_reason = f"数据日期 {data_date}、报表项目“{row_label}”、指标“{rule.external_indicator_name}”无可读取数值"
+                    elif rule.external_indicator_name not in external_indicator_names:
+                        missing_description = (
+                            f"已匹配报表项目“{row_label}”，但大集中数据中没有指标列“{rule.external_indicator_name}”，"
+                            "请检查导出字段或外部文件。"
+                        )
+                        missing_reason = f"数据日期 {data_date}、报表项目“{row_label}”已找到，但缺少指标列“{rule.external_indicator_name}”"
                 else:
                     external_item = external.get((row_label, rule.external_indicator_name)) if row_label else None
+                    if row_label and external_item is None and row_label in external_row_labels:
+                        if rule.external_indicator_name not in external_indicator_names:
+                            missing_description = (
+                                f"已匹配报表项目“{row_label}”，但大集中数据中没有指标列“{rule.external_indicator_name}”，"
+                                "请检查导出字段或外部文件。"
+                            )
+                            missing_reason = f"报表项目“{row_label}”已找到，但缺少指标列“{rule.external_indicator_name}”"
+                        else:
+                            missing_description = (
+                                f"已匹配报表项目“{row_label}”，但指标“{rule.external_indicator_name}”没有可读取数值，"
+                                "请检查大集中数据内容。"
+                            )
+                            missing_reason = f"报表项目“{row_label}”、指标“{rule.external_indicator_name}”无可读取数值"
                 used_missing_label_fallback = external_item is None and missing_label_fallback is not None
                 if used_missing_label_fallback:
                     external_item = missing_label_fallback

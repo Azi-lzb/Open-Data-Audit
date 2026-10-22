@@ -22,10 +22,12 @@ EXPECTED_FEATURES = {
     "S1-F01", "S1-F02", "S1-F03", "S1-F04", "S1-F05",
     "S2-F01",
     "S3-F01", "S3-F02", "S3-F03", "S3-F04", "S3-F05",
+    "S5-F01", "S5-F02", "S5-F03", "S5-F04",
 }
 EXPECTED_CONFIGS = {
     "S1-CFG-01", "S2-CFG-01", "S2-CFG-02",
     "S3-CFG-00", "S3-CFG-01", "S3-CFG-02", "S3-CFG-03",
+    "S5-CFG-01",
 }
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 PRODUCT_VERSION_RE = re.compile(r"^\d{2}\.\d+\.\d+\.\d+$")
@@ -46,10 +48,12 @@ def test_manifest_is_valid_json_with_core_sections(manifest: dict) -> None:
     assert PRODUCT_VERSION_RE.fullmatch(product["version"])
     assert product["changelog"] == "版本管理/产品发布/CHANGELOG.md"
     assert (ROOT / product["changelog"]).is_file()
-    assert set(manifest["systems"]) == {"S1", "S2", "S3"}
+    release_log = (ROOT / product["changelog"]).read_text(encoding="utf-8")
+    assert any(line.startswith(f"## V{product['version']} —") for line in release_log.splitlines())
+    assert set(manifest["systems"]) == {"S1", "S2", "S3", "S5"}
 
 
-def test_all_11_features_and_7_configs_registered(manifest: dict) -> None:
+def test_all_15_features_and_8_configs_registered(manifest: dict) -> None:
     assert set(manifest["features"]) == EXPECTED_FEATURES
     assert set(manifest["configs"]) == EXPECTED_CONFIGS
 
@@ -63,6 +67,10 @@ EXPECTED_VERSIONS = {
     # S2-F01 为八段占位符取数 Bugfix（用户报障）；
     # 其余维持基线。
     # S2-F01 v10.6.0：新增 python-calamine 0.3.1 快速读取引擎（双引擎回退），1098 文件读取 4.26s→1.02s；
+    # S2-F01 v10.6.1：普通报表支持显式“行名称”表头；按“数据日期”+“行名称”共同识别时序格式。
+    # v10.6.2：匹配行空白/非数值按0并给出软性提示，空行名称不阻断，完成状态显示提示数量；
+    # v10.6.3：时序布局无效/缺失日期行提示后忽略，仍精确匹配本期完整日期。
+    # v10.6.4：行名称为空时仅指标列有值才提示；时序元数据不再误报为空项目行。
     # S2-F01 v10.5.0：环比结果在指标代码后输出数据属性列；通用设置新增可选“文字变动默认级别”
     # （文字指标变化与文字单侧缺失，缺省硬性）及“本期缺失默认级别”“上期缺失默认级别”
     # （仅非文字指标，按“本期无，上期有”/“本期有，上期无”方向分别控制，含该侧无数值/为0按无处理）；
@@ -88,13 +96,19 @@ EXPECTED_VERSIONS = {
     # 前序 S2-F01 v6.1.0：按通用设置可选隐藏两类正常结果行；v6.0.2 从主配置读取单位设置；
     # v6.0.0：源数据与外部金额先精确换算到输出单位后再计算；
     # S1/S3 各配置 PATCH：同步补充工作簿内字段说明与高级版教程。
-    # S1-F01 v2.2.1：多个官方 LibreOffice DEB 版本并存时优先使用最高版本。
-    # S1-F02 v1.2.0：可选“兜底模板”汇总未匹配且有数据的源工作表。
-    "S1-F01": "2.2.1", "S1-F02": "1.2.0", "S1-F03": "1.1.0",
+    # S1-F01 v2.4.0：源文件工作表均在模板中时按覆盖关系匹配，模板额外工作表不降级；v2.5.0 增加待处理文件筛选。
+    # S1-F02 v1.2.2：模板多出的表不显示部分匹配；源新增表区分兜底可用性。
+    "S1-F01": "2.5.0", "S1-F02": "1.2.2", "S1-F03": "1.1.0",
     "S1-F04": "1.1.0", "S1-F05": "1.0.1",
-    "S2-F01": "10.6.0", "S3-F01": "1.5.2", "S3-F02": "1.1.0",
+    # S5-F01 v2.2.x unified external-layout reads, row diagnostics, and the F1-F4 card.
+    # v2.3.0 defaults to bundled paths; v2.3.1 migrates renamed defaults; v2.3.2 aligns buttons; v2.4.0 validates enabled rules; v2.4.1 streams config validation; v2.5.0 makes checks explicit; v2.6.0 refines sheet matching; v2.7.0 adds current-business and all-enabled check scopes.
+    "S5-F01": "2.7.1",
+    # S5-F02/F03/F04 are separately registered hidden configuration tools.
+    "S5-F02": "1.0.0", "S5-F03": "1.0.0", "S5-F04": "1.0.0",
+    "S2-F01": "10.7.0", "S3-F01": "1.5.2", "S3-F02": "1.1.0",
     "S3-F03": "1.1.0", "S3-F04": "1.2.2", "S3-F05": "2.0.0",
     "S1-CFG-01": "2.0.0", "S2-CFG-01": "8.4.0", "S2-CFG-02": "1.0.0",
+    "S5-CFG-01": "2.0.0",
     "S3-CFG-00": "2.0.2", "S3-CFG-01": "3.0.3",
     "S3-CFG-02": "1.0.3", "S3-CFG-03": "2.0.0",
 }
@@ -102,7 +116,7 @@ EXPECTED_VERSIONS = {
 
 def test_component_ids_are_unique_and_versions_wellformed(manifest: dict) -> None:
     ids = [*manifest["features"], *manifest["configs"]]
-    assert len(ids) == len(set(ids)) == 18
+    assert len(ids) == len(set(ids)) == 23
     for cid, component in [*manifest["features"].items(), *manifest["configs"].items()]:
         assert VERSION_RE.match(component["version"]), component
         assert component["version"] == EXPECTED_VERSIONS.get(cid, "1.0.0"), cid
@@ -120,6 +134,7 @@ EXPECTED_CONFIG_VERSIONS = {
     "S1-CFG-01": "2.0.0",
     "S2-CFG-01": "8.4.0",
     "S2-CFG-02": "1.0.0",
+    "S5-CFG-01": "2.0.0",
     "S3-CFG-00": "2.0.2",
     # v3.0.0：3.1 表达式规则输入列从“触发方式”升级为“是否取反（是/否）”。
     "S3-CFG-01": "3.0.3",

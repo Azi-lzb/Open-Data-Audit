@@ -118,6 +118,8 @@ class UserSettings:
     last_input_dir: str = ""
     last_template_dir: str = ""
     last_external_file: str = ""
+    # 用户手动清空时禁止下次启动自动回填随包的外部参照工作簿。
+    last_external_file_default_disabled: bool = False
     last_output_dir: str = ""
     history_config: str = ""
     output_pinned: bool = False
@@ -164,6 +166,7 @@ class UserSettings:
     period_current_dir: str = ""
     period_previous_dir: str = ""
     period_central_file: str = ""
+    period_central_file_default_disabled: bool = False
     period_output_dir: str = ""
     period_output_auto: bool = True
     # 报表采集系统：报表采集系统_比较配置.xlsx 的绑定路径（空 = 使用程序目录内置配置）。
@@ -299,6 +302,7 @@ class SettingsStore:
             last_input_dir=last_input_dir,
             last_template_dir=str(payload.get("last_template_dir") or ""),
             last_external_file=str(payload.get("last_external_file") or ""),
+            last_external_file_default_disabled=bool(payload.get("last_external_file_default_disabled", False)),
             last_output_dir=last_output_dir,
             history_config=str(payload.get("history_config") or ""),
             output_pinned=bool(payload.get("output_pinned", legacy_pinned)),
@@ -376,6 +380,7 @@ class SettingsStore:
             period_current_dir=str(payload.get("period_current_dir") or ""),
             period_previous_dir=str(payload.get("period_previous_dir") or ""),
             period_central_file=str(payload.get("period_central_file") or ""),
+            period_central_file_default_disabled=bool(payload.get("period_central_file_default_disabled", False)),
             period_output_dir=str(payload.get("period_output_dir") or ""),
             period_output_auto=bool(payload.get("period_output_auto", True)),
             period_config_file=str(payload.get("period_config_file") or ""),

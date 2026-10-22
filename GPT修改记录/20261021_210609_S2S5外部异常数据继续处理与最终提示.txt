@@ -1,0 +1,54 @@
+【任务】S2-F01 与 S5-F01 外部数据异常处理同步
+
+【时间】2026-10-21 21:06（Asia/Shanghai）
+
+【需求】
+- 普通报表和时序报表对同类外部数据异常使用一致的继续处理与最终提示口径。
+- 匹配到报表项目但指标值为空白或非数值时按 0 继续，不因单元格异常中止整批；空行、空行名称和异常时序日期要有明确提示。
+- S2-F1 的两种布局均执行相同处理，并确认实际完成情况。
+
+【实现】
+- S2-F01 普通/时序布局已有相同的空白值、非数值按 0 提示及空行/空行名称处理；本次补齐时序行名称存在、数据日期空白或无效时的软提示与忽略行为。仍只使用本期完整日期；不借用其他日期，重复记录和不完整时序表头仍阻断。
+- S5-F01 修正外部配置包含固定数据源契约时绕过普通/时序自动识别的问题；S5 现统一经布局识别读取两种格式，并严格按本期完整日期筛选时序数据。
+- S5-F01 的匹配数值空白/非数值按 0 继续；空行或空行名称行忽略并记录提示；异常日期行提示并跳过。若没有本期有效时序值，仅相关规则报告取数失败，批次仍继续处理。
+- S5 单机构和批次结果在存在数据质量提示时新增“数据质量提示”工作表；任务结束显示提示数量与定位。Direct OOXML、openpyxl 两种输出均验证。
+- 当时序数据中某机构没有本期有效日期时，只将该机构相关规则记为取数失败，批次仍处理其他机构；另有端到端测试覆盖这一情况。
+- 结构歧义（不完整表头、重复映射/报表项目/指标列）仍明确报错，不猜测数据。
+
+【修改文件】
+- `core/src/base_audit/systems/s2_report_collection/importer.py`
+- `core/src/s1audit_configured/external_layout.py`
+- `core/src/s1audit_configured/sources.py`
+- `core/src/s1audit_configured/engine.py`
+- `core/src/s1audit_configured/batch.py`
+- `core/src/s1audit_configured/outputs.py`
+- `core/src/base_audit/systems/s5_configured_statistics/service.py`
+- `core/tests/test_period_v2.py`
+- `core/tests/s5/test_s5_configured_engine.py`
+- `core/tests/s5/test_s5_integration.py`
+- `core/tests/test_version_manifest.py`
+- `core/tests/TEST_GROUPS.md`
+- `版本管理/VERSION_MANIFEST.json`
+- S2-F01、S5-F01 对应 CHANGELOG
+- 本修改记录
+
+【组件版本】
+系统：S2 报表采集系统、S5 逐笔统计系统（配置版）
+影响功能：S2-F01 执行报表规则 v10.6.2 → v10.6.3；S5-F01 汇总核查表校验 v2.1.1 → v2.2.0
+影响配置：S2-CFG-01 v8.4.0 → v8.4.0（未变）；S5-CFG-01 v2.0.0 → v2.0.0（未变）
+产品版本：V26.1.7.5 → V26.1.7.5（未变）
+未修改的相关组件：S1、S3、S5-F02/F03/F04 及所有配置组件
+版本升级原因：S2-F01 PATCH（异常时序日期不再中断整份导入，提示后忽略）；S5-F01 MINOR（新增外部数据质量提示结果表，并统一两种布局的读取与异常处理语义）。
+
+【验证】
+- 定向共用测试：`python -m pytest -q core/tests/test_period_v2.py core/tests/s5/test_s5_configured_engine.py core/tests/s5/test_s5_integration.py`：159 passed。
+- S5 输出引擎与异常值定向测试：`python -m pytest -q core/tests/s5/test_s5_integration.py::test_external_layout_anomalies_warn_and_continue_for_both_layouts core/tests/s5/test_s5_configured_engine.py::test_external_numeric_blank_or_text_is_zero_with_a_quality_warning`：10 passed；另有 `test_time_series_missing_current_date_only_fails_affected_rule_and_continues_batch`：1 passed。覆盖普通/时序 × Direct OOXML/openpyxl，批次与单机构结果表均含异常提示，并验证无本期有效时序日期时继续跑完其他机构。
+- S2 回归：`python -m pytest -q -rs -m s2 core/tests`：445 passed / 6 skipped / 0 failed / 3 subtests passed。
+- S5 回归：`python -m pytest -q -rs -m s5 core/tests`：299 passed / 6 skipped / 0 failed / 3 subtests passed。
+- 版本清单：8 passed；`python -m compileall -q core/src core/tests` 与 MANIFEST JSON 解析通过；`git diff --check` 通过（仅仓库既有 LF/CRLF 提示）。
+- 8 个 S5 警告为测试环境没有可选 python-calamine 时按设计回退 openpyxl。
+
+【影响与限制】
+- 空白/文字数值按 0 参与规则比较，会改变个别审核结论；输出提示明确记录了原值、位置和按 0 处理，供用户复核。
+- 未使用真实业务工作簿，未执行 Windows/UOS/麒麟真机验收或打包。
+- 保留工作区已有其他系统、打包、配置等 WIP；本轮没有提交、推送或合并 Git。

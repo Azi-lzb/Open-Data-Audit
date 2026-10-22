@@ -1,0 +1,40 @@
+【时间】2026-10-21 22:25:39（Asia/Shanghai）
+【执行者】Codex
+【修改前 commit】4c84c3f
+【修改后 commit】4c84c3f（未提交）
+【工作区状态】开始时工作区有 S1/S2/S3/S5、打包和 UI 等多项未提交 WIP。本轮只修改 S5 路径显示、S5 默认路径识别、交付配置过滤、对应测试和留痕；未清理、覆盖、暂存或提交其他 WIP。未改被忽略的 config-real 文件和配置工作簿。
+
+【目的】统一 S5 与 S1 的路径颜色和交互样式，使用用户重命名后的 S5 审核配置文件，并默认指向命名区域模板目录，确保 S1/S2 包不误带入改名后的 S5 配置。
+
+【修改内容】
+- S5 主面板及 F2/F3/F4 维护区路径名改用与 S1 相同的 `path-link` 蓝色可点击样式；路径为空时仍显示“未选择”。
+- 默认审核配置优先选择 `5.逐笔统计系统_审核配置.xlsx`，没有时兼容旧名 `S5_逐笔统计系统_审核配置.xlsx`。同一发行配置目录中记忆的旧默认文件名自动切到新文件。
+- 当发行配置目录同时有 `模板文件_命名区域` 时，将该目录中记忆的默认 `S5_模板文件` 自动切换到命名区域目录；其他自定义配置路径和模板路径原样保留。
+- S1/S2 发行过滤规则增加 `5.逐笔统计系统_审核配置.xlsx`，防止新命名的 S5 配置意外进入 S1/S2 专用版。Linux 内部包及 Windows 外壳既有配置复制路径继续将 `模板文件_命名区域` 放入包内 config 目录，本轮未重新构建包。
+- 增加 S5 默认路径迁移/自定义路径保留、路径链接样式和重命名配置包过滤测试；更新 S5-F01 与产品版本留痕。
+
+【影响文件】
+- `core/src/base_audit/systems/s5_configured_statistics/web_api.py`
+- `core/frontend/web/index.html`
+- `shell-flask/distribution-profiles.json`
+- `core/tests/s5/test_s5_integration.py`
+- `core/tests/test_distribution_profile.py`
+- `core/tests/test_version_manifest.py`
+- `版本管理/VERSION_MANIFEST.json`
+- S5-F01 与产品发布 CHANGELOG、开发日志、更新日志
+- 本修改记录
+
+【组件版本】
+产品：V26.1.7.6 → V26.1.7.7（PATCH）。
+S5-F01：v2.3.0 → v2.3.1（PATCH，路径显示统一、重命名配置与旧默认目录迁移）。
+S5-CFG-01 v2.0.0 未变；S1/S2/S3/S5 其他功能和配置组件均未变。
+
+【验证】
+- `python -m pytest -q -rs -m s5 tests`：303 passed，6 skipped，865 deselected，3 subtests passed，0 failed。6 项跳过为缺少 Flask 的安装测试；8 条警告为未安装可选 python-calamine 后回退 openpyxl。
+- `python -m pytest -q tests/test_distribution_profile.py tests/test_version_manifest.py`：32 passed。
+- `git diff --check` 通过；VERSION_MANIFEST 与 distribution-profiles JSON 解析通过。
+- 未修改 config-real 内容；未构建或重打包；未提交或推送。
+
+【删除清单】无。
+【回滚提示】只回滚本记录中相关代码、筛选规则、测试和版本文档的对应小块；因源文件已有先前 WIP，不可整文件恢复。版本回滚须同步恢复 MANIFEST、S5-F01 CHANGELOG、产品 CHANGELOG 与版本测试期望。
+【Git】未暂存、未提交、未推送。

@@ -282,13 +282,21 @@ ExternalValueKey = Union[Tuple[str, str], Tuple[str, str, str]]
 
 
 class ExternalValues(dict):
-    """保持原字典接口，并区分时序数据的日期/机构存在性与数值缺失。"""
+    """保持原字典接口，并记录格式、行标签、指标列与可继续处理的数据提示。"""
 
     def __init__(self, *, time_series: bool = False) -> None:
         super().__init__()
         self.time_series = time_series
         self.available_dates: set[str] = set()
         self.date_labels: set[tuple[str, str]] = set()
+        self.row_labels: set[str] = set()
+        self.indicator_names: set[str] = set()
+        self.blank_values: set[ExternalValueKey] = set()
+        self.warnings: list[str] = []
+
+    def add_warning(self, message: str) -> None:
+        if message not in self.warnings:
+            self.warnings.append(message)
 
 
 def normalize_external_date(value: Any) -> str:
@@ -340,6 +348,22 @@ def _external_headers(row: list[Any]) -> list[str]:
     return [str(value if value is not None else "").strip().lstrip("\ufeff").strip() for value in row]
 
 
+def _has_external_value(value: Any) -> bool:
+    return value is not None and not (isinstance(value, str) and not value.strip())
+
+
+def _last_nonempty_row(matrix: list[list[Any]], start: int) -> int:
+    return max(
+        (index for index, row in enumerate(matrix) if index >= start and any(_has_external_value(value) for value in row)),
+        default=start - 1,
+    )
+
+
+def _external_value_preview(value: Any, *, limit: int = 80) -> str:
+    text = str(value).replace("\r", " ").replace("\n", " ")
+    return text if len(text) <= limit else text[:limit - 3] + "..."
+
+
 def _read_time_series_external(
     path: Path, matrix: list[list[Any]], header_row: int,
 ) -> ExternalValues:
@@ -359,19 +383,38 @@ def _read_time_series_external(
         raise ImportErrorV2(f"集中系统数据第{header_row + 1}行：时序格式缺少指标列")
 
     values = ExternalValues(time_series=True)
+    values.indicator_names.update(indicators)
     seen_rows: dict[tuple[str, str], int] = {}
     source_file = str(path.resolve())
+    last_nonempty_row = _last_nonempty_row(matrix, header_row + 1)
     for row_number, row in enumerate(matrix[header_row + 1:], start=header_row + 2):
         label = str(row[label_col] or "").strip() if label_col < len(row) else ""
-        has_values = any(col < len(row) and row[col] not in (None, "") for col in indicators.values())
+        populated_indicators = [
+            title for title, col in indicators.items()
+            if col < len(row) and _has_external_value(row[col])
+        ]
         if not label:
-            if has_values:
-                raise ImportErrorV2(f"集中系统数据第{row_number}行：存在指标数值但“行名称”为空，请补全报表项目")
+            if populated_indicators:
+                titles = "、".join(f"“{title}”" for title in populated_indicators)
+                values.add_warning(
+                    f"集中系统数据第{row_number}行：行名称为空，但指标列{titles}有数据；"
+                    "本行无法匹配报表项目，未参与外部核对。请检查行名称是否被误删。"
+                )
+            elif not any(_has_external_value(value) for value in row) and row_number - 1 < last_nonempty_row:
+                values.add_warning(
+                    f"集中系统数据第{row_number}行：行名称及指标数据均为空，已忽略该行；"
+                    "如属导出空行，可忽略。"
+                )
             continue
         raw_date = row[date_col] if date_col < len(row) else None
         data_date = normalize_external_date(raw_date)
         if not data_date:
-            raise ImportErrorV2(f"集中系统数据第{row_number}行：数据日期“{raw_date}”无效，请填写完整日期")
+            date_display = "空白" if raw_date is None or (isinstance(raw_date, str) and not raw_date.strip()) else f"“{_external_value_preview(raw_date)}”"
+            values.add_warning(
+                f"集中系统数据第{row_number}行、行名称“{label}”：数据日期{date_display}为空或无效，"
+                "本行未参与时序匹配；请检查数据日期是否误删或格式错误。"
+            )
+            continue
         row_key = (data_date, label)
         if row_key in seen_rows:
             raise ImportErrorV2(
@@ -381,18 +424,31 @@ def _read_time_series_external(
         seen_rows[row_key] = row_number
         values.available_dates.add(data_date)
         values.date_labels.add(row_key)
+        values.row_labels.add(label)
         source = SourceRef(source_file, "集中系统数据", row_number)
+        blank_titles: list[str] = []
+        non_numeric_titles: list[str] = []
         for title, col in indicators.items():
             raw_value = row[col] if col < len(row) else None
-            if raw_value in (None, ""):
-                continue
-            number = _decimal_number(raw_value)
-            if number is None:
-                raise ImportErrorV2(
-                    f"集中系统数据第{row_number}行、指标“{title}”：数值“{raw_value}”无法读取，请检查源数据"
-                )
+            if not _has_external_value(raw_value):
+                values.blank_values.add((data_date, label, title))
+                blank_titles.append(f"“{title}”为空白")
+                number = Decimal(0)
+            else:
+                number = _decimal_number(raw_value)
+                if number is None:
+                    non_numeric_titles.append(
+                        f"“{title}”内容“{_external_value_preview(raw_value)}”不是数值"
+                    )
+                    number = Decimal(0)
             values[(data_date, label, title)] = ExternalValue(
                 label, title, number, source, data_date=data_date,
+            )
+        if blank_titles or non_numeric_titles:
+            details = "；".join([*blank_titles, *non_numeric_titles])
+            values.add_warning(
+                f"集中系统数据第{row_number}行、报表项目“{label}”：{details}，已按 0 参与外部核对；"
+                "请核查是否误删或改动了数据。"
             )
     return values
 
@@ -400,8 +456,8 @@ def _read_time_series_external(
 def _open_external(path: Path):
     """打开大集中数据文件，返回 (表名列表, rows(name)→矩阵, close)。
 
-    仅支持 .xlsx：外部核对依赖「机构参照表」做机构映射，并兼容旧「参照表」；
-    .xls（xlrd 链路）与 .csv（无工作表概念）都会丢失工作表映射，故明确不接受。
+    仅支持 .xlsx：机构映射优先读取「机构参照表」，兼容旧「参照表」；
+    没有映射表时由外部核对引擎回退到 S2 配置。当前 .xls/.csv 不满足此工作表契约。
     """
     if path.suffix.casefold() != ".xlsx":
         raise ImportErrorV2(
@@ -440,7 +496,7 @@ def _read_external_org_map(sheet_name: str, rows: list[list[Any]]) -> dict[str, 
 
 
 def import_external_workbook(path: Path) -> tuple[ExternalValues, dict[str, str]]:
-    """按表头兼容普通/时序布局；时序数值保留完整日期，不混读其他数据 Sheet。"""
+    """读取 .xlsx 中的普通报表或时序布局；时序数值按完整日期匹配。"""
     if not path.is_file():
         raise ImportErrorV2(f"大集中文件不存在：{path}")
     sheets, read_rows, close = _open_external(path)
@@ -457,18 +513,25 @@ def import_external_workbook(path: Path) -> tuple[ExternalValues, dict[str, str]
             (i for i, row in enumerate(matrix[:20]) if {"数据日期", "行名称"}.issubset(_external_headers(row))),
             None,
         )
+        plain_header_row = next(
+            (
+                i for i, row in enumerate(matrix[:20])
+                if {"行名称", "报表项目"}.intersection(_external_headers(row)[:4])
+            ),
+            None,
+        )
         if time_header_row is not None:
             values = _read_time_series_external(path, matrix, time_header_row)
         else:
             partial_time_header_row = next(
-                (i for i, row in enumerate(matrix[:20]) if {"数据日期", "行名称"}.intersection(_external_headers(row))),
+                (i for i, row in enumerate(matrix[:20]) if "数据日期" in _external_headers(row)),
                 None,
             )
             if partial_time_header_row is not None:
                 raise ImportErrorV2(
                     f"集中系统数据第{partial_time_header_row + 1}行：时序表头不完整，必须同时包含“数据日期”和“行名称”"
                 )
-            values = _read_plain_external(path, matrix, header_row)
+            values = _read_plain_external(path, matrix, plain_header_row if plain_header_row is not None else header_row)
         reference_sheet = next(
             (name for name in ("机构参照表", "参照表") if name in sheets),
             None,
@@ -487,13 +550,18 @@ def _read_plain_external(path: Path, matrix: list[list[Any]], header_row: int) -
     """保留原普通格式的取数和缺少机构行标签列时的零值兜底。"""
     header = matrix[header_row]
     label_col = next((
-        c for c in range(min(4, len(header)))
-        if not str(header[c] or "").strip()
-        and any(
-            isinstance(r[c] if c < len(r) else None, str) and str(r[c]).strip()
-            for r in matrix[header_row + 1:header_row + 5]
-        )
+        c for c, title in enumerate(_external_headers(header)[:4])
+        if title in {"行名称", "报表项目"}
     ), None)
+    if label_col is None:
+        label_col = next((
+            c for c in range(min(4, len(header)))
+            if not str(header[c] or "").strip()
+            and any(
+                isinstance(r[c] if c < len(r) else None, str) and str(r[c]).strip()
+                for r in matrix[header_row + 1:header_row + 5]
+            )
+        ), None)
     values = ExternalValues()
     if label_col is None:
         # 没有机构行标签时，任何行都无法可靠匹配到报表机构；按用户要求
@@ -506,16 +574,58 @@ def _read_plain_external(path: Path, matrix: list[list[Any]], header_row: int) -
             MISSING_INSTITUTION_LABEL_FALLBACK_REASON,
         )
     else:
-        for col, title in enumerate(header):
-            title = str(title or "").strip()
-            if not title or col == label_col:
-                continue
-            for row_number, row in enumerate(matrix[header_row + 1:], start=header_row + 2):
-                if col >= len(row):
-                    continue
-                label, number = str(row[label_col] or "").strip(), _decimal_number(row[col])
-                if label and number is not None:
-                    values[(label, title)] = ExternalValue(
-                        label, title, number, SourceRef(str(path.resolve()), "集中系统数据", row_number)
+        indicators = [
+            (col, str(title or "").strip())
+            for col, title in enumerate(header)
+            if str(title or "").strip()
+            and col != label_col
+            and str(title or "").strip() not in _EXTERNAL_METADATA_HEADERS
+        ]
+        for _col, title in indicators:
+            values.indicator_names.add(title)
+        last_nonempty_row = _last_nonempty_row(matrix, header_row + 1)
+        for row_number, row in enumerate(matrix[header_row + 1:], start=header_row + 2):
+            label = str(row[label_col] or "").strip() if label_col < len(row) else ""
+            populated_indicators = [
+                title for col, title in indicators
+                if col < len(row) and _has_external_value(row[col])
+            ]
+            if not label:
+                if populated_indicators:
+                    titles = "、".join(f"“{title}”" for title in populated_indicators)
+                    values.add_warning(
+                        f"集中系统数据第{row_number}行：行名称为空，但指标列{titles}有数据；"
+                        "本行无法匹配报表项目，未参与外部核对。请检查行名称是否被误删。"
                     )
+                elif not any(_has_external_value(value) for value in row) and row_number - 1 < last_nonempty_row:
+                    values.add_warning(
+                        f"集中系统数据第{row_number}行：行名称及指标数据均为空，已忽略该行；"
+                        "如属导出空行，可忽略。"
+                    )
+                continue
+            values.row_labels.add(label)
+            blank_titles: list[str] = []
+            non_numeric_titles: list[str] = []
+            for col, title in indicators:
+                raw_value = row[col] if col < len(row) else None
+                if not _has_external_value(raw_value):
+                    values.blank_values.add((label, title))
+                    blank_titles.append(f"“{title}”为空白")
+                    number = Decimal(0)
+                else:
+                    number = _decimal_number(raw_value)
+                    if number is None:
+                        non_numeric_titles.append(
+                            f"“{title}”内容“{_external_value_preview(raw_value)}”不是数值"
+                        )
+                        number = Decimal(0)
+                values[(label, title)] = ExternalValue(
+                    label, title, number, SourceRef(str(path.resolve()), "集中系统数据", row_number)
+                )
+            if blank_titles or non_numeric_titles:
+                details = "；".join([*blank_titles, *non_numeric_titles])
+                values.add_warning(
+                    f"集中系统数据第{row_number}行、报表项目“{label}”：{details}，已按 0 参与外部核对；"
+                    "请核查是否误删或改动了数据。"
+                )
     return values

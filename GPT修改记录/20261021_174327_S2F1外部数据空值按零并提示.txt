@@ -1,0 +1,33 @@
+【任务】S2-F01 外部数据空值与空行处理
+
+【时间】2026-10-21 17:43（Asia/Shanghai）
+
+【需求】
+- 报表项目已匹配但指标单元格为空白或文字时，暂按 0 参与比较，不阻断流程；结束后明确提醒用户检查数据是否被删除或改动。
+- 行名称为空且该行没有指标数据时，忽略该行并软性提示；行名称为空但指标有值时不阻断，提示检查行名称是否被误删。
+- 继续使用既有时序数据日期处理，不额外增加日期校验。
+
+【实现】
+- 普通报表与时序报表均将匹配行中的空白、非数值指标转为 Decimal(0)，生成软性外部数据导入提示，列明工作表行号、报表项目、指标列及建议复核事项。
+- 行名称为空且指标数据也为空时忽略该行并生成软性提示；行名称为空但有指标值时跳过该行、继续审核，并提示行无法匹配以及检查误删。内部全空行软提示，尾部格式空行不刷提示。
+- 外部导入提示进入既有“校验规则”工作表；审核完成进度、状态和运行记录显示提示数量及查看位置。
+- 未改变时序日期解析、完整日期匹配、无效日期处理或重复日期与报表项目的检查逻辑。
+
+【组件版本】
+系统：S2 报表采集系统
+影响功能：S2-F01 执行报表规则 v10.6.1 → v10.6.2
+影响配置：S2-CFG-01 v8.4.0 → v8.4.0（未变）
+产品版本：V26.1.7.4 → V26.1.7.5
+未修改的相关组件：S1、S3、S5 及其他配置组件
+版本升级原因：PATCH；调整外部数据可继续处理的空白/非数值语义，并增加结果提示。
+
+【验证】
+- 定向用例：`python -m pytest -q core/tests/test_period_v2.py core/tests/test_web_app.py -k "external_time_series or external_plain_layout or external_non_numeric or external_blank_row_label or service_exports_external_import_warnings or service_exports_current_time_series or worker_surfaces_external_data_warnings_after_completion"`：18 passed。
+- S2 回归：`python -m pytest -q -m s2 core/tests`：443 passed / 6 skipped / 0 failed / 3 subtests passed。
+- 版本清单：`python -m pytest -q core/tests/test_version_manifest.py`：8 passed。
+- Python 编译：`python -m compileall -q core/src/base_audit/systems/s2_report_collection core/src/base_audit/web_app.py core/tests/test_period_v2.py core/tests/test_web_app.py core/tests/test_version_manifest.py` 通过。
+- `git diff --check` 通过；仅有仓库既有的 LF/CRLF 提示，无空白错误。
+
+【影响与限制】
+- 空白或文字值以 0 参与规则比较，可能改变外部核对结论；软提示明确标示了该处理，用户应复核源数据。
+- 未使用真实业务工作簿、未执行平台打包或实机测试；未提交 Git。

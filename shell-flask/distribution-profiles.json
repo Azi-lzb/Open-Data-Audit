@@ -32,12 +32,20 @@
       "faqCategories": ["地金系统"],
       "contentKeywords": ["S4", "地金系统", "地金工具"],
       "uiComponents": ["导航菜单", "操作指引", "问答中心", "常规设置配置项", "高级设置栏目"]
+    },
+    {
+      "id": "S5",
+      "name": "逐笔统计系统（配置版）",
+      "page": "configured",
+      "faqCategories": ["逐笔统计系统（配置版）"],
+      "contentKeywords": ["S5", "逐笔统计系统（配置版）", "配置规则审核", "模板公式审核"],
+      "uiComponents": ["导航菜单", "操作指引", "独立审核配置"]
     }
   ],
   "profiles": {
     "full": {
       "name": "完整版",
-      "enabledSystems": ["S1", "S2", "S3", "S4"],
+      "enabledSystems": ["S1", "S2", "S3", "S4", "S5"],
       "artifactPrefix": "Audit-Tools",
       "outputSuffix": "",
       "debPackage": "audit-tools",
@@ -47,12 +55,12 @@
     "s1s2": {
       "name": "S1/S2 交付版",
       "enabledSystems": ["S1", "S2"],
-      "excludedConfigPatterns": ["3.[0-3]*"],
+      "excludedConfigPatterns": ["3.[0-3]*", "S5_*", "5.逐笔统计系统_审核配置.xlsx"],
       "artifactPrefix": "Audit-Tools-S1-S2",
       "outputSuffix": "_S1-S2",
       "debPackage": "audit-tools-s1-s2",
       "debConflicts": ["audit-tools", "base-audit-v3"],
-      "productScope": "S1/S2 only; S3/S4 navigation and related guide, FAQ, settings, and advanced settings are hidden"
+      "productScope": "S1/S2 only; S3/S4/S5 navigation and related guide, FAQ, settings, and advanced settings are hidden"
     }
   },
   "uiBindings": {

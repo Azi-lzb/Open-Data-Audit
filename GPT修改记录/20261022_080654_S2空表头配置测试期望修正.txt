@@ -1,0 +1,24 @@
+【时间与执行者】
+时间：2026-10-22 08:06:54（Asia/Shanghai）。执行者：Codex。
+修改前 commit：4c84c3f，desktop 分支；修改后 commit：随本批次 desktop 提交。
+WIP：本机累积的 S1/S2/S5 公开代码已暂存；未暂存或纳入 config-real、.zcode、external 图片及 pytest 临时目录。
+
+【修改目的与内容】
+全量 core 测试发现两项 S2 配置测试将 config-real 正式规则与公开空表头默认配置混为一类，导致把空模板误判为缺少 105 条指标、56 条环比策略和通用设置行。
+- 更新 core/tests/test_s2_config_check.py：真实配置继续核验规则数量、指定策略和工作簿样式；公开空表头配置核验规则数量为零、表头有效且运行时采用默认值。
+- 更新 core/tests/test_s2_units.py：真实配置核对已填写的单位设置；公开空表头配置核对无配置行且运行时单位采用“元”默认值。
+- 清理 8 个新建 Python 文件和测试文件末尾的多余空行，仅调整文件尾格式。
+
+未修改业务逻辑、真实配置、公开配置工作簿、VBA 或业务数据。无删除文件。
+
+【验证】
+- 两项定向测试：2 passed，0 skipped / failed / errors。
+- core 全量：`python -X utf8 -m pytest -q -rs core/tests`：1184 passed / 13 skipped / 0 failed / errors，8 warnings，5 subtests passed，148.47 秒。
+- 公开文件检查：`python -X utf8 tools/check_public_snapshot.py`：通过；暂存快照含 1 个空表头工作簿。
+- Linux/UOS 分支探测及当前未安装 Flask 的路由测试按既有条件跳过；S5 合成用例中的 Calamine 快速读取因当前测试环境未安装该可选依赖而回退到 openpyxl，结果通过。
+
+【组件版本】
+不升级。本条仅修正 S2 测试断言，使其符合“公开配置为空表头、本机真实配置优先用于测试”的项目规则；不改变 S2-F01、S2-CFG-01 或产品版本。
+
+【Git与回滚】
+按用户授权随本批次提交到 desktop，并快进同步 main；不强推，不修改 laptop。回滚测试口径修正时仅恢复上述两个测试文件，不覆盖真实配置。

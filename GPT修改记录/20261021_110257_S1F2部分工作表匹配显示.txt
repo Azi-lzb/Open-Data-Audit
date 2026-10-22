@@ -1,0 +1,43 @@
+时间：2026-10-21 11:02:57（验证后补全）
+执行者：Codex
+修改前/后 commit：均为 4c84c3f，desktop；未 commit/push/merge，未打包。
+WIP：保留前序 S5 迁移与六框自动识别、版本/日志等所有未提交改动；本次在原文件上增量修改，未覆盖其他 WIP。
+
+【目的与口径】
+用户反馈：S1F2 源文件多出工作表时，列表仍显示未匹配，但按匹配表实际可以汇总；要求仅调整显示，并保证不影响 S1F1 模板匹配。
+根因：文件列表采用通用 classify_source_files 的严格模板识别结果（评分门槛0.90），F2 汇总按区域/工作表执行，部分工作表不匹配不等于整本不能汇总。
+
+【组件版本】
+S1-F02 汇总校验结果说明：v1.2.0 → v1.2.1，PATCH，修正显示与已有部分汇总能力不一致。
+S1-F01：v2.2.1 未变；S1-CFG-01：v2.0.0 未变；S2/S3/S5 组件保持本轮前状态。
+产品仍 V26.1.7.0，本次未发布。
+
+【文件】
+- core/src/base_audit/discovery.py：新增 annotate_summary_matches，仅增加 summaryMatch 展示信息。
+- core/src/base_audit/web_app.py：_recognize 完成后附加 F2 提示；get_state 在手选模板变化/清空后更新或清除旧提示。
+- core/frontend/web/index.html：文件行增加“部分匹配（F2）”及“F2：x/y 张表匹配，可按需汇总”；原 F1 结果独立保留，详情放 tooltip。
+- core/tests/test_discovery.py：新增2项展示隔离/模板切换测试。
+- core/tests/test_web_app.py：新增1项状态集成测试，覆盖手选模板、F1原分类、文件选择与输入哈希不变，以及模板更换/清空时不残留旧提示。
+- core/tests/TEST_GROUPS.md、test_version_manifest.py：测试登记及版本守护。
+- 版本管理/VERSION_MANIFEST.json 与 S1-F02 CHANGELOG：版本留痕。
+- 日志/开发日志.txt、日志/更新日志.txt、本记录。
+
+【实现边界】
+F2 提示基于当前所选模板与源文件的同名工作表集合：有交集且存在额外表/缺少模板表时显示部分匹配；没有交集不显示可按匹配表汇总。“兜底模板”不计入同名匹配，不能把兜底存在误作全部工作表已匹配。
+列表明确区分 F2 提示与 F1 原模板识别结果。详情说明匹配表/额外表/缺少模板表；实际表头、汇总区域仍须执行时检查，额外表只在模板配置兜底能力时尝试汇总。没有放宽任何业务检查。
+原 _sheet_score、classify_source_files、recommend_template 均未修改；F1 自动选模板、手选模板状态、混合模板列表、所选文件及实际结构比对均维持原行为。
+原 region_summary/native summary/workflow 等汇总实现、真实配置、原始业务文件没有修改；预览只读取 workbook.xml 的工作表名称，不读取数据正文，也不启动 Office。
+
+【验证】
+1. 定向模板/汇总测试：16 passed、85 deselected、0 failed/errors，10.55秒。
+2. S1 系统回归：python -m pytest -q -rs --tb=short -m s1 core/tests；492 passed、13 skipped、643 deselected、3 subtests passed，0 failed/errors，141.03秒。跳过为7项Linux/UOS分支、6项缺少Flask环境的安装路由测试。
+3. 最后补充模板变更时状态刷新后，再跑 test_discovery.py、test_web_app.py、test_version_manifest.py 全部：77 passed、3 subtests passed、0 skipped/failed/errors，44.31秒。
+4. AST对照：discovery 原13个顶层函数与HEAD相同；相对本轮前保存的 WebApi，仅 get_state/_recognize 的展示信息补充发生变化，其他业务方法不变。
+5. Flask真实页面：合成源含任务说明及两张附表，当前模板含任务说明及业务说明，F1仍未识别；F2显示部分匹配、1/3张表，可按需汇总。截图：test-output/s1f2-match-display/S1F2部分匹配提示.png。
+6. Python3.8.10编译、页面node --check、git diff --check通过。原始合成输入/模板哈希在预览前后不变。
+报告：test-output/s1f2-match-display/S1回归报告.txt、最终定向测试报告.txt、F1匹配隔离证明.json。
+未执行：core全量、Linux/UOS/麒麟/ARM64实机、本轮新打包或真实报送文件专项手工验收。
+
+【删除/回滚】
+未删除业务文件；仅关闭本次18758临时Flask验收服务和临时浏览器页。
+回滚仅撤回本记录的显示提示增量及S1-F02版本/日志；保留前序S5与其他WIP。修改前web_app和前端副本在被忽略的 test-output/s1f2-match-display/，不可整份覆盖当前后续工作。

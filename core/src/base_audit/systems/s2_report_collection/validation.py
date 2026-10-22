@@ -54,3 +54,12 @@ def validate_config_warnings(warnings: list[str]) -> list[AuditFinding]:
         finding_id=_finding_id("配置", warning), audit_type="校验规则", status=STATUS_ABNORMAL,
         severity="软性", rule_id="Q001", rule_description="配置检查：" + warning, description="配置检查：" + warning, rule_type="配置检查",
     ) for warning in warnings]
+
+
+def validate_external_warnings(warnings: list[str]) -> list[AuditFinding]:
+    """把外部文件中可继续处理的空白/非数值情况写入校验规则结果。"""
+    return [AuditFinding(
+        finding_id=_finding_id("外部数据导入", warning), audit_type="校验规则", status=STATUS_ABNORMAL,
+        severity="软性", rule_id="Q002", rule_description=warning, description=warning,
+        rule_type="外部数据导入",
+    ) for warning in warnings]

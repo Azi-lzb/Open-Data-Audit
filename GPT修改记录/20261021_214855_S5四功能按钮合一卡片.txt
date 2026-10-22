@@ -1,0 +1,40 @@
+【时间】2026-10-21 21:48:55（Asia/Shanghai）
+【执行者】Codex
+【修改前 commit】4c84c3f
+【修改后 commit】4c84c3f（未提交）
+【工作区状态】工作区已有多项其他未提交 WIP，包括先前 S2/S5 工作。本轮只改 S5 按钮卡片、对应测试和版本留痕；其他 WIP 未清理、覆盖、暂存或提交。
+
+【目的】按用户要求简化 S5 主面板：只保留 F1-F4 四个功能按钮，并将按钮放在同一卡片中；去掉独立维护说明卡片和空闲说明卡片。
+
+【修改内容】
+- 将 F1 与 F2/F3/F4 按钮置于同一个 S5 操作卡片，按钮纵向排列。
+- F2-F4 继续默认隐藏，左侧 S5 导航连续五击切换显示/隐藏；增加显式 hidden 样式，确保布局 CSS 不会让隐藏按钮意外显示。
+- 移除“S5 配置维护功能/五击说明”静态标题及提示卡片，以及空闲时的结果说明占位。
+- 实际审核状态和结果打开按钮只在任务状态存在时显示，并保留在同一操作卡片内。
+- 更新 S5 前端行为测试、TEST_GROUPS、版本清单和 S5-F01 更新日志。
+
+【影响文件】
+- `core/frontend/web/index.html`
+- `core/tests/s5/test_s5_integration.py`
+- `core/tests/test_version_manifest.py`
+- `core/tests/TEST_GROUPS.md`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/S5_逐笔统计系统配置版/功能/S5-F01_配置规则审核/CHANGELOG.md`
+- 本修改记录
+
+【组件版本】
+系统：S5 逐笔统计系统（配置版）；影响功能：S5-F01 汇总核查表校验 v2.2.1 → v2.2.2（PATCH，页面布局修整）。
+影响配置：S5-CFG-01 未变。
+未修改的相关组件：S1、S2、S3，以及 S5-F02/F03/F04 的功能逻辑均未修改。
+版本升级原因：S5 主面板按钮布局与静态说明清理，不改变 F1-F4 执行行为。
+
+【验证】
+- `python -m pytest -q core/tests/s5/test_s5_integration.py::test_s5_maintenance_tools_are_hidden_by_default_and_toggle_with_five_nav_clicks`：1 passed。
+- `python -m pytest -q -rs -m s5 core/tests`：299 passed，6 skipped，865 deselected，3 subtests passed；有 8 条可选 python-calamine 未安装、已回退 openpyxl 的 RuntimeWarning。
+- `python -m pytest -q core/tests/test_version_manifest.py`：8 passed。
+- `git diff --check` 通过。浏览器截图与真实桌面应用视觉验收未执行。
+- 首次 S5 组回归发现版本清单更新误命中 S1-F01；已将 S1-F01 恢复为原 2.2.1，仅保留 S5-F01 2.2.2，并在修正后重跑版本守护和完整 S5 组，均通过。
+
+【删除清单】无。
+【回滚提示】只按本记录的前端、测试和版本文本差异分块回滚；目标文件此前已含未提交 WIP，不要整文件恢复到 HEAD。
+【Git】未暂存、未提交、未推送。

@@ -17,6 +17,7 @@ for entry in (str(_SRC), str(_SRC.parent)):
 # 系统级回归入口由文件归属决定；共用 UI/配置/路径/版本测试进入三组。
 # 新增测试模块必须在这里归类，避免系统测试静默漏收。
 _SYSTEM_TEST_FILES = {
+    "s5": {"test_s5_source_reader.py", "test_s5_fast_ooxml.py", "test_s5_conditional_audit.py", "test_s5_formula_error_scan.py", "test_s5_configured_engine.py", "test_s5_integration.py", "test_s5_recognition.py"},
     "s1": {
         "test_combine_settings.py",
         "test_conditional_compare.py",
@@ -113,7 +114,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         )
         if not groups:
             raise pytest.UsageError(
-                f"测试文件 {filename} 未归入 S1/S2/S3；请更新 core/tests/conftest.py"
+                f"测试文件 {filename} 未归入 S1/S2/S3/S5；请更新 core/tests/conftest.py"
             )
         for group in groups:
             item.add_marker(getattr(pytest.mark, group))

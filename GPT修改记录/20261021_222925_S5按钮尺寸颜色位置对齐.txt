@@ -1,0 +1,35 @@
+【时间】2026-10-21 22:29:25（Asia/Shanghai）
+【执行者】Codex
+【修改前 commit】4c84c3f
+【修改后 commit】4c84c3f（未提交）
+【工作区状态】工作区原已有多项未提交 WIP。本轮仅调整 S5 两个按钮的样式和标题行布局，更新对应测试与版本留痕；未清理、覆盖、暂存或提交其他 WIP。
+
+【目的】用户指出 S5“自动识别模板”和“检查配置”按钮的颜色、大小及位置与 S1 不一致，需按 S1 对应控件统一。
+
+【修改内容】
+- 两个按钮均使用 `btn soft micro`，与 S1 自动识别模板、检查配置使用的紧凑蓝色按钮样式相同。
+- 标题行改用 `field-head tight`，按钮紧跟字段标题左侧排列，不再被 `space-between` 推到最右端。
+- 增加前端结构断言，保护两处样式、尺寸及对齐方式。
+
+【影响文件】
+- `core/frontend/web/index.html`
+- `core/tests/s5/test_s5_integration.py`
+- `core/tests/test_version_manifest.py`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/S5_逐笔统计系统配置版/功能/S5-F01_配置规则审核/CHANGELOG.md`
+- `版本管理/产品发布/CHANGELOG.md`
+- `日志/开发日志.txt`、`日志/更新日志.txt`
+- 本修改记录
+
+【组件版本】
+产品：V26.1.7.7 → V26.1.7.8（PATCH）。
+S5-F01：v2.3.1 → v2.3.2（PATCH，按钮样式及标题行对齐）。
+S5-CFG-01、其他系统与配置组件未变。
+
+【验证】
+- `python -m pytest -q tests/s5/test_s5_integration.py::test_s5_path_labels_reuse_the_shared_clickable_path_style tests/s5/test_s5_integration.py::test_s5_maintenance_tools_are_hidden_by_default_and_toggle_with_five_nav_clicks tests/test_distribution_profile.py::test_delivery_profiles_render_only_their_visible_systems tests/test_version_manifest.py`：11 passed。
+- 未重新打包、未提交或推送。
+
+【删除清单】无。
+【回滚提示】仅回滚本记录中的按钮结构、对应断言和版本留痕；源前端文件含前序 WIP，不可整文件恢复。
+【Git】未暂存、未提交、未推送。

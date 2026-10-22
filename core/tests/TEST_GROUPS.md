@@ -22,8 +22,18 @@ Linux 桌面真机可双击仓库根目录 `运行Linux全量测试.sh`：脚本
 分组由 `core/tests/conftest.py` 给现有测试模块自动标记，标记定义在 `core/pytest.ini`。设置、Web API、路径、配置指引、应用身份和版本清单等公共测试同时进入三组；因此三组测试数之和大于全量测试数。新增测试模块必须在 `conftest.py` 归类，否则收集时明确报错。不要把某一组通过写成“全部功能通过”。
 
 `test_distribution_profile.py` 同时进入三组：执行共用前端的完整版/S1-S2 版显示逻辑，
-覆盖常规配置、操作指引、问答、更新日志过滤、关于五连击密码显示入口及脚本语法；
+覆盖常规配置、操作指引、问答、按系统标签过滤更新日志（五连击解锁不扩大包的日志范围）、
+Windows 双语 PE 产品属性、关于五连击密码显示入口及脚本语法；
 后端用例检查错误密码、本次运行状态与设置文件不变。前端需要 Node.js，缺失时明确跳过。
+
+## S5：逐笔统计系统（配置版）
+
+运行 `python -m pytest -q -rs -m s5 core/tests`。`core/tests/s5/` 包含迁入的合成读取、
+表达式、OOXML、条件格式测试及宿主适配测试，覆盖显式模板、只读输入、V_PRE 缺失与配对、
+配置坐标错误、取消、互斥和独立状态；`test_s5_integration.py` 另验证 S5-F02/F03/F04 隐藏维护工具
+默认不可见、五次点击 S5 导航后显示、再次五击隐藏并返回 F1。真实 Office 对拍在无引擎环境明确跳过；
+Flask 浏览器路由另做隔离冒烟。来源独立 CLI/HTTP 层不迁入，不将这些壳层用例计为原样通过。
+共用测试同时进入 S5。
 
 ## 现成配置的选择顺序
 
@@ -68,12 +78,17 @@ Linux 桌面真机可双击仓库根目录 `运行Linux全量测试.sh`：脚本
 | 核对点 | pytest 用例 |
 |---|---|
 | 审核流程黄金输出及重复运行 | `golden/test_golden_audit_flow.py::test_audit_flow_golden_contract`、`::test_audit_flow_rerun_repeats_contract` |
+| 源文件工作表全部可在模板中找到时视为匹配；模板允许保留未出现在源文件中的表 | `test_discovery.py::test_source_sheet_subset_matches_template_with_other_sheets` |
+| 待处理列表按 F1 模板匹配状态和报表模板筛选；筛选不改变勾选状态，全选/取消只作用于可见文件 | `test_distribution_profile.py::test_s1_pending_file_filters_and_visible_select_all_preserve_hidden_selection` |
 | 原生 DAG 输出、日志开关不改变业务结果 | `golden/test_golden_native_flow.py::test_dag_native_flow_golden_contract`、`::test_s1_business_outputs_are_identical_when_run_log_export_changes` |
 | 条件格式逐格触发、优先级、相对引用 | `test_conditional_engine.py::test_triggering_cell_reported_with_result_fields`、`::test_higher_priority_wins_over_lower`、`::test_expression_rule_triggers_with_relative_shift` |
 | 没有命名区域时仍扫描“应用于”区域 | `test_conditional_format_fallback.py::test_fallback_scans_applies_to_without_named_range` |
 | 模板结构差异及结果格式 | `test_preflight_xlsx.py::PreflightXlsxTests::test_structure_details_keep_sheet_name_and_cell_address`、`test_result_writer.py::test_openpyxl_result_writer_preserves_summary_contract` |
 
 ### S1-F02 汇总校验结果说明
+
+- `test_discovery.py::test_f2_partial_hint_does_not_relax_f1_classification_or_auto_selection`、`::test_f2_hint_tracks_active_template_and_does_not_claim_fallback_matches`、`::test_f2_extra_sheets_with_fallback_are_shown_as_fallback_candidates`：模板多出的表不算未匹配；源文件新增表用中性提示，只有模板含“兜底模板”时才提示可尝试兜底。
+- `test_web_app.py::WebAppCompatibilityTests::test_summary_preview_preserves_f1_unrecognized_and_manual_template`、`::test_s1_f2_file_badges_distinguish_new_sheets_from_unmatched_templates`：列表说明区分源新增表、兜底处理与无同名工作表，保持手选模板、文件选择及输入哈希。
 
 | 核对点 | pytest 用例 |
 |---|---|
@@ -119,9 +134,9 @@ Linux 桌面真机可双击仓库根目录 `运行Linux全量测试.sh`：脚本
 | 三种导出方式只按文件名/工作表名配对；xlsx/xls 空表保留、多机构不合并、预览不扫描正文，空表/错误正文身份不影响正式环比结果的机构字段且输入不变 | `test_period_compare.py::test_pair_list_matches_empty_sheets_using_only_names`、`::test_pair_list_does_not_open_worksheet_xml_or_shared_strings`、`::test_pair_list_keeps_multiple_empty_institutions_and_true_one_sided_sheet`、`test_period_v2.py::test_v2_import_identity_comes_from_names_when_body_is_blank_or_wrong`、`::test_v2_import_keeps_filename_credit_code_when_name_profile_has_other_code`、`::test_v2_export_preserves_identity_for_completely_empty_counterpart` |
 | banks 导出提示依赖机构参照，建议重新导出默认单sheet/按报表单sheet；本期/上期任一选择触发、换目录清除，执行确认同步提醒 | `test_web_app.py::WebAppCompatibilityTests::test_banks_selection_warns_and_recommended_source_clears_warning`、`test_distribution_profile.py::test_period_banks_warning_renders_and_reaches_execution_confirmation` |
 | 外部核对容差、缺失值、六种比较方式 | `test_period_v2.py::test_v2_external_rule_uses_its_own_tolerance_and_rule_identity`、`test_s2_units.py::test_external_missing_value_is_not_treated_as_real_zero`、`::test_external_comparison_methods_use_report_value_as_left_operand_and_test_boundaries` |
-| 外部核对缺数审核说明按报表项目是否为空提示完善大集中报表定义或机构参照映射；普通/时序两种格式及结果工作簿一致，真实0和既有零值兜底保持 | `test_period_v2.py::test_v2_external_export_shows_selected_report_item_next_to_credit_code`、`::test_v2_external_time_series_with_all_blank_values_stays_missing`、`test_s2_units.py::test_external_missing_value_is_not_treated_as_real_zero`、`::test_external_uses_explicit_zero_fallback_when_institution_label_is_missing` |
+| 外部核对区分未匹配报表项目、缺少指标列和已匹配但值为空；匹配行的空白/非数值按0参与比较并生成软性提示；行名称空且指标有值时提示并忽略，时序元数据存在但指标为空时忽略不提示，仅内部整行全空行提示；提示写入结果“校验规则”且完成状态显示数量 | `test_period_v2.py::test_v2_external_export_shows_selected_report_item_next_to_credit_code`、`::test_v2_external_time_series_blank_matched_values_are_zero_with_soft_warning`、`::test_v2_external_plain_layout_treats_blank_value_as_zero_with_soft_warning`、`::test_v2_external_non_numeric_value_is_zero_and_warned`、`::test_v2_external_blank_row_label_is_ignored_with_soft_warning`、`::test_v2_service_exports_external_import_warnings_as_soft_findings`、`test_s2_units.py::test_external_missing_value_is_not_treated_as_real_zero`、`::test_external_uses_explicit_zero_fallback_when_institution_label_is_missing` |
 | 外部核对结果在信用代码右侧显示报表项目；外部映射优先、CF2回退、已映射缺数仍保留、无映射留空、真实0/标签缺失兜底、时序匹配及文本标签完整导出 | `test_period_v2.py::test_v2_external_export_shows_selected_report_item_next_to_credit_code`、`::test_v2_service_exports_current_time_series_value_without_modifying_inputs`、`test_s2_units.py::test_external_mapping_precedes_cf2_and_cf2_is_used_as_fallback` |
-| 外部数据按表头识别普通/时序布局；完整日期匹配、真实0/空值区分、不混用其他日期或样例表、重复行/非法日期明确失败及源文件保护 | `test_period_v2.py::test_v2_external_import_time_series_uses_named_headers_and_full_dates`、`::test_v2_external_import_time_series_rejects_ambiguous_or_invalid_data`、`::test_v2_external_time_series_matches_exact_current_date_and_preserves_missing_values`、`::test_v2_external_time_series_with_all_blank_values_stays_missing`、`::test_v2_service_exports_current_time_series_value_without_modifying_inputs` |
+| 外部数据按表头识别普通/时序布局；时序要求“数据日期”与“行名称”同时出现，纯报表兼容原空白标签头和显式“行名称”；时序仍只匹配本期完整日期，不借用其他日期，缺失/无效日期行提示后忽略，重复记录阻断；空白和非数值值按0并提示，原文件不变 | `test_period_v2.py::test_v2_external_import_supports_xlsx_only`、`::test_v2_external_import_time_series_uses_named_headers_and_full_dates`、`::test_v2_external_import_time_series_rejects_ambiguous_or_invalid_data`、`::test_v2_external_time_series_invalid_row_date_is_warned_and_ignored`、`::test_v2_external_time_series_matches_exact_current_date_and_preserves_missing_values`、`::test_v2_external_time_series_blank_matched_values_are_zero_with_soft_warning`、`::test_v2_external_plain_layout_treats_blank_value_as_zero_with_soft_warning`、`::test_v2_external_non_numeric_value_is_zero_and_warned`、`::test_v2_external_blank_row_label_is_ignored_with_soft_warning`、`::test_v2_service_exports_current_time_series_value_without_modifying_inputs` |
 | 金额单位统一后比较、保持小数精度 | `test_s2_units.py::test_amount_comparison_converts_both_sides_to_output_unit_and_keeps_tolerance_in_that_unit`、`::test_rule_expression_preserves_decimal_digits_beyond_excel_float_precision` |
 | 正式配置检查、环比策略区间与外部规则字段 | `test_s2_config_check.py::test_formal_and_default_s2_configs_pass_read_only_check`、`::test_checker_blocks_gap_and_duplicate_strategy`、`::test_checker_requires_external_rule_header_order` |
 | 日志设置不改变业务输出 | `test_period_v2.py::test_s2_business_output_is_independent_of_unrelated_log_preferences` |
@@ -166,6 +181,21 @@ Linux 桌面真机可双击仓库根目录 `运行Linux全量测试.sh`：脚本
 | 按机构回填及内嵌模板使用 | `test_central_forms.py::RenderFormsTests::test_renders_one_file_per_org_with_values_and_colors`、`::test_embedded_config_is_used_as_template_and_not_emitted` |
 | FAST_OOXML 与 openpyxl 的表单、数值、格式、颜色、隐藏行一致 | `test_central_renderers.py::DualModeParityTests::test_sheet_names_and_order_match`、`::test_cell_values_match`、`::test_number_formats_match`、`::test_warning_fills_match`、`::test_hidden_rows_match` |
 | 3.3 配置检查及内嵌表单引用 | `test_s3_forms_config_check.py::test_formal_config_passes_and_is_not_modified`、`::test_missing_referenced_embedded_form_sheet_is_reported` |
+
+### S5-F01 汇总核查表校验
+
+- `s5/test_s5_recognition.py`：模板、业务与报告期识别；日期冲突/缺失、模板/业务歧义明确提示；源工作表全部包含于模板时视为匹配，模板多出的表不降级，源工作簿多出的表单独标注；源目录输出跟随与固定。
+- `s5/test_s5_integration.py::test_complete_f1_explicit_template_source_without_names_final_cf_and_read_only`：源表无命名区域时使用显式模板；批次与单机构结果保留条件格式；输入哈希不变。
+- `::test_vpre_without_previous_is_visible_and_matching_previous_is_retained`：缺上期明确报告取数失败，提供上期后按机构配对。
+- `::test_external_code_mapping_runs_complete_f1_with_both_layouts_and_readers`：普通/时序外部布局按本期报告期取数，并验证 Calamine 与强制 openpyxl 回退。
+- `s5/test_s5_configured_engine.py::test_external_numeric_blank_or_text_is_zero_with_a_quality_warning`、`s5/test_s5_integration.py::test_external_layout_anomalies_warn_and_continue_for_both_layouts`：即使外部配置含固定数据源契约，也按普通/时序布局读取；匹配值空白/非数值按0，有值但行名称为空时提示并忽略；只有整行全空的内部行提示，时序元数据本身不触发行名称异常；批次与单机构结果写入“数据质量提示”，任务结束展示提示数量，时序日期仍按本期精确匹配。
+- `s5/test_s5_integration.py::test_s5_maintenance_tools_are_hidden_by_default_and_toggle_with_five_nav_clicks`：S5 主面板 F1-F4 按钮位于同一卡片；F2-F4 默认隐藏并由左侧 S5 导航五击切换，空闲说明卡片不显示。
+- `::test_time_series_missing_current_date_only_fails_affected_rule_and_continues_batch`：某机构缺少本期有效日期时，对应规则明确失败，批次继续审核其他机构。
+- `::test_s5_maintenance_uses_the_current_panel_paths`、`::test_s5_vext_reference_export_supports_both_external_layouts`：三个维护工具沿用 S5 面板模板/外部文件路径，V_EXT 参考同时支持普通与时序外部布局。
+- `::test_configuration_error_reports_physical_sheet_cell_and_rule`、`::test_no_enabled_rules_is_not_reported_as_pass`：配置物理坐标与无启用规则诊断。
+- `::test_cancellation_stops_before_next_institution_and_never_returns_success`：实际停止后续机构，不把取消报告为成功。
+
+- `::test_s5_start_freezes_parameters_before_thread`、`::test_s5_state_does_not_write_s1_fields_and_mutual_exclusion`：参数快照、状态隔离与执行互斥。
 
 ## 后续执行口径
 

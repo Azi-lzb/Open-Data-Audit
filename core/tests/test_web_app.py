@@ -34,6 +34,45 @@ class _Window:
 
 
 class WebAppCompatibilityTests(unittest.TestCase):
+    def test_s1_f2_file_badges_distinguish_new_sheets_from_unmatched_templates(self):
+        source = (ROOT / "frontend" / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("有新增工作表", source)
+        self.assertIn("可尝试兜底", source)
+        self.assertIn("模板中其他工作表（源文件未包含，不影响匹配）", source)
+        self.assertNotIn("部分匹配（F2）", source)
+
+    def test_summary_preview_preserves_f1_unrecognized_and_manual_template(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            inputs, templates = root / "inputs", root / "templates"
+            inputs.mkdir(); templates.mkdir()
+            source, template = inputs / "源.xlsx", templates / "模板.xlsx"
+            for path, names in [(source, ["任务说明", "额外一", "额外二"]), (template, ["任务说明", "业务说明"])]:
+                book = Workbook()
+                book.active.title = names[0]
+                for name in names[1:]:
+                    book.create_sheet(name)
+                book.save(path)
+                book.close()
+            original_hashes = {str(p): self._file_hash(p) for p in (source, template)}
+            api = WebApi(root)
+            api.state.update(input=str(inputs), templateDir=str(templates), template=str(template), templateManual=True)
+            api._recognize(allow_template_auto=False)
+            self.assertEqual(api.state["template"], str(template))
+            self.assertTrue(api.state["templateManual"])
+            row = api.state["sourceFiles"][0]
+            self.assertEqual(row["template"], "未识别")
+            self.assertTrue(row["summaryMatch"]["partial"])
+            self.assertEqual(row["summaryMatch"]["matched"], ["任务说明"])
+            self.assertEqual(api.state["mixedTemplates"], [])
+            self.assertEqual(api.state["selectedFiles"], [str(source)])
+            self.assertEqual(original_hashes, {str(p): self._file_hash(p) for p in (source, template)})
+            api.get_state()
+            api.choose_file("template", str(root / "不存在的模板.xlsx"))
+            self.assertNotIn("summaryMatch", api.get_state()["sourceFiles"][0])
+            api.choose_file("template", str(template))
+            self.assertTrue(api.get_state()["sourceFiles"][0]["summaryMatch"]["partial"])
+
     @staticmethod
     def _write_marker_workbook(path: Path, marker: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -91,6 +130,44 @@ class WebAppCompatibilityTests(unittest.TestCase):
             api = WebApi(root)
             # 本机存在模板目录时仍预填，保持开发布局的便利。
             self.assertEqual(api.state["templateDir"], str(root / "templates"))
+
+    def test_bundled_external_reference_and_named_range_templates_default_and_persist(self) -> None:
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            config = root / "config-real"
+            templates = config / "模板文件_命名区域"
+            templates.mkdir(parents=True)
+            external = config / "外部文件-大集中相关数据.xlsx"
+            external.touch()
+
+            api = WebApi(root)
+            self.assertEqual(api.state["external"], str(external))
+            self.assertEqual(api.state["pcCentral"], str(external))
+            self.assertEqual(api.state["templateDir"], str(templates))
+            self.assertEqual(api.state["s5"]["template_dir"], str(templates))
+            self.assertEqual(api.state["s5"]["external_path"], str(external))
+
+            custom_templates = root / "用户模板目录"
+            custom_templates.mkdir()
+            api.choose_folder("templateDir", str(custom_templates))
+            api = WebApi(root)
+            self.assertEqual(api.state["templateDir"], str(custom_templates))
+
+            # Clearing the optional S1/S2 reference suppresses the packaged default
+            # across restarts; selecting a new workbook restores path persistence.
+            api.clear_path("external")
+            api.clear_path("pcCentral")
+            reloaded = WebApi(root)
+            self.assertEqual(reloaded.state["external"], "")
+            self.assertEqual(reloaded.state["pcCentral"], "")
+
+            custom = root / "自定义大集中数据.xlsx"
+            custom.touch()
+            reloaded.choose_file("external", str(custom))
+            reloaded.choose_period_compare("pcCentral", str(custom))
+            selected = WebApi(root)
+            self.assertEqual(selected.state["external"], str(custom))
+            self.assertEqual(selected.state["pcCentral"], str(custom))
 
     def test_settings_ui_exposes_independent_log_options_and_existing_perf_filter(self) -> None:
         source = (ROOT / "frontend" / "web" / "index.html").read_text(encoding="utf-8")
@@ -920,6 +997,13 @@ class WebAppCompatibilityTests(unittest.TestCase):
         self.assertTrue(all(entry["date"] for entry in result["entries"]))
         labels = {group["label"] for entry in result["entries"] for group in entry["groups"]}
         self.assertIn("新增", labels)
+        items = [item for entry in result["entries"] for group in entry["groups"] for item in group["items"]]
+        self.assertTrue(items)
+        self.assertTrue(
+            all(item.startswith(("[通用] ", "[S1] ", "[S2] ", "[S3] ", "[S4] ", "[S5] ",
+                                "[S1/S2] ", "[S3/S5] ")) for item in items),
+            "用户更新日志中的每条更新都必须声明系统标签",
+        )
 
         with TemporaryDirectory() as folder:
             with patch.object(app_identity, "update_log_path", return_value=None):
@@ -1016,6 +1100,32 @@ class WebAppCompatibilityTests(unittest.TestCase):
 
 
 class S2ProgressLifecycleTests(unittest.TestCase):
+    def test_worker_surfaces_external_data_warnings_after_completion(self) -> None:
+        api = object.__new__(WebApi)
+        api.state = {"busy": True, "pcConfig": "config.xlsx", "periodProgress": {}, "periodPairs": [{"side": "both"}]}
+        messages = []
+        api._log = messages.append
+        api._refresh_period_pairs = lambda: None
+
+        def run(**kwargs):
+            kwargs["on_progress"]({
+                "stage": "complete", "label": "审核完成", "percent": 100,
+                "message": "已生成三张分类审核表；外部数据提示 1 条，详情见“校验规则”工作表",
+            })
+            return SimpleNamespace(
+                findings=(SimpleNamespace(rule_type="外部数据导入"),),
+                summary=SimpleNamespace(institutions=1, forms=1, indicators=10, total_findings=1, abnormal_findings=1, by_type={"校验规则": 1}),
+                paths=SimpleNamespace(result=Path("result.xlsx")),
+            )
+
+        with patch("base_audit.systems.s2_report_collection.PeriodAuditV2Service.run", side_effect=run):
+            api._period_compare_v2_worker(Path("cur"), Path("pre"), Path("central.xlsx"), Path("out"))
+
+        self.assertEqual(api.state["periodProgress"]["status"], "completed")
+        self.assertIn("外部数据提示 1 条", api.state["periodProgress"]["message"])
+        self.assertIn("外部数据提示 1 条", api.state["status"])
+        self.assertTrue(any("外部数据提示 1 条" in message for message in messages))
+
     def test_worker_reports_completed_or_failed_without_refreshing_existing_pairs(self) -> None:
         for mode in ("complete", "refresh_empty", "failed"):
             with self.subTest(mode=mode):

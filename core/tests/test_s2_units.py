@@ -90,6 +90,7 @@ def test_shipped_s2_configs_keep_global_unit_settings_in_main_workbook() -> None
         resolve_test_config("2.报表采集系统_配置.xlsx"),
         resolve_test_config("默认配置/2.报表采集系统_配置.xlsx"),
     ):
+        is_local_real_config = "config-real" in path.parts
         report = check_s2_config(path)
         assert report["passed"], report["issues"]
         book = load_workbook(path, read_only=True, data_only=True)
@@ -102,16 +103,23 @@ def test_shipped_s2_configs_keep_global_unit_settings_in_main_workbook() -> None
         try:
             configured = {row[0]: row[1] for row in general["通用设置"].iter_rows(min_row=2, values_only=True) if row[0] in {"源数据单位", "外部文件单位", "输出文件单位"}}
             loaded = load_config(path).unit_settings
-            assert configured == {
-                "源数据单位": loaded.source_unit,
-                "外部文件单位": loaded.external_file_unit,
-                "输出文件单位": loaded.output_file_unit,
-            }
-            assert set(configured) == {"源数据单位", "外部文件单位", "输出文件单位"}
-            assert set(configured.values()) <= {"元", "万元", "亿元"}
-            assert configured["源数据单位"] == "元"
-            # 输出单位由配置维护；上方已核对合法值及加载一致性，不限定为“元”。
-            # 三项默认级别随配置工作簿维护；正式配置应写明“硬性”。
+            if is_local_real_config:
+                assert configured == {
+                    "源数据单位": loaded.source_unit,
+                    "外部文件单位": loaded.external_file_unit,
+                    "输出文件单位": loaded.output_file_unit,
+                }
+                assert set(configured) == {"源数据单位", "外部文件单位", "输出文件单位"}
+                assert set(configured.values()) <= {"元", "万元", "亿元"}
+                assert configured["源数据单位"] == "元"
+            else:
+                # 发布用默认配置只有表头；运行时仍使用代码默认值，不要求写入配置行。
+                assert not configured
+                assert general["通用设置"].max_row == 1
+                assert loaded.source_unit == "元"
+                assert loaded.external_file_unit == "元"
+                assert loaded.output_file_unit == "元"
+            # 三项默认级别随配置维护；空表头配置按代码默认值解析为“硬性”。
             loaded_config = load_config(path)
             assert loaded_config.text_change_severity == "硬性"
             assert loaded_config.current_missing_severity == "硬性"

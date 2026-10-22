@@ -1,0 +1,87 @@
+时间：2026-10-21；执行者：Codex
+修改前/后 commit：4c84c3f（S5 本轮未提交，保留 desktop 工作区）。
+
+【用户范围与 Git】
+用户要求先 Git，不再全量测试，然后按移植说明接入 S5；不修改原 S1/S2/S3/S4 功能；上期框暂不展示，V_PRE 保留。
+已将先前 UI 编号与发行构建 10 文件提交为 4c84c3f，推送 origin/desktop，并快进、推送 main；已回到 desktop。公开暂存检查及 diff 检查通过，沿用上轮全量测试结果，没有重新全量测试。
+提交后只剩原有 .zcode/、external/ 未跟踪目录。本轮迁移未提交、未推送、未改 main。
+
+【来源与边界】
+来源：3.open-data-audit3/设计方案/S5_逐笔统计系统配置版_接入audit接口与移植说明.md。
+来源程序清单基线：7ae6cf48e11c8cea5746a8fda92f85e1c0017753；读取时来源 HEAD 为 4bb5073d5440378293fa9001b7daf912490ca2fa，56 文件哈希全部匹配清单。
+复制 20 个 F1 必需文件；不复制来源独立 Web/CLI、Git 历史、outputs、真实源表和外部业务数据。所有源目录只读；运行代码不引用 audit3 目录。
+来源哈希清单保存于忽略的 test-output/s5-migration/source-inputs.json。
+
+【实现】
+1. 新增独立 S5 服务、请求契约、WebApi mixin；共用任务互斥、运行日志、取消机制。参数及计算选项在启动前复制；S5 表单保存在 data/s5/界面设置.json，状态嵌套为 state.s5，不写 S1/S2/S3 的表单键。
+2. 新增 S5 导航与复用 S1 样式的页面，仅 F1 配置规则审核、F2 模板公式审核两个主按钮；独立文件勾选、配置检查、业务、报告期、模板和输出；上期输入框不显示，previous_files/previous_period 服务参数保留。
+3. F1 移入独立配置引擎；注入可写快照及任意用户输出路径；显式模板贯穿取数投影和条件格式边界。源文件可无命名区域。按文件/规则检查取消，不吞为普通规则失败。
+4. 修正来源单机构结果先于条件格式写出的时序，最终单机构及批量结果包含完整条件格式记录；保留无法判定及计算/结构错误。Python 3.8 实跑发现证据序列化使用 dict | dict，已改为兼容的字典展开。
+5. F2 不改原 S1 实现，使用局部请求和原格式配置/历史的任务副本直接调用 dag:汇总核查表校验；保留计算预检、选项及原结果格式，不回写 S1 原配置。
+6. 完整版登记 S5；S1/S2 限定版继续排除 S5 导航、指引、审核配置和模板。发行过滤覆盖新 S5 模板子目录；补充 Windows 两壳隐藏依赖和 Linux 收集/完整版布局资源。本轮未构建产物。
+
+【本机配置】
+按来源正式配置原样复制到 config-real/S5_逐笔统计系统_审核配置.xlsx（1 条启用规则，1 个业务）；20 份模板原样复制到 config-real/S5_模板文件，全部被忽略。不自动启用全模板候选。
+公开 config/S5_逐笔统计系统_审核配置.xlsx 只有审核规则表头，经公开隐私检查函数核验。
+原有业务配置未迁移、未改业务内容。与早晨打包哈希相比，本机 S1 配置已有二进制差异，其修改时间 09:19:27 早于本轮 Git 09:25:47；与已打包副本逐表逐格比较无内容差异，未擅自还原。最终验证前后原有 14 份私有配置哈希完全一致。
+
+【组件版本】
+新增 S5 系统、S5-F01 配置规则审核 v1.0.0、S5-F02 模板公式审核 v1.0.0、S5-CFG-01 审核配置 v1.0.0，均同步清单及 Baseline CHANGELOG。
+S5-F02 显式依赖 S1-F01；原 S1/S2/S3 功能/配置组件版本全部不变，S4 预览保留。
+产品仍为 V26.1.7.0，本轮没有发布新包；后续发布包含新系统时按产品 MAJOR 规则升级。
+
+【验证】
+- 迁入的五个合成测试文件（不含原 CLI 测试）最初 52 passed；新增 S5 宿主测试覆盖模板、批次/单机构 CF、只读输入、V_PRE 缺失与配对、外部映射、强制 openpyxl 回退、配置物理坐标、零启用规则、取消、互斥和快照。
+- 最终定向批次：core/tests/s5 + test_distribution_profile.py + test_version_manifest.py，排除真实 Office 对拍：91 passed / 0 skipped / 0 failed / 0 errors，1 deselected；4 个告警均为故意模拟 Calamine 缺失的回退证据。报告：test-output/s5-migration/定向测试报告.txt。
+- 真实 Office 对拍与参数快照复验：2 passed，10 deselected，27.78 秒。S5F2 与 S1F1 输出表头、数据、顺序及冻结位置一致，双方结果链接目标实际存在；原配置哈希不变。报告：test-output/s5-migration/Office对拍与参数快照测试.txt。
+- 原 WebApi 兼容模块在接入后 50 项通过（首轮组合执行总 75 passed、3 failed；3 个失败均为 S5 新编号需要更新的交付测试断言，随后全部修正并已进入最终 91 通过批次）。
+- Python 3.8.10 x86 编译、导入和完整 F1 合成审核通过，1 条规则提示、1 条条件格式触发，0 条规则执行错误；报告：test-output/s5-migration/python38-result.json。
+- Flask 实际浏览器点击 S5 导航→F1→确认→生成结果成功，进度与阶段日志可见；切回 S1 路径/模板仍未选择，未受 S5 影响。截图：test-output/s5-migration/S5界面验收.png。独立临时宿主位于 test-output，不访问真实业务输入。
+- Node 页面语法、Python 编译、Linux 构建脚本 bash -n、git diff --check 通过；原 S1/S2/S3 业务模块无 diff。AST 核对原 WebApi 的 105 个既有方法（构造函数除新增初始化外）完全一致；原 S1/S2/S3/S4 页面主体逐段一致，原组件清单全部保持。证据：test-output/s5-migration/旧系统隔离校验.json。
+- 未执行：core 全量（按用户要求）；本轮真实全业务/全机构数据对拍；原生 pywebview 窗口/文件对话框；Linux/UOS/麒麟/ARM64 运行及重新打包。未把来源 166 项基线当作本项目已全部通过。
+
+【已知限制与保留差异】
+正式配置只有来源当前的 1 条启用规则，不能将候选转换完成等同于全部业务规则启用。表达式和配置维护辅助工具本轮留在来源独立工具中。
+F2 新历史保存在 S5 本次运行配置副本；以后沿用本次历史需选择该副本，不回写 S1。
+保留来源个人贷款合并路径和精度语义；不为了旧结果尾差恢复旧触发，未自动处理文档列出的 14 条待审公式。
+
+【修改文件】
+既有文件：core/frontend/web/index.html、core/src/base_audit/web_app.py（仅接入 mixin 和初始化）、developer_access.py；core/pytest.ini；core/tests/conftest.py、TEST_GROUPS.md、test_distribution_profile.py、test_version_manifest.py；shell-flask/distribution-profiles.json、distribution_profile.py、build_exe.py、Linux-2-打包DEB与TARGZ.sh；shell-pywebview/build_exe.py；版本清单、rules/11、双日志。
+新增：S5 公开空表头配置、三个 S5 组件 CHANGELOG、下列程序与测试文件：
+- core/src/base_audit/systems/s5_configured_statistics/README.md
+- core/src/base_audit/systems/s5_configured_statistics/__init__.py
+- core/src/base_audit/systems/s5_configured_statistics/contracts.py
+- core/src/base_audit/systems/s5_configured_statistics/service.py
+- core/src/base_audit/systems/s5_configured_statistics/web_api.py
+- core/src/s1audit_configured/__init__.py
+- core/src/s1audit_configured/batch.py
+- core/src/s1audit_configured/conditional_audit.py
+- core/src/s1audit_configured/conditional_format_eval.py
+- core/src/s1audit_configured/dsl.py
+- core/src/s1audit_configured/engine.py
+- core/src/s1audit_configured/errors.py
+- core/src/s1audit_configured/excel_precision.py
+- core/src/s1audit_configured/external_layout.py
+- core/src/s1audit_configured/fast_ooxml.py
+- core/src/s1audit_configured/formula_error_scan.py
+- core/src/s1audit_configured/institutions.py
+- core/src/s1audit_configured/layout.py
+- core/src/s1audit_configured/model.py
+- core/src/s1audit_configured/numeric_scope.py
+- core/src/s1audit_configured/outputs.py
+- core/src/s1audit_configured/runtime.py
+- core/src/s1audit_configured/source_reader.py
+- core/src/s1audit_configured/sources.py
+- core/src/s1audit_configured/validation.py
+- core/src/s1audit_configured/workbook_config.py
+- core/tests/s5/conftest.py
+- core/tests/s5/test_s5_conditional_audit.py
+- core/tests/s5/test_s5_configured_engine.py
+- core/tests/s5/test_s5_fast_ooxml.py
+- core/tests/s5/test_s5_formula_error_scan.py
+- core/tests/s5/test_s5_integration.py
+- core/tests/s5/test_s5_source_reader.py
+
+【删除与回滚】
+删除清单：无。原始报送文件、模板和外部数据无覆盖。
+回滚只移除本次新增 S5 代码、资源、登记与共享入口钩子；保留已提交 4c84c3f 和既有 .zcode/、external/。私有 S5 配置/模板如需回滚先归档，不能清理整个 config-real。
