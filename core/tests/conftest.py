@@ -31,6 +31,7 @@ _SYSTEM_TEST_FILES = {
         "test_conditional_label_shift.py",
         "test_conditional_real_data.py",
         "test_config_history.py",
+        "test_config_update.py",
         "test_external.py",
         "test_external_sheet_writer.py",
         "test_external_copy_fallback.py",

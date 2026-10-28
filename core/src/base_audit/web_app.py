@@ -266,6 +266,16 @@ class WebApi(S5WebApiMixin):
         if self.settings_store.sanitized:
             self.settings_store.save(self.settings)
         config_dir = release_config_dir(project_root)
+        # 首次绑定随包配置时登记版本，供后续「配置更新」判断是否有新版；
+        # 只登记与随包内容完全一致的条目，不会给用户改过的文件贴版本号。
+        try:
+            from .config_update import bundled_config_dir, record_known_versions
+            bundled_dir = bundled_config_dir(project_root)
+            if bundled_dir is not None and bundled_dir.resolve() != config_dir.resolve():
+                record_known_versions(config_dir, bundled_dir)
+        except Exception:
+            # 版本登记失败不影响启动；配置更新页会如实显示"无法确认版本"。
+            pass
         try:
             bundled_external_reference = self._external_reference_config_path()
         except RuntimeError:
@@ -587,6 +597,9 @@ class WebApi(S5WebApiMixin):
         self.state["developerAccess"] = {system: True for system in DEVELOPER_SYSTEMS}
         self.state["developerAccessMessage"] = ""
         self.state["distributionUnlocked"] = getattr(self, "_distribution_unlocked", False)
+        # 配置更新只对 Linux 安装包有意义；Windows 免安装目录随程序整体更换。
+        from .config_update import supported as _config_update_supported
+        self.state["configUpdateSupported"] = _config_update_supported()
         self.state["distributionProfile"] = (
             "s1s2"
             if os.environ.get("BASE_AUDIT_DISTRIBUTION_PROFILE", "").strip().lower() == "s1s2"
@@ -1516,6 +1529,22 @@ class WebApi(S5WebApiMixin):
                 current_entry["groups"].append(current_group)
             current_group["items"].append(item)
         return {"entries": entries, "source": str(path)}
+
+    def get_config_update(self) -> dict[str, Any]:
+        """检查随包配置是否需要更新（只读，不修改文件）。"""
+        from .config_update import inspect
+        try:
+            return inspect(self.project_root)
+        except Exception as exc:
+            return {"applicable": False, "reason": "配置更新检查失败：" + str(exc), "entries": []}
+
+    def apply_config_update(self, names: list[str] | None = None) -> dict[str, Any]:
+        """按用户选择更新配置；更新前逐个备份到时间戳目录。"""
+        from .config_update import apply_updates
+        try:
+            return apply_updates(self.project_root, list(names or []))
+        except Exception as exc:
+            return {"ok": False, "message": "配置更新失败：" + str(exc), "updated": []}
 
     def open_path(self, path: str) -> dict[str, Any]:
         """Open a local directory or file with the system default application."""
