@@ -3,7 +3,8 @@
 用法：python build_exe.py [--win7] [--profile full|s1s2]
 由 pywebview 打包 bat 调用；bat 负责选择解释器。
 
-产物布局（可由 PYWEBVIEW_DIST_DIR 指定；默认完整版为 dist/，S1/S2 版为 dist/S1-S2/）：
+产物布局（可由 PYWEBVIEW_DIST_DIR 指定；默认每次在 dist/ 下建立带时间的独立目录）：
+  windows-YYYYMMDD_HHMMSS[_S1-S2]/
   产品名[_Win7兼容]_V产品版本.exe ← PyInstaller onefile，内嵌前端页面
   core/                         ← 统一业务核心（src + frontend + 空 data）
   config/                       ← 配置副本（优先 config-real，回退公开空表头）
@@ -15,8 +16,10 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 
@@ -65,6 +68,55 @@ from distribution_profile import (
     load_config,
 )
 
+
+def rust_s3_writer_arg(*, win7: bool, enabled_systems: list[str]) -> list[str]:
+    """Build and return the optional modern Windows S3-F01 writer sidecar."""
+    if win7 or "S3" not in enabled_systems:
+        return []
+    builder = CORE / "rust" / "s3_comparison_writer" / "build_writer.py"
+    if not builder.is_file():
+        print("[提示] 未找到 S3 Rust 写入器构建脚本；该包将使用 OpenPyXL。")
+        return []
+    result = subprocess.run(
+        [sys.executable, str(builder), "windows-amd64"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    binary = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    if result.returncode or not binary or not Path(binary).is_file():
+        print("[提示] 未附带 S3 Rust 写入器；该包将使用 OpenPyXL。" + (result.stderr.strip() or ""))
+        return []
+    return ["--add-binary", f"{binary}{os_pathSep()}native"]
+
+
+def rust_s1_summary_writer_arg(*, win7: bool, enabled_systems: list[str]) -> list[str]:
+    """Build and return the optional modern Windows S1-F02 writer sidecar."""
+    if win7 or "S1" not in enabled_systems:
+        return []
+    builder = CORE / "rust" / "s1_summary_writer" / "build_writer.py"
+    if not builder.is_file():
+        print("[提示] 未找到 S1-F02 Rust 写入器构建脚本；该包将使用 OpenPyXL。")
+        return []
+    result = subprocess.run(
+        [sys.executable, str(builder), "windows-amd64"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    binary = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    if result.returncode or not binary or not Path(binary).is_file():
+        print("[提示] 未附带 S1-F02 Rust 写入器；该包将使用 OpenPyXL。" + (result.stderr.strip() or ""))
+        return []
+    print(f"[S1] 已把 Rust 汇总结果写入器加入发行包：{binary}")
+    return ["--add-binary", f"{binary}{os_pathSep()}native"]
+
 COMMON_HIDDEN = [
     "s1audit_configured.batch",
     # The S2 fast reader imports this Rust extension lazily; make sure the
@@ -94,6 +146,21 @@ COMMON_EXCLUDES = [
 ]
 
 
+def create_release_dir(output_suffix: str) -> Path:
+    """Allocate a new output folder without overwriting another build."""
+    DEFAULT_DIST_ROOT.mkdir(parents=True, exist_ok=True)
+    base_name = f"windows-{datetime.now():%Y%m%d_%H%M%S}{output_suffix}"
+    number = 1
+    while True:
+        name = base_name if number == 1 else f"{base_name}-{number}"
+        candidate = DEFAULT_DIST_ROOT / name
+        try:
+            candidate.mkdir()
+            return candidate
+        except FileExistsError:
+            number += 1
+
+
 def build(win7: bool, profile_id: str = "full") -> int:
     if not (CORE / "src" / "base_audit").is_dir():
         raise SystemExit(f"[错误] 未找到统一核心：{CORE}")
@@ -106,10 +173,7 @@ def build(win7: bool, profile_id: str = "full") -> int:
     except ValueError as exc:
         raise SystemExit(f"[错误] {exc}") from exc
     print(f"[profile] {profile_id}: {', '.join(profile['enabledSystems'])}")
-    profile_suffix = profile["outputSuffix"].strip("_")
-    dist_dir = Path(os.environ["PYWEBVIEW_DIST_DIR"]) if os.environ.get("PYWEBVIEW_DIST_DIR") else (
-        DEFAULT_DIST_ROOT / profile_suffix if profile_suffix else DEFAULT_DIST_ROOT
-    )
+    custom_dist_dir = os.environ.get("PYWEBVIEW_DIST_DIR")
 
     product = load_product_info()
     name = executable_stem("pywebview", win7=win7)
@@ -125,7 +189,15 @@ def build(win7: bool, profile_id: str = "full") -> int:
     faq = faq_path()
     if faq is None:
         raise SystemExit("[错误] 未找到常见问题：docs/常见问题.json（仓库根）。")
-    dist_dir.mkdir(parents=True, exist_ok=True)
+    if custom_dist_dir:
+        dist_dir = Path(custom_dist_dir)
+        dist_dir.mkdir(parents=True, exist_ok=True)
+        incomplete = None
+    else:
+        dist_dir = create_release_dir(profile["outputSuffix"])
+        incomplete = dist_dir / "BUILD_INCOMPLETE.txt"
+        incomplete.write_text("Build is incomplete. Do not distribute this folder.\n", encoding="utf-8")
+    print(f"[output] {dist_dir}", flush=True)
     build_root = ROOT / "build"
     build_root.mkdir(parents=True, exist_ok=True)
 
@@ -136,9 +208,16 @@ def build(win7: bool, profile_id: str = "full") -> int:
             profile_web = Path(temp_dir) / "web"
             shutil.copytree(CORE / "frontend" / "web", profile_web)
             embed_profile(profile_web / "index.html", profile_config, profile_id)
+            # Multiple profile builds can be started at once. PyInstaller's
+            # --clean removes files from its workpath, so sharing build_root
+            # lets one build delete another build's base_library.zip / PKG
+            # entries while they are being assembled. Keep each invocation in
+            # the already-unique temporary directory above.
+            pyinstaller_workspace = Path(temp_dir) / "pyinstaller"
+            pyinstaller_workspace.mkdir()
 
             args = [
-                "--onefile", "--noconsole", "--clean",
+                "--onefile", "--noconsole", "--clean", "--noconfirm",
                 "--name", name,
                 "--paths", str(CORE / "src"),
                 # Frozen launch_web reads the profile-specific page from _MEIPASS/web.
@@ -151,9 +230,18 @@ def build(win7: bool, profile_id: str = "full") -> int:
                 "--add-data", f"{faq}{os_pathSep()}docs",
                 "--icon", str(icon),
                 "--distpath", str(dist_dir),
-                "--workpath", str(build_root),
-                "--specpath", str(build_root),
+                "--workpath", str(pyinstaller_workspace),
+                "--specpath", str(pyinstaller_workspace),
             ]
+            print(f"[PyInstaller] 隔离工作目录：{pyinstaller_workspace}")
+            args += rust_s3_writer_arg(
+                win7=win7,
+                enabled_systems=list(profile.get("enabledSystems") or []),
+            )
+            args += rust_s1_summary_writer_arg(
+                win7=win7,
+                enabled_systems=list(profile.get("enabledSystems") or []),
+            )
             if sys.platform == "win32":
                 version_file = write_version_file(name, product)
                 args += ["--version-file", str(version_file)]
@@ -167,11 +255,14 @@ def build(win7: bool, profile_id: str = "full") -> int:
             import PyInstaller.__main__
 
             PyInstaller.__main__.run(args)
+            verify_onefile_archive(dist_dir / (name + ".exe"))
 
             assemble_core(dist_dir, profile_web)
             assemble_config_template(dist_dir)
             filter_release_config(dist_dir / "config", profile_config, profile_id)
             (dist_dir / "distribution-profile.txt").write_text(profile_id + "\n", encoding="utf-8")
+        if incomplete is not None:
+            incomplete.unlink()
     except (OSError, ValueError) as exc:
         print(f"[错误] 无法生成 {profile_id} 交付包：{exc}")
         return 1
@@ -179,6 +270,42 @@ def build(win7: bool, profile_id: str = "full") -> int:
     print(f"\n打包完成：{dist_dir / (name + '.exe')}")
     print(f"发布时将 {dist_dir} 整个目录发给用户（exe 必须与 core/ 同级）。")
     return 0
+
+
+def verify_onefile_archive(exe_path: Path) -> None:
+    """Fail the build if PyInstaller produced a onefile archive with broken runtime data."""
+    from PyInstaller.archive.readers import CArchiveReader
+
+    try:
+        reader = CArchiveReader(str(exe_path))
+        runtime_dlls = [
+            name for name in reader.toc
+            if name.lower().startswith("python")
+            and name.lower().endswith(".dll")
+            and name[6:-4].isdigit()
+            and len(name[6:-4]) >= 2
+        ]
+        if not runtime_dlls:
+            raise ValueError("归档中未找到 Python 运行时 DLL")
+        for name in runtime_dlls:
+            payload = reader.extract(name)
+            if not payload:
+                raise ValueError(f"Python 运行时 DLL 为空：{name}")
+        if "base_library.zip" in reader.toc:
+            reader.extract("base_library.zip")
+        pyz_name = next(
+            (name for name in reader.toc if name.lower().startswith("pyz") and name.lower().endswith(".pyz")),
+            None,
+        )
+        if not pyz_name:
+            raise ValueError("归档中未找到 Python 模块库")
+        pyz = reader.open_embedded_archive(pyz_name)
+        for required in ("webview", "webview.platforms.edgechromium"):
+            if required not in pyz.toc:
+                raise ValueError(f"归档缺少 pywebview 模块：{required}")
+    except Exception as exc:
+        raise ValueError(f"PyInstaller 单文件归档自检失败：{exe_path.name}：{exc}") from exc
+    print(f"[archive] 自检通过：{', '.join(runtime_dlls)} 可正常解压")
 
 
 def os_pathSep() -> str:

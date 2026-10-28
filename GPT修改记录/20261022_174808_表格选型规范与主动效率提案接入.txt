@@ -1,0 +1,41 @@
+【时间】2026-10-22 17:48:08 +08:00（Asia/Shanghai）
+【执行者】Codex
+【项目】3.open-data-audit / V3
+【修改前 commit】cac9e1068367bdc46f27685e043aff0cfcd2294c
+【修改后 commit】cac9e1068367bdc46f27685e043aff0cfcd2294c（本次未提交）
+【WIP】
+执行前 AGENTS.md、rules/03、其他规则、core 代码/测试、MANIFEST、日志已存在未提交修改；rules/12 是既有未跟踪文件。保留全部既有 WIP，未覆盖旧文件版本。对本次修改的 AGENTS、rules/03、rules/12 逐文件与修改前全文比较，确认仅新增预定入口/引用段落。
+
+【目的】
+将 pytools 共享技术规范 1.2 接入本项目 rules，要求业务开发维护时按输入输出选择技术，主动检查效率并提出有证据的调整方案；同契约的多种已验收后端允许用户选择。
+
+【修改文件】
+- AGENTS.md：新增规则 13 的按需读取入口与业务开发维护必读要求；CLAUDE.md 原有唯一入口继续通过 AGENTS 生效，未复制第二份入口规则。
+- rules/03_Excel与OOXML边界.md：新增规则 13 引用，保留 OOXML 与公式计算硬边界。
+- rules/12_Rust优化与引擎路由.md：新增规则职责分工，保留原有 Rust 候选、现行快路径、分系统顺序及验收要求。
+
+【新增文件】
+- rules/13_表格读写技术选型与主动优化.md：规范版本 1.2-V3.1；包含输入输出契约、23 类操作、默认/手动选择、保真边界、错误回退、主动效率提案及验收。
+- 本时间戳修改记录。
+
+【V3 适配】
+- 唯一 core、S1/S2/S3/S5 范围、S4 仅预览保持原约束。
+- 已验收 Calamine / Direct OOXML 路径作为现行基线；无既有功能默认时，新建输出按 V3 的 Direct OOXML / Rust / openpyxl 候选及能力筛选。
+- 真实工作簿重算继续受现行 Office 完整公式依赖与缓存验收约束。
+- Linux 发行限定 AMD64、glibc 2.28 目标；未复制 pytools 的 ARM64 或 CPython 打包参数。
+- 移除通用规范中 pytools/NoComPyTools 业务快照，替换为本项目接入边界。文档不依赖另一个项目文件。
+- 新增性能建议必须包含实际代码/计时依据、受影响阶段、候选后端、兼容范围、保留要求、基准和验收；未测量明确标注，不承诺提速倍数。
+
+【实际验证】
+- 文档检查：9 张 Markdown 表格列数一致，23 个操作编号及引用有效。
+- 本地链接：检查 13 项，失效 0 项。
+- WIP 保留：AGENTS、rules/03、rules/12 与预期增量结果一致，原有正文未丢失。
+- git diff --check -- AGENTS.md rules/03_Excel与OOXML边界.md：通过。
+- HEAD 未改变；没有执行 commit/push/merge/rebase 或发布。
+- 未运行 pytest、业务性能基准、Office/LibreOffice 真机或打包；纯规则文档变更按 rules/07 无需运行，不新增任何平台或业务验收通过结论。
+
+【配置与 VBA 影响】无；未修改配置、业务公式和功能代码。
+【组件版本】不升级（纯规则/治理文档变更）。
+【用户版更新日志】未修改。
+【删除清单】无。
+【回滚提示】只撤回本次 AGENTS、rules/03、rules/12 的新增引用/必读段落，并移除新增规则及本记录；不得用 git checkout/restore 整份文件覆盖原有 WIP。

@@ -1,0 +1,48 @@
+时间：2026-10-27 23:56:39 +08:00
+执行者：Codex
+分支与提交：desktop / cac9e10（本轮未提交，前后 commit 相同）
+WIP 状态：工作区开始时已有大量未提交业务、测试、规则和构建修改；仅针对本任务最小修订，未清理、覆盖或提交其他 WIP。
+
+【目的】
+准备 Win7 使用的 Python 3.8.10 32 位构建环境，完成 Windows 与 Linux AMD64 全量测试，并构建 PyWebView、Flask、DEB 的 full 与 S1/S2 发行包。修复 PyInstaller 4.10 归档检查兼容性和测试中与正式版本清单不一致的期望值。
+
+【本轮修改】
+- shell-flask/build_exe.py：让单文件归档自检兼容 PyInstaller 4.10 的 CTOCReader 与 (is_package, payload) 返回值；新版 PyInstaller 的 dict/raw bytes 路径保持兼容。
+- core/tests/test_version_manifest.py：将 S5-F01 测试期望从 3.0.0 校正为 VERSION_MANIFEST.json 中现行的 3.0.1，并同步注释。未修改产品版本清单或业务逻辑。
+- 日志/开发日志.txt：登记本次回归和发行包构建。
+- GPT修改记录/20261027_235639_Win7环境全量回归与六类发行包.txt：本记录。
+- 未修改用户版日志/更新日志.txt；本轮没有用户功能变更。
+- 【组件版本】不升级；没有修改 VERSION_MANIFEST.json 或组件 CHANGELOG。
+
+【Win7 构建环境】
+- 官方 Python Software Foundation Python 3.8.10 x86 运行库已展开到 shell-flask/runtime/python38-full；重建独立环境 shell-flask/build-win7-venv-rebuilt。
+- 已安装 Flask、OpenPyXL、xlrd、python-calamine 0.3.1、pywin32 306、PyInstaller 4.10 等 requirements-win7.txt 依赖。
+- 未修改系统 PATH、其他 Python 安装或 Windows Installer 注册。运行库和虚拟环境属于本机忽略的构建产物。
+
+【全量测试】
+- Windows 11 AMD64，Python 3.12.10：1224 passed、7 skipped、6 warnings、5 subtests passed；耗时 200.84 秒，退出码 0。
+  报告：test-output/full-test-reports/FullTest_windows-amd64_20261027_233531.txt
+- WSL Ubuntu 24.04 AMD64，Python 3.12.3、glibc 2.39：1210 passed、21 skipped、6 warnings、5 subtests passed；耗时 139.03 秒，退出码 0。
+  报告：test-output/full-test-reports/FullTest_linux-amd64_20261027_233903.txt
+- warnings 为测试环境未安装 python-calamine 时触发的预期 OpenPyXL 回退提示；没有失败用例。
+
+【发行包】
+- PyWebView full：shell-pywebview/dist/windows-20261027_234142（profile=full）。
+- PyWebView S1/S2：shell-pywebview/dist/windows-20261027_234258_S1-S2（profile=s1s2）。
+- Flask full：shell-flask/dist/Windows-Flask_V26.1.7.13（含现代 Windows 与 Win7 x86 两个 EXE）。
+- Flask S1/S2：shell-flask/dist/Windows-Flask_V26.1.7.13_S1-S2（含现代 Windows 与 Win7 x86 两个 EXE）。
+- DEB full：shell-flask/dist/Audit-Tools_V26.1.7.13_2026.10.27.154913_debian-10_py3.12.14_glibc2.25_amd64.deb。
+- DEB S1/S2：shell-flask/dist/Audit-Tools-S1-S2_V26.1.7.13_2026.10.27.155043_debian-10_py3.12.14_glibc2.25_amd64.deb。
+- 两个 DEB 元数据均确认 Architecture=amd64、Version=1:26.1.7.13。ELF 审计最低 glibc 2.25，低于发布目标基线 2.28，未发现 GLIBCXX 符号依赖。使用本机 config-real，属于内部包。
+- 本轮两份 DEB 均通过 Linux-3 启动冒烟：SHA-256（临时 staging）校验、解包、服务启动、HTTP 200、页面标题、图标/favicon 获取及端口释放均通过。临时 staging 与 sidecar 已清理；dist 根目录只复制本轮两个 .deb，没有复制 .sha256 或 .build-info.txt。
+- 所有 6 个 Windows EXE 的 --help 启动检查退出码均为 0。Win7 EXE 的 PE Machine=0x14c（x86），PyInstaller 4.10 归档自检通过。
+
+【限制】
+- Win7 兼容包是在 Windows 11 上以 Python 3.8.10 x86 / PyInstaller 4.10 构建并做 EXE 启动检查，未在真实 Windows 7 机器上实测。
+- DEB 启动冒烟使用 Debian 10/glibc 2.28 构建容器；目标系统仍须安装桌面依赖与 LibreOffice Calc，发行包不含 LO。
+- full 包携带 config-real，仅供内部使用，不应外发。
+
+【删除清单与回滚】
+- 仅清理本轮创建的两个临时 DEB staging 目录及其中的 .deb/.sha256/.build-info.txt；正式 DEB 已复制并完成哈希及启动检查。没有删除源文件、用户配置或旧发行包。
+- 若要回退本轮跟踪文件修改，只需恢复上述测试期望与 build_exe.py 归档读取适配；本机 Python 运行库、Win7 venv 和 dist 发行目录均为忽略的构建产物，可按需单独归档或清理。
+- 未执行 git add、commit、push、merge。

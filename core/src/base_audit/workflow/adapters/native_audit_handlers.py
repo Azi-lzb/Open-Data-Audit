@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -279,34 +280,70 @@ def handle_files_copy(ctx: NodeContext, parameters: dict, inputs: dict) -> Modul
 
 
 def handle_external_copy(ctx: NodeContext, parameters: dict, inputs: dict) -> ModuleExecutionResult:
+    """复制外部工作表；快路径不可用时逐级降级，单个文件失败不阻断整条链。"""
     template = inputs["template"].payload; plan = template.get("external_plan")
     records = [_copy_version(item, parameters, "v2-external") for item in _records(inputs["workbooks"])]
+    if not plan:
+        return ModuleExecutionResult.ok(workbooks=FileSetArtifact(
+            records=tuple(records), subtype=ArtifactSubtype.EXCEL_WORKBOOK_SET,
+            lineage=(inputs["workbooks"].artifact_id,)))
     service = ctx.run.services.get("service")
     writer_mode = str(getattr(service, "external_sheet_writer", "") or "OPENPYXL").upper()
     if writer_mode not in EXTERNAL_SHEET_WRITERS:
         writer_mode = "OPENPYXL"
-    if plan:
-        direct_writer = None
-        prepare_seconds = 0.0
-        if writer_mode == EXTERNAL_SHEET_WRITER_DIRECT_OOXML:
-            direct_writer = DirectOoxmlExternalSheetWriter(Path(parameters["external_path"]), plan.sheet_names)
-            prepared = direct_writer.prepare()
+    direct_writer = None
+    prepare_seconds = 0.0
+    fallback_reason = ""
+    if writer_mode == EXTERNAL_SHEET_WRITER_DIRECT_OOXML:
+        try:
+            candidate = DirectOoxmlExternalSheetWriter(Path(parameters["external_path"]), plan.sheet_names)
+            prepared = candidate.prepare()
+        except Exception as exc:
+            # Direct OOXML 只接受纯数据表；合并/公式/数据验证/图片等必须回到 openpyxl。
+            fallback_reason = str(exc)
+            ctx.log("外部文件快路径不可用，改用 openpyxl 添加：" + fallback_reason)
+        else:
+            direct_writer = candidate
             prepare_seconds = prepared.prepare_seconds
             for message in prepared.messages:
                 ctx.log(message)
-        ctx.log(f"外部文件添加方式：{writer_mode}")
-        write_seconds = 0.0
-        for record in records:
+    ctx.log("外部文件添加方式：" + ("OPENPYXL" if fallback_reason else writer_mode))
+    write_seconds = 0.0
+    fallback_writes = 0
+    failures: list[tuple[str, str]] = []
+    external_path = Path(parameters["external_path"])
+    for record in records:
+        name = Path(record.source).name
+        try:
             if direct_writer is not None:
-                written = direct_writer.write(Path(record.audit))
-                write_seconds += written.write_seconds
+                try:
+                    written = direct_writer.write(Path(record.audit))
+                except Exception as exc:
+                    # write 是临时文件加原子替换，失败时审核副本仍完整，可安全改用 openpyxl 重试。
+                    ctx.log("外部文件快路径写入失败，改用 openpyxl 重试：" + name + "｜" + str(exc))
+                    add_external_sheets(Path(record.audit), external_path, plan.sheet_names)
+                    fallback_writes += 1
+                else:
+                    write_seconds += written.write_seconds
             else:
-                add_external_sheets(Path(record.audit), Path(parameters["external_path"]), plan.sheet_names)
-    result = ModuleExecutionResult.ok(workbooks=FileSetArtifact(records=tuple(records), subtype=ArtifactSubtype.EXCEL_WORKBOOK_SET,
-                                                                lineage=(inputs["workbooks"].artifact_id,)))
-    if plan and writer_mode == EXTERNAL_SHEET_WRITER_DIRECT_OOXML:
-        result.metrics.update({"external_prepare_seconds": prepare_seconds,
-                               "external_direct_write_seconds": write_seconds})
+                add_external_sheets(Path(record.audit), external_path, plan.sheet_names)
+        except Exception as exc:
+            # 最次也要保留审核副本并继续：外部表缺失会让引用它的公式显示 #REF!，
+            # 因此错误必须进入文件级结果和节点运行记录，不能静默吞掉。
+            detail = "外部文件添加(" + name + ")：" + str(exc)
+            record.stage_errors = tuple(record.stage_errors) + (detail,)
+            failures.append((name, str(exc)))
+            ctx.log("未能添加外部文件，链路继续；审核副本可能缺少外部表：" + name + "｜" + str(exc))
+    artifact = FileSetArtifact(records=tuple(records), subtype=ArtifactSubtype.EXCEL_WORKBOOK_SET,
+                               lineage=(inputs["workbooks"].artifact_id,))
+    result = (ModuleExecutionResult.partial(failures, workbooks=artifact) if failures
+              else ModuleExecutionResult.ok(workbooks=artifact))
+    result.metrics.update({"external_prepare_seconds": prepare_seconds,
+                           "external_direct_write_seconds": write_seconds,
+                           "external_openpyxl_fallback_writes": fallback_writes,
+                           "external_failed_files": len(failures)})
+    if fallback_reason:
+        result.warnings.append("外部文件快路径降级为 openpyxl：" + fallback_reason)
     return result
 
 
@@ -316,15 +353,32 @@ def handle_formula_copy(ctx: NodeContext, parameters: dict, inputs: dict) -> Mod
     calculator = LibreOfficeCalculator()
     records = [_copy_final_formula_version(item, parameters) for item in _records(inputs["workbooks"])]
     template_book = load_workbook(template_path, data_only=False, keep_links=False)
+    write_started = time.monotonic()
     try:
         for record in records:
+            ctx.log(f"正在复制公式：{Path(record.source).name}")
             copy_formula_ranges_from_template(template_book, Path(record.audit), definition)
-            ctx.log(f"正在通过 LibreOffice Calc 计算：{Path(record.source).name}")
-            calculator.recalculate(Path(record.audit))
     finally:
         template_book.close()
-    return ModuleExecutionResult.ok(workbooks=FileSetArtifact(records=tuple(records), subtype=ArtifactSubtype.EXCEL_WORKBOOK_SET,
-                                                                lineage=(inputs["workbooks"].artifact_id,)))
+    write_seconds = time.monotonic() - write_started
+    ctx.log(f"公式写入完成：{len(records)} 份审核副本，用时 {write_seconds:.2f} 秒")
+    recalculate = calculator.recalculate_many(
+        (Path(record.audit) for record in records), batch_size=8,
+    )
+    ctx.log(
+        f"LibreOffice Calc 批量重算完成：{len(records)} 份副本，"
+        f"{recalculate.batch_count} 批，用时 {recalculate.elapsed_seconds:.2f} 秒"
+    )
+    result = ModuleExecutionResult.ok(workbooks=FileSetArtifact(
+        records=tuple(records), subtype=ArtifactSubtype.EXCEL_WORKBOOK_SET,
+        lineage=(inputs["workbooks"].artifact_id,),
+    ))
+    result.metrics.update({
+        "formula_copy_seconds": write_seconds,
+        "formula_recalculate_seconds": recalculate.elapsed_seconds,
+        "formula_recalculate_batch_count": recalculate.batch_count,
+    })
+    return result
 
 
 def handle_formula_issue_extract(ctx: NodeContext, parameters: dict, inputs: dict) -> ModuleExecutionResult:
@@ -428,7 +482,12 @@ def handle_history_enrich(ctx: NodeContext, parameters: dict, inputs: dict) -> M
 def handle_result_workbook(ctx: NodeContext, parameters: dict, inputs: dict) -> ModuleExecutionResult:
     from ...native.result_writer import write_audit_summary
     path = Path(parameters["output_dir"]) / f"{parameters.get('output_name') or '汇总核查表校验'}_{parameters['batch_id']}.xlsx"
-    write_audit_summary(path, list(inputs["enriched"].issues), sheet_name="本期审核结果")
+    service = ctx.run.services.get("service")
+    writer = str(getattr(service, "audit_result_writer", "AUTO") or "AUTO")
+    write_audit_summary(
+        path, list(inputs["enriched"].issues), sheet_name="本期审核结果",
+        mode=writer, on_engine=ctx.log,
+    )
     return ModuleExecutionResult.ok(summary_workbook=ResultWorkbookArtifact(path=str(path), sheet_name="本期审核结果", subtype=ArtifactSubtype.RESULT_WORKBOOK))
 
 

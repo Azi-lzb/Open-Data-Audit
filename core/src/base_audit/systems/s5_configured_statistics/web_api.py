@@ -716,6 +716,19 @@ class S5WebApiMixin:
 
         def progress(event):
             phase = event.get("phase", "audit")
+            if phase == "timing":
+                current_progress = form.get("progress", {})
+                form["progress"] = {
+                    **current_progress,
+                    "elapsedSeconds": event.get("total_elapsed_seconds", time.monotonic() - started),
+                    "timingStage": event.get("stage", ""),
+                    "timingSeconds": event.get("elapsed_seconds", 0),
+                }
+                self._log(
+                    f"{function} 耗时：{event.get('message', event.get('stage', '阶段'))}"
+                    f"；累计 {event.get('total_elapsed_seconds', 0):.2f} 秒"
+                )
+                return
             current, total = event.get("file_index", 0), event.get("files_total", 0)
             percent = (5 + 15 * max(0, current - 1) / total if phase == "identity" else
                        20 + 70 * max(0, current - 1) / total) if total else 0
@@ -732,6 +745,25 @@ class S5WebApiMixin:
             self.state["status"] = f"{function} " + {"succeeded": "审核完成", "partial_failed": "审核完成，部分项目需处理", "failed": "执行失败"}[result["task_state"]]
             if result.get("summary"):
                 self._log(result["summary"])
+            stage_timings = result.get("stage_timings", {})
+            if stage_timings:
+                labels = (
+                    ("configuration_load_seconds", "配置加载"),
+                    ("institution_reference_load_seconds", "机构参照加载"),
+                    ("file_recognition_seconds", "文件识别"),
+                    ("rule_audit_seconds", "规则审核"),
+                    ("formula_scan_seconds", "模板公式扫描"),
+                    ("conditional_format_scan_seconds", "条件格式扫描"),
+                    ("result_export_seconds", "结果导出"),
+                    ("batch_seconds", "审核与结果生成合计"),
+                    ("total_seconds", "总计"),
+                )
+                details = "；".join(
+                    f"{label} {stage_timings[key]:.2f} 秒" for key, label in labels
+                    if key in stage_timings
+                )
+                if details:
+                    self._log(f"{function} 耗时明细：{details}")
             self._log(f"{function}：{self.state['status']}；结果：{result.get('result_path') or '未生成'}")
             for record in result.get("institutions", []):
                 if record.get("status") not in {"COMPLETED", "COMPLETED_WITH_ISSUES"}:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import re
 from contextlib import contextmanager
 from datetime import date, datetime
@@ -19,6 +18,7 @@ from .layout import split_path
 from .model import (
     ApplicabilityScope, Configuration, ExternalMetricSpec, MetricSpec, RuleDefinition, SourceContract,
 )
+from .source_reader import file_sha256 as _content_file_sha256
 
 
 RULE_HEADERS = (
@@ -46,11 +46,7 @@ SCOPE_HEADERS = ("适用范围ID", "业务类型", "工作表名称", "行路径
 
 
 def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    return _content_file_sha256(path)
 
 
 def _text(value: Any) -> str:

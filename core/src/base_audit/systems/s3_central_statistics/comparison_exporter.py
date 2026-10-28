@@ -11,6 +11,7 @@ from openpyxl.utils import get_column_letter
 
 from .comparison_engine import get_round_digits
 from .models import ComparisonRow
+from ...native.s3_comparison_writer import write_rust_payload
 
 # 黄金输出 21 列表头（2026.08 比较文件实测顺序）。
 RESULT_HEADERS = (
@@ -60,23 +61,18 @@ def write_comparison_workbook(
     *,
     target_unit: str = "亿元",
     sheet_date: str = "",
+    writer: str = "AUTO",
+    on_engine=None,
 ) -> Path:
-    """写出 21 列比较结果工作簿（含警戒色与数字格式）。"""
+    """写出 21 列比较结果工作簿（含警戒色与数字格式）。
+
+    S3-F01 creates a new simple XLSX, so AUTO may use the bundled Rust writer.
+    OpenPyXL remains selectable as the compatibility backend.
+    """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    book = Workbook()
-    sheet = book.active
-    sheet.title = result_sheet_name(sheet_date)
     headers = [header.format(unit=target_unit) for header in RESULT_HEADERS] + [OUTPUT_EXPLANATION_HEADER]
-    sheet.append(headers)
     digits = get_round_digits(target_unit)
-    fill_cache: dict[int, PatternFill] = {}
-
-    def fill_for(color_index: int) -> PatternFill:
-        if color_index not in fill_cache:
-            hex_value = colorindex_to_hex(color_index) or "FFFFFF00"
-            fill_cache[color_index] = PatternFill("solid", fgColor=hex_value)
-        return fill_cache[color_index]
 
     def display(value) -> object:
         if value is None:
@@ -86,6 +82,86 @@ def write_comparison_workbook(
                 return int(value)
             return value
         return value
+
+    payload_rows = []
+    fills = []
+    for index, row in enumerate(rows):
+        record = row.record
+        payload_rows.append([
+            record.biz_class,
+            display(record.record_date),
+            record.org_code,
+            record.org_name,
+            record.region_code,
+            record.region_name,
+            row.order_code_out or record.indicator,
+            record.indicator,
+            row.indicator_name_out or record.indicator_name,
+            record.data_attr,
+            record.currency,
+            record.frequency,
+            display(record.batch),
+            display(record.value),
+            display(row.prev_value),
+            display(row.change),
+            display(row.ratio),
+            row.remark,
+            row.need_explain,
+            row.explain_content,
+            row.process,
+            None,
+        ])
+        if row.fill_color and row.fill_scope:
+            hex_value = colorindex_to_hex(row.fill_color)
+            if hex_value:
+                fills.append({
+                    "row": index,
+                    "color": hex_value,
+                    "scope": "row" if row.fill_scope == "row" else "remark",
+                })
+
+    def write_openpyxl() -> Path:
+        _write_comparison_workbook_openpyxl(
+            rows, output_path, headers=headers, digits=digits, sheet_date=sheet_date,
+            display=display,
+        )
+        return output_path
+
+    return write_rust_payload(
+        {
+            "title": result_sheet_name(sheet_date),
+            "headers": headers,
+            "rows": payload_rows,
+            "fills": fills,
+        },
+        output_path,
+        mode=writer,
+        openpyxl_writer=write_openpyxl,
+        on_engine=on_engine,
+    )
+
+
+def _write_comparison_workbook_openpyxl(
+    rows: list[ComparisonRow],
+    output_path: Path,
+    *,
+    headers: list[str],
+    digits: int,
+    sheet_date: str,
+    display,
+) -> None:
+    """OpenPyXL compatibility writer for S3-F01's new comparison workbook."""
+    book = Workbook()
+    sheet = book.active
+    sheet.title = result_sheet_name(sheet_date)
+    sheet.append(headers)
+    fill_cache: dict[int, PatternFill] = {}
+
+    def fill_for(color_index: int) -> PatternFill:
+        if color_index not in fill_cache:
+            hex_value = colorindex_to_hex(color_index) or "FFFFFF00"
+            fill_cache[color_index] = PatternFill("solid", fgColor=hex_value)
+        return fill_cache[color_index]
 
     for row in rows:
         record = row.record
@@ -141,7 +217,6 @@ def write_comparison_workbook(
         sheet.column_dimensions[get_column_letter(index)].width = width
     book.save(output_path)
     book.close()
-    return output_path
 
 
 def write_log_workbook(log_rows: list[tuple], output_path: Path, title: tuple[str, ...]) -> Path:

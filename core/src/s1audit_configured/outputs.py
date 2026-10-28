@@ -248,15 +248,13 @@ def _result_tables(result, path, source_copy_by_path, *, batch_records=None, pre
         if evidence:
             copy_path = source_copy_by_path.get(str(Path(evidence.source_path).resolve()))
             if copy_path:
-                relative = Path(os.path.relpath(copy_path, path.parent))
                 safe_sheet = evidence.sheet.replace("'", "''")
-                target = f"{relative.as_posix()}#'{safe_sheet}'!{evidence.cell}"
+                target = _source_cell_link(copy_path, path, safe_sheet, evidence.cell)
         elif item.error_evidence.get("source_path") and item.error_evidence.get("cell"):
             copy_path = source_copy_by_path.get(str(Path(item.error_evidence["source_path"]).resolve()))
             if copy_path:
-                relative = Path(os.path.relpath(copy_path, path.parent))
                 safe_sheet = str(item.error_evidence.get("sheet", "")).replace("'", "''")
-                target = f"{relative.as_posix()}#'{safe_sheet}'!{item.error_evidence['cell']}"
+                target = _source_cell_link(copy_path, path, safe_sheet, item.error_evidence["cell"])
         if target:
             table.hyperlinks[f"F{row_no}"] = target
             if table.rows[-1][5] is None:
@@ -300,6 +298,14 @@ def _result_tables(result, path, source_copy_by_path, *, batch_records=None, pre
     return tables
 
 
+def _source_cell_link(source_path: Path, result_path: Path, sheet: str, cell: str) -> str:
+    try:
+        target = Path(os.path.relpath(source_path, result_path.parent)).as_posix()
+    except ValueError:  # Windows paths on different drives cannot be made relative.
+        target = Path(source_path).resolve().as_uri()
+    return f"{target}#'{sheet}'!{cell}"
+
+
 def _write_result_workbook_openpyxl(result: AuditRunResult, path: Path,
                            source_copy_by_path: dict[str, Path], *,
                            batch_records: list[dict[str, Any]] | None = None,
@@ -329,16 +335,16 @@ def _write_result_workbook_openpyxl(result: AuditRunResult, path: Path,
         if first_evidence:
             copy_path = source_copy_by_path.get(str(Path(first_evidence.source_path).resolve()))
             if copy_path:
-                relative = Path(os.path.relpath(copy_path, path.parent))
                 safe_sheet = first_evidence.sheet.replace("'", "''")
-                sheet.cell(row_num, 3 + offset).hyperlink = f"{relative.as_posix()}#'{safe_sheet}'!{first_evidence.cell}"
+                sheet.cell(row_num, 3 + offset).hyperlink = _source_cell_link(
+                    copy_path, path, safe_sheet, first_evidence.cell,
+                )
         elif item.error_evidence.get("source_path") and item.error_evidence.get("cell"):
             copy_path = source_copy_by_path.get(str(Path(item.error_evidence["source_path"]).resolve()))
             if copy_path:
-                relative = Path(os.path.relpath(copy_path, path.parent))
                 safe_sheet = str(item.error_evidence.get("sheet", "")).replace("'", "''")
-                sheet.cell(row_num, 3 + offset).hyperlink = (
-                    f"{relative.as_posix()}#'{safe_sheet}'!{item.error_evidence['cell']}"
+                sheet.cell(row_num, 3 + offset).hyperlink = _source_cell_link(
+                    copy_path, path, safe_sheet, item.error_evidence["cell"],
                 )
         for column, precision in zip((7, 8, 9),
                                      (item.current_precision, item.comparison_precision, item.difference_precision)):

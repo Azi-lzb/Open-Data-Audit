@@ -1,0 +1,44 @@
+时间：2026-10-27 20:51:45
+执行者：Codex
+
+修改前提交：cac9e10
+修改后提交：cac9e10（未提交）
+WIP 状态：开始前工作区已有多处未提交修改；仅在本记录所列文件中局部修改，未清理、覆盖或回滚其他 WIP。
+
+目的：把待处理文件中的工作表提示从“新增工作表”改成“模板外工作表”，准确表达它只说明工作表不在所选模板中；去掉易混淆的 F1/F2 和兜底模板字样，并对截图中的隐藏表说明隐藏类型及手动显示方法。
+
+修改文件：
+- `core/src/base_audit/discovery.py`
+- `core/frontend/web/index.html`
+- `core/tests/test_discovery.py`
+- `core/tests/test_web_app.py`
+- `core/tests/test_version_manifest.py`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/S1_逐笔统计系统/功能/S1-F02_汇总校验结果说明/CHANGELOG.md`
+- `日志/更新日志.txt`
+- `日志/开发日志.txt`
+
+变化：
+- 待处理文件预览改为显示“模板外有 N 张表”；不再暗示这些表是最近新增的，说明使用“所选模板、同名工作表、模板外工作表”口径。
+- 移除文件列表中 F1/F2 标记及兜底模板提示；说明模板外工作表仅作提示，匹配情况以同名工作表为准。
+- 从工作簿 `xl/workbook.xml` 读取模板外工作表的可见状态。预览详情区分普通隐藏和 `veryHidden`；`veryHidden` 说明普通取消隐藏菜单不会列出，并建议通过 VBA 编辑器修改 Visible 属性。
+- 截图所对应的本机样本只读元数据确认有 19 张工作表，其中 12 张为 `veryHidden`。
+- 仅改待处理文件提示；审核、文件选择、结构检查和汇总行为未改。
+
+【组件版本】
+系统：S1 逐笔统计系统
+影响功能：S1-F02 汇总校验结果说明 v1.3.0 → v1.3.1
+影响配置：S1-CFG-01 v2.0.0 → v2.0.0（未变）
+版本升级原因：PATCH，修正用户可见的工作表状态描述并提供隐藏状态提示。
+
+验证：
+- `python -m pytest -q core/tests/test_web_app.py::WebAppCompatibilityTests::test_s1_file_badges_describe_template_extra_sheets_without_f1_f2_or_fallback_labels core/tests/test_discovery.py::test_f2_extra_sheet_hint_reports_hidden_and_very_hidden_counts`：2 passed。
+- `python -m pytest -q -rs -m s1 core/tests`：519 passed / 13 skipped / 1 failed / 696 deselected / 3 subtests passed。唯一失败是既有版本清单测试仍将 S5-F01 期望为 3.0.0，而清单当前为 3.0.1；未改动 S5 断言。
+- `python -m compileall -q core/src/base_audit/discovery.py core/tests/test_discovery.py core/tests/test_web_app.py core/tests/test_version_manifest.py`：通过。
+- VERSION_MANIFEST JSON 解析通过；`git diff --check` 无空白错误（仅有工作区已有的换行格式提示）。
+- 未修改截图对应工作簿、用户配置或审核结果；未打包、未提交。
+
+配置及 VBA 影响：配置不变；无 VBA 代码修改。VBA 仅作为用户手动显示 `veryHidden` 表的建议方法。
+
+删除清单：无。
+回滚提示：只回退本记录所列文件中的本轮局部更改及本记录；不要整文件恢复，因为开始前已有其他 WIP。

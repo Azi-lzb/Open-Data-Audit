@@ -1,0 +1,46 @@
+# S1 读写路由与 OpenPyXL 热点优化
+
+时间：2026-10-22 18:41（Asia/Shanghai）
+范围：S1-F01、S1-F02；S4 仍为预览 UI，不在本轮实现范围。S5 近期已优化，本轮没有修改 S5 业务代码。
+
+## 组件版本
+
+- S1-F01：2.5.0 → 2.6.0，MINOR。
+- S1-F02：1.2.2 → 1.3.0，MINOR。
+- 配置版本和产品整包版本不变；不改 S1 业务规则工作簿。
+
+## 实现与边界
+
+- S1-F01 新建审核结果工作簿增加独立 AUTO / Rust xlsxwriter / OpenPyXL 写入路由。AUTO 有可用 sidecar 时优先 Rust，失败后安全回退；用户显式选择 Rust 时不可用或失败会明确报错。
+- S1-F01 保留原工作表/单元格跳转、外部文件链接、链接显示文字、表头、冻结窗格、筛选及列宽。Rust 生成后只恢复 XLSX 关系中的原始外部路径，避免 URL 编码改变本地文件目标。
+- S1-F02 将纯 Python 汇总管线的源值读取单独路由为 AUTO / Calamine / OpenPyXL；AUTO 优先 Calamine，仅自动模式回退。新建汇总结果工作簿单独路由为 AUTO / Rust xlsxwriter / OpenPyXL。
+- S1-F02 的模板及命名区域读取、结构预检、公式拷贝和 Office 公式缓存刷新不变；未迁移公式计算。S1-F01 的审核副本公式复制与 Excel/WPS 重算也不变。
+- 设置中心为 S1-F01 写入、S1-F02 源读取和 S1-F02 结果写入分别保存选择；各功能 AUTO 默认可用路线。
+- Windows AMD64 与 Linux AMD64 writer sidecar 已构建，Flask、PyWebView 及 Linux 发布入口按包含 S1 的产品 profile 可选收集；未生成产品安装包/便携包。
+
+## 性能与对拍
+
+Windows 当前环境，重复运行取中位数，计时含 Rust sidecar 进程调用；不以 XLSX ZIP 字节相同作为正确条件：
+
+- S1-F02 源值读取，3 个工作簿、9,000 行、12 列：Calamine 0.1661 秒，OpenPyXL 1.1905 秒，约 7.17 倍；读取结果及绝对坐标一致。
+- S1-F02 新建汇总表：1,000 行 Rust/OpenPyXL 0.0444/0.1917 秒（4.32 倍）；5,000 行 0.1439/0.8677 秒（6.03 倍）；20,000 行 0.5256/3.5827 秒（6.82 倍）。对拍值、行列、工作表、冻结、筛选及列宽。
+- S1-F01 审核结果表含逐行文件跳转：1,000 条问题 Rust/OpenPyXL 0.419/1.532 秒（3.66 倍）；3,000 条 1.228/7.980 秒（6.50 倍）。对拍单元格值、外部文件目标、工作表/单元格位置、显示文字、表头、冻结、筛选、列宽与链接样式。
+
+## 验证
+
+- S1 系统组：512 passed、13 skipped、693 deselected、3 subtests passed。
+- Windows core 全量：1,205 passed、13 skipped、8 warnings、5 subtests passed，用时 191.30 秒。
+- WSL Ubuntu AMD64 core 全量：1,197 passed、21 skipped、8 warnings、5 subtests passed，用时 132.32 秒。
+- Windows 与 WSL 的 8 个 warning 均来自 S5 集成测试解释器未安装 `python-calamine` 时的既有 AUTO→OpenPyXL 回退提示；没有失败。本轮没有改 S5。
+- Python compileall、S1 版本清单定向测试（8 passed）、Linux-2/Linux-7 打包脚本 bash -n 和 git diff --check 通过。`tools/check_public_snapshot.py` 因没有暂存文件而未执行快照审查；没有暂存或提交改动。
+
+## 未覆盖
+
+没有在 Excel/WPS COM 环境或 UOS 真机进行人工验收；没有重算公式路径迁移，没有构建完整产品发行包。上述结果仅验证新建工作簿/值读取后端与现有契约，不替代 Office 公式重算验收。
+
+## 主要涉及文件
+
+- 核心：`core/src/base_audit/native/result_writer.py`、`s1_summary_writer.py`、`summary_source_reader.py`、`summary.py`、设置/服务/Web API 与 S1 workflow 输出适配。
+- Rust：`core/rust/s1_summary_writer/`。
+- 测试与打包：S1 writer/backend/Web API 测试、测试分组、Flask/PyWebView/Linux 收集入口。
+- 留痕：S1-F01/S1-F02 CHANGELOG、`版本管理/VERSION_MANIFEST.json`、开发日志及功能更新日志。

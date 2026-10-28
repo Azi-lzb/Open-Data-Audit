@@ -62,6 +62,32 @@ OUTPUT_SUFFIX=$(profile_field outputSuffix) || exit $?
 ARTIFACT_PREFIX=$(profile_field artifactPrefix) || exit $?
 printf '[交付范围] %s；开放系统：%s。\n' "$PROFILE_NAME" "$PROFILE_ENABLED_SYSTEMS"
 
+# Linux-2 在 Debian 10 容器内打包。若外层 WSL 有 Rust + musl 工具链，
+# 先在宿主为 AMD64 生成静态 writer；共享项目挂载会将它带入容器。
+case "$PROFILE_ENABLED_SYSTEMS" in
+    *S1*)
+        if command -v cargo >/dev/null 2>&1 && \
+           { command -v musl-gcc >/dev/null 2>&1 || command -v x86_64-linux-musl-gcc >/dev/null 2>&1; }; then
+            python3 "$ROOT/core/rust/s1_summary_writer/build_writer.py" linux-amd64 \
+                || printf '[提示] 无法预构建 S1-F02 Rust 写入器；Linux 包将使用 OpenPyXL。\n' >&2
+        else
+            printf '[提示] 宿主缺少 cargo 或 musl-gcc，S1-F02 Linux 包将使用 OpenPyXL。\n' >&2
+        fi
+        ;;
+esac
+
+case "$PROFILE_ENABLED_SYSTEMS" in
+    *S3*)
+        if command -v cargo >/dev/null 2>&1 && \
+           { command -v musl-gcc >/dev/null 2>&1 || command -v x86_64-linux-musl-gcc >/dev/null 2>&1; }; then
+            python3 "$ROOT/core/rust/s3_comparison_writer/build_writer.py" linux-amd64 \
+                || printf '[提示] 无法预构建 S3 Rust 写入器；Linux 包将使用 OpenPyXL。\n' >&2
+        else
+            printf '[提示] 宿主缺少 cargo 或 musl-gcc，Linux 包将使用 OpenPyXL。\n' >&2
+        fi
+        ;;
+esac
+
 VERSION=$(awk -F '"' '/"version"[[:space:]]*:/ { print $4; exit }' \
     "$ROOT/版本管理/VERSION_MANIFEST.json")
 printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' \

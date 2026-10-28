@@ -147,6 +147,64 @@ def test_recalculate_stages_and_replaces_only_after_success(tmp_path: Path, monk
     restored.close()
 
 
+def test_recalculate_many_batches_and_publishes_only_complete_chunks(tmp_path: Path, monkeypatch) -> None:
+    paths = []
+    for name, value in (("甲.xlsx", "甲原值"), ("乙.xlsx", "乙原值"), ("丙.xlsx", "丙原值")):
+        path = tmp_path / name
+        book = Workbook(); book.active["A1"] = value; book.save(path); book.close()
+        paths.append(path)
+
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        output_dir = Path(command[command.index("--outdir") + 1])
+        source_args = command[command.index("--outdir") + 2:]
+        for staged_arg in source_args:
+            staged = (
+                Path(url2pathname(unquote(urlparse(staged_arg).path)))
+                if staged_arg.startswith("file:") else Path(staged_arg)
+            )
+            shutil.copy2(staged, output_dir / staged.name)
+        return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+    monkeypatch.setattr(engines.libreoffice.subprocess, "run", fake_run)
+    result = LibreOfficeCalculator(Path(sys.executable)).recalculate_many(paths, batch_size=2)
+
+    assert result.workbook_paths == tuple(path.resolve() for path in paths)
+    assert result.batch_count == 2
+    assert len(commands) == 2
+    assert [len(command[command.index("--outdir") + 2:]) for command in commands] == [2, 1]
+    for path, original in zip(paths, ("甲原值", "乙原值", "丙原值")):
+        book = load_workbook(path, data_only=False, read_only=True)
+        assert book.active["A1"].value == original
+        book.close()
+
+
+def test_recalculate_many_failure_does_not_publish_partial_chunk(tmp_path: Path, monkeypatch) -> None:
+    paths = []
+    for name, value in (("先.xlsx", "原始一"), ("后.xlsx", "原始二")):
+        path = tmp_path / name
+        book = Workbook(); book.active["A1"] = value; book.save(path); book.close()
+        paths.append(path)
+
+    def fake_run(command, **kwargs):
+        output_dir = Path(command[command.index("--outdir") + 1])
+        staged_arg = command[command.index("--outdir") + 2]
+        staged = Path(url2pathname(unquote(urlparse(staged_arg).path)))
+        shutil.copy2(staged, output_dir / staged.name)
+        return SimpleNamespace(stdout="部分文件失败", stderr="转换失败", returncode=1)
+
+    monkeypatch.setattr(engines.libreoffice.subprocess, "run", fake_run)
+    with pytest.raises(engines.libreoffice.LibreOfficeUnavailableError, match="未能计算"):
+        LibreOfficeCalculator(Path(sys.executable)).recalculate_many(paths, batch_size=2)
+
+    for path, original in zip(paths, ("原始一", "原始二")):
+        book = load_workbook(path, data_only=False, read_only=True)
+        assert book.active["A1"].value == original
+        book.close()
+
+
 # ---------------------------------------------------------------------------
 # 模板读取与公式复制（native/openpyxl_workbook.py）
 # ---------------------------------------------------------------------------
@@ -307,6 +365,71 @@ def test_excel_session_rejects_non_windows() -> None:
     with patch.object(sys, "platform", "linux"):
         with pytest.raises(ExcelUnavailableError):
             ExcelSession("自动").__enter__()
+
+
+def test_auto_excel_open_failure_retries_with_wps(monkeypatch) -> None:
+    from base_audit.excel_com import ExcelSession
+
+    workbook_result = object()
+
+    class FakeWorkbooks:
+        def __init__(self, *, failure=None, count=0):
+            self.failure = failure
+            self.Count = count
+            self.calls = 0
+
+        def Open(self, *_args, **_kwargs):
+            self.calls += 1
+            if self.failure:
+                raise RuntimeError(self.failure)
+            self.Count += 1
+            return workbook_result
+
+    class FakeApplication:
+        def __init__(self, workbooks):
+            self.Workbooks = workbooks
+            self.quit_called = False
+
+        def Quit(self):
+            self.quit_called = True
+
+    excel = FakeApplication(FakeWorkbooks(failure="Excel open failed"))
+    wps = FakeApplication(FakeWorkbooks())
+    session = ExcelSession("自动")
+    session.excel = excel
+    session.engine_name = "Microsoft Excel"
+    monkeypatch.setattr(session, "_create_application", lambda _progid: wps)
+    messages = []
+    session.on_engine_fallback = messages.append
+
+    result = session.open_workbook(Path("sample.xlsx"), read_only=False)
+
+    assert result is workbook_result
+    assert session.excel is wps
+    assert session.engine_name == "WPS 表格"
+    assert excel.quit_called
+    assert messages == ["Microsoft Excel 无法打开“sample.xlsx”，已自动切换到 WPS 表格继续处理。"]
+
+
+def test_explicit_excel_selection_does_not_fallback_to_wps(monkeypatch) -> None:
+    from base_audit.excel_com import ExcelSession
+
+    class FakeWorkbooks:
+        Count = 0
+
+        def Open(self, *_args, **_kwargs):
+            raise RuntimeError("Excel open failed")
+
+    session = ExcelSession("Microsoft Excel")
+    session.excel = SimpleNamespace(Workbooks=FakeWorkbooks())
+    session.engine_name = "Microsoft Excel"
+    monkeypatch.setattr(
+        session, "_create_application",
+        lambda _progid: pytest.fail("明确选择 Excel 时不应启动 WPS"),
+    )
+
+    with pytest.raises(RuntimeError, match="Excel open failed"):
+        session.open_workbook(Path("sample.xlsx"), read_only=False)
 
 
 # ---------------------------------------------------------------------------
@@ -778,10 +901,10 @@ def test_dag_audit_dispatches_to_native(tmp_path: Path, monkeypatch) -> None:
     book = Workbook(); book.active.title = "报表"; book.active["C2"] = 5; book.active["D1"] = "指标"
     book.save(source); book.close()
 
-    def fake_recalculate(self, workbook_path):
-        from base_audit.engines.libreoffice import LibreOfficeCalculationResult
-        return LibreOfficeCalculationResult(
-            workbook_path=workbook_path, engine_display="LibreOffice Calc (mock)", elapsed_seconds=0.0,
+    def fake_recalculate_many(self, workbook_paths, *, batch_size=8):
+        return SimpleNamespace(
+            workbook_paths=tuple(workbook_paths), engine_display="LibreOffice Calc (mock)",
+            elapsed_seconds=0.0, batch_count=1,
         )
 
     service = _service(tmp_path)
@@ -789,7 +912,7 @@ def test_dag_audit_dispatches_to_native(tmp_path: Path, monkeypatch) -> None:
     with patch.object(sys, "platform", "linux"), patch(
         "base_audit.engines.calculation_engine_preflight", return_value=(True, "mocked LibreOffice preflight")
     ), patch.object(
-        engines.libreoffice.LibreOfficeCalculator, "recalculate", fake_recalculate
+        engines.libreoffice.LibreOfficeCalculator, "recalculate_many", fake_recalculate_many
     ), patch.object(engines.libreoffice.LibreOfficeCalculator, "require_available", lambda self: None):
         result = run_dag_flow(
             "dag:汇总核查表校验", service=service, template_path=template,

@@ -243,6 +243,16 @@ def test_dsl_safe_parser_and_dependency_validation():
         validate_dictionary_dependencies(parse_dictionary('{"a": {b}, "b": {a}}'))
 
 
+def test_cached_dictionary_parse_returns_independent_mapping():
+    source = '{"A": ROUND(1.255, 2)}'
+    first = parse_dictionary(source)
+    first.clear()
+
+    second = parse_dictionary(source)
+    assert list(second) == ["A"]
+    validate_dictionary_dependencies(second)
+
+
 def test_excel_binary64_mode_preserves_template_formula_rounding():
     # Excel converges each calculation to 15 significant digits, while the
     # default engine keeps exact Decimal arithmetic for hand-authored rules.

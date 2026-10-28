@@ -166,7 +166,15 @@ def detect_period(input_dir: Path, *, recursive: "bool | int" = False) -> Period
     return PeriodDetection("", "", details="未识别到数据期，请手动填写")
 
 
-def read_xlsx_sheet_names(path: Path) -> tuple[str, ...]:
+def read_xlsx_sheet_names(
+    path: Path, *, exclude_very_hidden: bool = False
+) -> tuple[str, ...]:
+    """Read workbook sheet names, optionally excluding Excel ``veryHidden`` sheets.
+
+    S1 template matching excludes very-hidden source sheets because Excel's
+    normal Unhide dialog cannot expose them. The default keeps the full sheet
+    list for callers such as the S1-F02 worksheet preview.
+    """
     try:
         with zipfile.ZipFile(path) as archive:
             xml = archive.read("xl/workbook.xml")
@@ -179,8 +187,28 @@ def read_xlsx_sheet_names(path: Path) -> tuple[str, ...]:
     return tuple(
         node.attrib["name"]
         for node in root.iter()
-        if node.tag.rsplit("}", 1)[-1] == "sheet" and node.attrib.get("name")
+        if node.tag.rsplit("}", 1)[-1] == "sheet"
+        and node.attrib.get("name")
+        and not (
+            exclude_very_hidden
+            and node.attrib.get("state", "visible") == "veryHidden"
+        )
     )
+
+
+def read_xlsx_sheet_states(path: Path) -> dict[str, str]:
+    """Return each XLSX sheet's OOXML visibility state (visible/hidden/veryHidden)."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            xml = archive.read("xl/workbook.xml")
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return {}
+    root = ElementTree.fromstring(xml)
+    return {
+        node.attrib["name"]: node.attrib.get("state", "visible")
+        for node in root.iter()
+        if node.tag.rsplit("}", 1)[-1] == "sheet" and node.attrib.get("name")
+    }
 
 
 class TemplateCatalog:
@@ -342,7 +370,7 @@ def recommend_template(
     per_file_choices: dict[str, list[float]] = {}
     profile_by_path = {item.path: item for item in profiles}
     for source in files:
-        source_sheets = read_xlsx_sheet_names(source)
+        source_sheets = read_xlsx_sheet_names(source, exclude_very_hidden=True)
         ranked = sorted(
             (
                 (
@@ -386,11 +414,12 @@ def recommend_template(
             match_detail = f"工作表集合匹配率 {confidence:.0%}"
         details = (
             f"自动匹配：{Path(selected.path).name}（{len(selected_scores)} 个源文件；{match_detail}；"
+            "模板识别时忽略 veryHidden 工作表；"
             "已忽略未能识别的非报送工作簿）"
         )
         return TemplateSuggestion(Path(selected.path), confidence, True, details, alternatives)
 
-    source_sheets = read_xlsx_sheet_names(files[0])
+    source_sheets = read_xlsx_sheet_names(files[0], exclude_very_hidden=True)
     scores: list[tuple[float, TemplateProfile, float, float]] = []
     for profile in profiles:
         name_score = 0.0
@@ -415,12 +444,12 @@ def recommend_template(
         if source_covered:
             details = (
                 f"自动匹配：{Path(top.path).name}（源文件工作表均包含于模板；"
-                "模板中未出现在源文件里的其他工作表不影响匹配）"
+                "模板识别时忽略 veryHidden 工作表；模板中未出现在源文件里的其他工作表不影响匹配）"
             )
         else:
             details = (
                 f"自动匹配：{Path(top.path).name}（工作表集合匹配率 {top_total:.0%}，"
-                f"取最高匹配率候选；前三候选：{_candidate_text(scores)}）"
+                f"模板识别时忽略 veryHidden 工作表；取最高匹配率候选；前三候选：{_candidate_text(scores)}）"
             )
         return TemplateSuggestion(
             Path(top.path), 1.0 if source_covered else top_total, True, details, alternatives
@@ -442,14 +471,22 @@ def annotate_summary_matches(rows, template_path: Path | None) -> None:
         row.pop("summaryMatch", None)
     if not rows or template_path is None or not template_path.is_file():
         return
-    template_names = set(read_xlsx_sheet_names(template_path))
+    template_states = read_xlsx_sheet_states(template_path)
+    template_names = set(template_states)
     template_sheets = template_names - {"审核规则", "兜底模板"}
     fallback_available = "兜底模板" in template_names
     for row in rows:
-        source_sheets = set(read_xlsx_sheet_names(Path(row["path"]))) - {"审核规则", "兜底模板"}
+        source_states = read_xlsx_sheet_states(Path(row["path"]))
+        source_sheets = set(source_states) - {"审核规则", "兜底模板"}
         common = template_sheets & source_sheets
         extra = source_sheets - template_sheets
         missing = template_sheets - source_sheets
+        extra_hidden_count = sum(
+            source_states.get(name) in {"hidden", "veryHidden"} for name in extra
+        )
+        extra_very_hidden_count = sum(
+            source_states.get(name) == "veryHidden" for name in extra
+        )
         if not common and not fallback_available:
             continue
         row["summaryMatch"] = {
@@ -460,6 +497,8 @@ def annotate_summary_matches(rows, template_path: Path | None) -> None:
             "sourceCount": len(source_sheets),
             "fallbackAvailable": fallback_available,
             "partial": bool(extra),
+            "extraHiddenCount": extra_hidden_count,
+            "extraVeryHiddenCount": extra_very_hidden_count,
         }
 
 
@@ -472,7 +511,7 @@ def classify_source_files(
     rows: list[dict[str, str]] = []
     for path in files:
         ranked: list[tuple[float, TemplateProfile]] = []
-        source_sheets = read_xlsx_sheet_names(path)
+        source_sheets = read_xlsx_sheet_names(path, exclude_very_hidden=True)
         for profile in profiles:
             score = _sheet_score(profile.sheet_names, source_sheets)
             ranked.append((score, profile))

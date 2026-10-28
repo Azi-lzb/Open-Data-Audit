@@ -15,7 +15,9 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -105,6 +107,60 @@ def _pywin32_args() -> list[str]:
     return args
 
 
+def _rust_s3_writer_args(*, win7: bool) -> list[str]:
+    """Optionally bundle the S3-F01 sidecar in full, modern Windows builds."""
+    profile = os.environ.get("AUDITTOOLS_DISTRIBUTION_PROFILE", "full").strip().lower()
+    if win7 or profile != "full":
+        return []
+    builder = CORE / "rust" / "s3_comparison_writer" / "build_writer.py"
+    if not builder.is_file():
+        print("[提示] 未找到 S3 Rust 写入器构建脚本；该包将使用 OpenPyXL。")
+        return []
+    result = subprocess.run(
+        [sys.executable, str(builder), "windows-amd64"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    binary = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    if result.returncode or not binary or not Path(binary).is_file():
+        detail = result.stderr.strip() or "Rust 工具链或 WSL 不可用。"
+        print(f"[提示] 未附带 S3 Rust 写入器；该包将使用 OpenPyXL。{detail}")
+        return []
+    print(f"[S3] 已把 Rust 比较表写入器加入完整版：{binary}")
+    return ["--add-binary", f"{binary}{os.pathsep}native"]
+
+
+def _rust_s1_summary_writer_args(*, win7: bool) -> list[str]:
+    """Optionally bundle the S1-F02 summary writer in supported modern profiles."""
+    profile = os.environ.get("AUDITTOOLS_DISTRIBUTION_PROFILE", "full").strip().lower()
+    if win7 or profile not in {"full", "s1s2"}:
+        return []
+    builder = CORE / "rust" / "s1_summary_writer" / "build_writer.py"
+    if not builder.is_file():
+        print("[提示] 未找到 S1-F02 Rust 写入器构建脚本；该包将使用 OpenPyXL。")
+        return []
+    result = subprocess.run(
+        [sys.executable, str(builder), "windows-amd64"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    binary = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    if result.returncode or not binary or not Path(binary).is_file():
+        detail = result.stderr.strip() or "Rust 工具链或 WSL 不可用。"
+        print(f"[提示] 未附带 S1-F02 Rust 写入器；该包将使用 OpenPyXL。{detail}")
+        return []
+    print(f"[S1] 已把 Rust 汇总结果写入器加入 {profile} 包：{binary}")
+    return ["--add-binary", f"{binary}{os.pathsep}native"]
+
+
 def build(win7: bool) -> int:
     if not (CORE / "src" / "base_audit").is_dir():
         raise SystemExit(f"[错误] 未找到统一核心：{CORE}")
@@ -132,6 +188,8 @@ def build(win7: bool) -> int:
     if faq is None:
         raise SystemExit("[错误] 未找到常见问题：docs/常见问题.json（仓库根）。")
     DIST.mkdir(parents=True, exist_ok=True)
+    build_root = ROOT / "build"
+    build_root.mkdir(parents=True, exist_ok=True)
 
     args = [
         # 保留控制台：Flask 服务端日志（端口占用、异常 traceback）直接可见。
@@ -144,8 +202,10 @@ def build(win7: bool) -> int:
         "--name", name,
         "--paths", str(CORE / "src"),
         "--distpath", str(DIST),
-        "--workpath", str(ROOT / "build"),
-        "--specpath", str(ROOT / "build"),
+        # Filled with an invocation-specific directory below. Distinct full /
+        # S1-S2 or Win7 / modern builds must not clean one another's files.
+        "--workpath", "",
+        "--specpath", "",
         "--icon", str(icon),
         "--add-data", f"{manifest}{os.pathsep}版本管理",
         "--add-data", f"{assets}{os.pathsep}assets",
@@ -153,6 +213,8 @@ def build(win7: bool) -> int:
         "--add-data", f"{update_log}{os.pathsep}日志",
         "--add-data", f"{faq}{os.pathsep}docs",
     ]
+    args += _rust_s3_writer_args(win7=win7)
+    args += _rust_s1_summary_writer_args(win7=win7)
     if sys.platform == "win32":
         version_file = write_version_file(name, product)
         args += ["--version-file", str(version_file)]
@@ -163,9 +225,17 @@ def build(win7: bool) -> int:
         args += ["--exclude-module", mod]
     args.append(str(ROOT / "run.py"))
 
-    import PyInstaller.__main__
+    # PyInstaller --clean removes its workpath. The old shared ROOT/build path
+    # can cause PermissionError on base_library.zip and leave a corrupt
+    # onefile archive when two profile builds overlap.
+    with tempfile.TemporaryDirectory(prefix=f"pyinstaller-{name}-", dir=build_root) as work_dir:
+        args[args.index("--workpath") + 1] = work_dir
+        args[args.index("--specpath") + 1] = work_dir
+        print(f"[PyInstaller] 隔离工作目录：{work_dir}")
+        import PyInstaller.__main__
 
-    PyInstaller.__main__.run(args)
+        PyInstaller.__main__.run(args)
+    _verify_onefile_archive(DIST / (name + ".exe"))
 
     assemble_core()
     assemble_config_template()
@@ -180,6 +250,37 @@ def build(win7: bool) -> int:
     print(f"\n打包完成：{DIST / (name + '.exe')}")
     print("发布时只发送当前输出目录（exe 必须与 core/ 同级）。")
     return 0
+
+
+def _verify_onefile_archive(exe_path: Path) -> None:
+    """Reject a broken PyInstaller archive before assembling the release folder."""
+    from PyInstaller.archive.readers import CArchiveReader
+
+    try:
+        reader = CArchiveReader(str(exe_path))
+        # PyInstaller 4.10 (Win7) exposes a CTOCReader and returns
+        # (is_package, payload); newer versions expose a dict and raw bytes.
+        names = list(reader.toc) if isinstance(reader.toc, dict) else reader.contents()
+        runtime_dlls = [
+            name for name in names
+            if name.lower().startswith("python")
+            and name.lower().endswith(".dll")
+            and name[6:-4].isdigit()
+            and len(name[6:-4]) >= 2
+        ]
+        if not runtime_dlls:
+            raise ValueError("归档中未找到 Python 运行时 DLL")
+        for name in runtime_dlls:
+            payload = reader.extract(name)
+            if isinstance(payload, tuple):
+                payload = payload[1]
+            if not payload:
+                raise ValueError(f"Python 运行时 DLL 为空：{name}")
+        if "base_library.zip" in names:
+            reader.extract("base_library.zip")
+    except Exception as exc:
+        raise ValueError(f"PyInstaller 单文件归档自检失败：{exe_path.name}：{exc}") from exc
+    print(f"[archive] 自检通过：{', '.join(runtime_dlls)} 可正常解压")
 
 
 def assemble_core() -> None:

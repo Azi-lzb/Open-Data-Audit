@@ -1,6 +1,35 @@
 # S3-F01 两期数据到比较文件
 
-当前版本：v1.5.2
+当前版本：v1.6.0
+
+## v1.6.0 — 2026-10-22
+
+变更类型：Feature / MINOR
+
+前版本：v1.5.2
+新版本：v1.6.0
+
+修改内容：
+- XLSX 导数读取增加 AUTO、Calamine、OpenPyXL 路由；自动优先 Calamine，仅自动模式可回退，并记录实际引擎、版本、耗时和回退原因。
+- 新建比较结果工作簿增加 AUTO、Rust xlsxwriter、OpenPyXL 路由；自动模式在程序附带兼容写入器时优先使用 Rust，写入失败时从独立临时文件安全回退，手动指定不切换。
+- 读取和写入选择相互独立；CSV、XLS 和规则计算语义保持不变。
+
+影响文件：
+- core/src/base_audit/systems/s3_central_statistics/csv_importer.py
+- core/src/base_audit/systems/s3_central_statistics/comparison_exporter.py
+- core/src/base_audit/native/s3_comparison_writer.py
+- core/src/base_audit/settings.py
+- core/src/base_audit/web_app.py
+- core/frontend/web/index.html
+- core/rust/s3_comparison_writer/
+
+配置影响：增加可选读取/写入设置，默认 AUTO；既有设置缺省按 AUTO 处理，不改配置工作簿。
+
+性能：WSL AMD64 合成 20,000 行样例中，Rust 写入端到端约 1.18 秒，OpenPyXL 约 404.58 秒；对拍值、列序、冻结、筛选、列宽及代表性格式一致。此结果不代表所有规模均有同一倍数收益。
+
+验证：S3 系统组 556 passed、6 skipped、649 deselected、5 subtests passed；Windows 与 WSL Linux core 全量回归待本轮完成后补记。
+
+Git提交：未提交。
 
 ## v1.5.2 — 2026-10-13 21:54
 

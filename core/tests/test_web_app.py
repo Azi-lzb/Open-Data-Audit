@@ -34,12 +34,16 @@ class _Window:
 
 
 class WebAppCompatibilityTests(unittest.TestCase):
-    def test_s1_f2_file_badges_distinguish_new_sheets_from_unmatched_templates(self):
+    def test_s1_file_badges_describe_template_extra_sheets_without_f1_f2_or_fallback_labels(self):
         source = (ROOT / "frontend" / "web" / "index.html").read_text(encoding="utf-8")
-        self.assertIn("有新增工作表", source)
-        self.assertIn("可尝试兜底", source)
-        self.assertIn("模板中其他工作表（源文件未包含，不影响匹配）", source)
-        self.assertNotIn("部分匹配（F2）", source)
+        render_files = source.split("function renderFiles(s){", 1)[1].split("function renderExplanation(s){", 1)[0]
+        self.assertIn("模板外有 ", render_files)
+        self.assertIn("veryHidden", render_files)
+        self.assertIn("所选模板：", render_files)
+        self.assertNotIn("新增 '+summary.extra.length+' 张", render_files)
+        self.assertNotIn("兜底", render_files)
+        self.assertNotIn("F1", render_files)
+        self.assertNotIn("F2", render_files)
 
     def test_summary_preview_preserves_f1_unrecognized_and_manual_template(self):
         with TemporaryDirectory() as folder:
@@ -179,6 +183,93 @@ class WebAppCompatibilityTests(unittest.TestCase):
         self.assertIn("公式校验复制方式：", source)
         self.assertIn("条件格式判定方式：", source)
         self.assertNotIn("let logFull=", source)
+
+    def test_s2_external_reader_setting_is_selectable_and_persistent(self) -> None:
+        source = (ROOT / "frontend" / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("row('大集中数据读取方式'", source)
+        self.assertIn("Calamine（Rust）", source)
+        self.assertIn("OpenPyXL（兼容）", source)
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            api = WebApi(root)
+            self.assertEqual(api.state["periodExternalReader"], "AUTO")
+            api.update({"periodExternalReader": "OPENPYXL"})
+            self.assertEqual(api.state["periodExternalReader"], "OPENPYXL")
+
+            reloaded = WebApi(root)
+            self.assertEqual(reloaded.state["periodExternalReader"], "OPENPYXL")
+            reloaded.update({"periodExternalReader": "NOT_AN_ENGINE"})
+            self.assertEqual(reloaded.state["periodExternalReader"], "OPENPYXL")
+
+    def test_s3_data_reader_setting_is_selectable_and_persistent(self) -> None:
+        source = (ROOT / "frontend" / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("row('大集中导数读取方式'", source)
+        self.assertIn("setCentralDataReader(this.value)", source)
+        self.assertIn("CSV 与 XLS 仍使用原读取方式", source)
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            api = WebApi(root)
+            self.assertEqual(api.state["centralDataReader"], "AUTO")
+            api.update({"centralDataReader": "OPENPYXL"})
+            self.assertEqual(api.state["centralDataReader"], "OPENPYXL")
+
+            reloaded = WebApi(root)
+            self.assertEqual(reloaded.state["centralDataReader"], "OPENPYXL")
+            reloaded.update({"centralDataReader": "NOT_AN_ENGINE"})
+            self.assertEqual(reloaded.state["centralDataReader"], "OPENPYXL")
+
+    def test_s3_comparison_writer_setting_is_selectable_and_persistent(self) -> None:
+        source = (ROOT / "frontend" / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("row('比较结果写入方式'", source)
+        self.assertIn("setCentralComparisonWriter(this.value)", source)
+        self.assertIn("仅影响 S3-F01 新建比较结果工作簿", source)
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            api = WebApi(root)
+            self.assertEqual(api.state["centralComparisonWriter"], "AUTO")
+            api.update({"centralComparisonWriter": "OPENPYXL"})
+            self.assertEqual(api.state["centralComparisonWriter"], "OPENPYXL")
+
+            reloaded = WebApi(root)
+            self.assertEqual(reloaded.state["centralComparisonWriter"], "OPENPYXL")
+            reloaded.update({"centralComparisonWriter": "NOT_AN_ENGINE"})
+            self.assertEqual(reloaded.state["centralComparisonWriter"], "OPENPYXL")
+
+    def test_s1_summary_reader_and_writer_settings_are_independent_and_persistent(self) -> None:
+        source = (ROOT / "frontend" / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("row('S1-F01 审核结果写入'", source)
+        self.assertIn("setAuditResultWriter(this.value)", source)
+        self.assertIn("row('S1-F02 源数据读取器'", source)
+        self.assertIn("row('S1-F02 汇总结果写入'", source)
+        self.assertIn("setSummarySourceReader(this.value)", source)
+        self.assertIn("setSummaryResultWriter(this.value)", source)
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            api = WebApi(root)
+            self.assertEqual(api.state["summarySourceReader"], "AUTO")
+            self.assertEqual(api.state["summaryResultWriter"], "AUTO")
+            self.assertEqual(api.state["auditResultWriter"], "AUTO")
+            api.update({
+                "summarySourceReader": "CALAMINE",
+                "summaryResultWriter": "OPENPYXL",
+                "auditResultWriter": "OPENPYXL",
+            })
+            self.assertEqual(api.state["summarySourceReader"], "CALAMINE")
+            self.assertEqual(api.state["summaryResultWriter"], "OPENPYXL")
+            self.assertEqual(api.state["auditResultWriter"], "OPENPYXL")
+
+            reloaded = WebApi(root)
+            self.assertEqual(reloaded.state["summarySourceReader"], "CALAMINE")
+            self.assertEqual(reloaded.state["summaryResultWriter"], "OPENPYXL")
+            self.assertEqual(reloaded.state["auditResultWriter"], "OPENPYXL")
+            reloaded.update({
+                "summarySourceReader": "NOT_A_READER",
+                "summaryResultWriter": "NOT_A_WRITER",
+                "auditResultWriter": "NOT_A_WRITER",
+            })
+            self.assertEqual(reloaded.state["summarySourceReader"], "CALAMINE")
+            self.assertEqual(reloaded.state["summaryResultWriter"], "OPENPYXL")
+            self.assertEqual(reloaded.state["auditResultWriter"], "OPENPYXL")
 
     def test_settings_ui_exposes_independent_external_reference_template_actions(self) -> None:
         source = (ROOT / "frontend" / "web" / "index.html").read_text(encoding="utf-8")
@@ -1100,7 +1191,7 @@ class WebAppCompatibilityTests(unittest.TestCase):
 
 
 class S2ProgressLifecycleTests(unittest.TestCase):
-    def test_worker_surfaces_external_data_warnings_after_completion(self) -> None:
+    def test_worker_surfaces_external_data_warnings_in_logs_without_blocking(self) -> None:
         api = object.__new__(WebApi)
         api.state = {"busy": True, "pcConfig": "config.xlsx", "periodProgress": {}, "periodPairs": [{"side": "both"}]}
         messages = []
@@ -1109,12 +1200,17 @@ class S2ProgressLifecycleTests(unittest.TestCase):
 
         def run(**kwargs):
             kwargs["on_progress"]({
+                "stage": "external_read", "label": "读取大集中数据", "percent": 76,
+                "message": "数据提示 1/1：集中系统数据第3行、报表项目‘甲行’：“各项存款”为空白，已按 0 参与外部核对；请核查是否误删或改动了数据。",
+            })
+            kwargs["on_progress"]({
                 "stage": "complete", "label": "审核完成", "percent": 100,
-                "message": "已生成三张分类审核表；外部数据提示 1 条，详情见“校验规则”工作表",
+                "message": "已生成三张分类审核表；大集中数据发现 1 条非阻断提示，请查看运行记录核实",
             })
             return SimpleNamespace(
-                findings=(SimpleNamespace(rule_type="外部数据导入"),),
-                summary=SimpleNamespace(institutions=1, forms=1, indicators=10, total_findings=1, abnormal_findings=1, by_type={"校验规则": 1}),
+                findings=(),
+                external_warnings=("集中系统数据第3行、报表项目‘甲行’：“各项存款”为空白，已按 0 参与外部核对；请核查是否误删或改动了数据。",),
+                summary=SimpleNamespace(institutions=1, forms=1, indicators=10, total_findings=0, abnormal_findings=0, by_type={}),
                 paths=SimpleNamespace(result=Path("result.xlsx")),
             )
 
@@ -1122,9 +1218,11 @@ class S2ProgressLifecycleTests(unittest.TestCase):
             api._period_compare_v2_worker(Path("cur"), Path("pre"), Path("central.xlsx"), Path("out"))
 
         self.assertEqual(api.state["periodProgress"]["status"], "completed")
-        self.assertIn("外部数据提示 1 条", api.state["periodProgress"]["message"])
-        self.assertIn("外部数据提示 1 条", api.state["status"])
-        self.assertTrue(any("外部数据提示 1 条" in message for message in messages))
+        self.assertIn("1 条非阻断提示", api.state["periodProgress"]["message"])
+        self.assertIn("1 条非阻断提示", api.state["status"])
+        self.assertTrue(any("数据提示 1/1：" in message and "已按 0 参与外部核对" in message for message in messages))
+        self.assertTrue(any("1 条非阻断提示" in message and "请查看运行记录核实" in message for message in messages))
+        self.assertFalse(any("详情见“校验规则”工作表" in message for message in messages))
 
     def test_worker_reports_completed_or_failed_without_refreshing_existing_pairs(self) -> None:
         for mode in ("complete", "refresh_empty", "failed"):

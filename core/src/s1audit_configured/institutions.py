@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-import hashlib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -11,7 +10,7 @@ from openpyxl.utils.cell import coordinate_from_string
 
 from .errors import RetrievalError
 from .external_layout import IDENTITY_LABELS, TARGET_LABELS, normalized
-from .source_reader import read_book, shared_readers
+from .source_reader import file_hashing_enabled, file_sha256, read_book, shared_readers
 
 
 CODE_LABELS = (*IDENTITY_LABELS, "社会信用代码", "社会统一信用代码")
@@ -54,9 +53,10 @@ class InstitutionCatalog:
         self.paths = list(dict.fromkeys(str(Path(p).resolve()) for p in paths if p))
         self.hashes: dict[str, str] = {}
         for path in self.paths:
-            self.hashes[path] = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+            if file_hashing_enabled():
+                self.hashes[path] = file_sha256(path)
             self._load(Path(path))
-            if hashlib.sha256(Path(path).read_bytes()).hexdigest() != self.hashes[path]:
+            if file_hashing_enabled() and file_sha256(path) != self.hashes[path]:
                 raise RetrievalError("INPUT_CHANGED_DURING_RUN", "读取机构参照期间文件发生变化，请重新运行")
 
     def _load(self, path: Path) -> None:

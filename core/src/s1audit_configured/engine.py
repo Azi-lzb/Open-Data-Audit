@@ -14,7 +14,7 @@ from .model import (
 )
 from .sources import SourceRepository, file_sha256
 from .workbook_config import load_configuration
-from .source_reader import shared_readers
+from .source_reader import file_hashing_enabled, shared_readers
 from .runtime import RuntimePaths, check_cancel
 
 
@@ -47,6 +47,7 @@ class AuditEngine:
             raise ConfigurationError("运行上下文必须提供报告期")
         run_id = run_id or uuid.uuid4().hex
         started_at = datetime.now(timezone.utc)
+        verify_input_integrity = file_hashing_enabled()
         repository = SourceRepository(self.configuration, context, schema_snapshot_dir=schema_snapshot_dir, runtime_paths=runtime_paths)
         repository.snapshot_selected_hashes()
         chosen = self._select_rules(context.period, businesses=businesses)
@@ -69,18 +70,18 @@ class AuditEngine:
                         for scope_path in scope_paths:
                             check_cancel(cancel_event)
                             results.append(self._evaluate_rule(rule, context, repository, run_id, scope_path=scope_path))
-            unchanged = repository.hashes_unchanged()
+            unchanged = repository.hashes_unchanged() if verify_input_integrity else True
             configuration_after = ""
             configuration_unchanged = True
-            if self.configuration.path:
+            if verify_input_integrity and self.configuration.path:
                 configuration_after = file_sha256(self.configuration.path) if self.configuration.path.is_file() else "MISSING"
                 configuration_unchanged = configuration_after == self.configuration.sha256
                 unchanged = unchanged and configuration_unchanged
             hashes = {
                 key: {"sha256_before": start, "sha256_after": repository.end_hashes.get(key, "")}
                 for key, start in repository.start_hashes.items()
-            }
-            if self.configuration.path:
+            } if verify_input_integrity else {}
+            if verify_input_integrity and self.configuration.path:
                 hashes["configuration"] = {
                     "sha256_before": self.configuration.sha256,
                     "sha256_after": configuration_after or "MISSING",
@@ -101,7 +102,8 @@ class AuditEngine:
             run_status = "COMPLETED" if unchanged else "INPUT_CHANGED_DURING_RUN"
             finished_at = datetime.now(timezone.utc)
             ledger = self._make_ledger(run_id, context, results, hashes, unchanged, run_status,
-                                       configuration_unchanged, started_at, finished_at)
+                                       configuration_unchanged, started_at, finished_at,
+                                       integrity_checked=verify_input_integrity)
             ledger["structure_checks"] = structure_events
             ledger["data_quality_warnings"] = list(repository.data_quality_warnings)
             output_files: dict[str, str] = {}
@@ -335,7 +337,7 @@ class AuditEngine:
     def _make_ledger(self, run_id: str, context: RuntimeContext, results: list[RuleResult],
                      hashes: dict[str, Any], unchanged: bool, run_status: str,
                      configuration_unchanged: bool, started_at: datetime,
-                     finished_at: datetime) -> dict[str, Any]:
+                     finished_at: datetime, *, integrity_checked: bool = True) -> dict[str, Any]:
         counts: dict[str, int] = defaultdict(int)
         for result in results:
             counts[result.status] += 1
@@ -351,12 +353,14 @@ class AuditEngine:
             "configuration_status": self.configuration.version_status,
             "configuration_release_date": self.configuration.release_date,
             "configuration_release_note": self.configuration.release_note,
-            "configuration_sha256": self.configuration.sha256,
+            "configuration_sha256": self.configuration.sha256 if integrity_checked else "",
             "configuration_path": str(self.configuration.path) if self.configuration.path else "",
-            "configuration_integrity": "UNCHANGED" if configuration_unchanged else "CHANGED_DURING_RUN",
+            "configuration_integrity": ("UNCHANGED" if configuration_unchanged else "CHANGED_DURING_RUN")
+            if integrity_checked else "NOT_CHECKED",
             "run_status": run_status,
-            "input_integrity": "UNCHANGED" if unchanged else "CHANGED_DURING_RUN",
-            "input_hashes": hashes,
+            "input_integrity": ("UNCHANGED" if unchanged else "CHANGED_DURING_RUN")
+            if integrity_checked else "NOT_CHECKED",
+            "input_hashes": hashes if integrity_checked else {},
             "status_counts": dict(sorted(counts.items())),
             "rules": [_result_dict(result) for result in results],
         }

@@ -1,6 +1,32 @@
 # S3-F04 本期数值核对
 
-当前版本：v1.2.2
+当前版本：v1.3.0
+
+## v1.3.0 — 2026-10-22
+
+变更类型：Feature / MINOR
+
+前版本：v1.2.2
+新版本：v1.3.0
+
+修改内容：
+- XLSX 大集中导数读取增加 AUTO、Calamine、OpenPyXL 路由；自动优先 Calamine，仅自动模式可回退并记录实际引擎、版本、耗时和回退原因。
+- CSV 与旧版 XLS 仍使用各自原读取方式；数值核对及结果语义不变。
+
+影响文件：
+- core/src/base_audit/systems/s3_central_statistics/csv_importer.py
+- core/src/base_audit/systems/s3_central_statistics/service.py
+- core/src/base_audit/settings.py
+- core/src/base_audit/web_app.py
+- core/frontend/web/index.html
+
+配置影响：新增读取器选择，默认 AUTO；不改 3.2 配置工作簿。
+
+性能：20,000 行×14 列合成 XLSX 导数的完整导入阶段，Calamine 约 0.82 秒，OpenPyXL 约 6.83 秒；记录数量与对拍值一致。
+
+验证：S3 系统组 556 passed、6 skipped、649 deselected、5 subtests passed；Windows 与 WSL Linux core 全量回归待本轮完成后补记。
+
+Git提交：未提交。
 
 ## v1.2.2 — 2026-10-13 21:54
 

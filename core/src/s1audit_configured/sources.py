@@ -21,7 +21,7 @@ from .model import (
     Configuration, EvalValue, Evidence, ExternalMetricSpec, MetricSpec,
     RuleDefinition, RuntimeContext, SourceBinding, SourceContract,
 )
-from .source_reader import get_reader
+from .source_reader import file_hashing_enabled, file_sha256 as _content_file_sha256, get_reader
 
 
 _AMOUNT_FACTORS = {"元": Decimal(1), "万元": Decimal(10000), "亿元": Decimal(100000000)}
@@ -31,11 +31,7 @@ DEFAULT_SCHEMA_SNAPSHOT_DIR = default_data_dir() / ".schema_snapshots"
 
 
 def file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    return _content_file_sha256(path)
 
 
 def _norm(value: Any) -> str:
@@ -188,6 +184,15 @@ class SourceRepository:
         self.runtime_paths = runtime_paths or RuntimePaths()
         self.configuration = configuration
         self.context = context
+        metrics_by_path: dict[tuple[str, tuple[str, ...], tuple[str, ...]], list[MetricSpec]] = defaultdict(list)
+        metrics_by_sheet_headers: dict[tuple[str, str, tuple[str, ...]], list[MetricSpec]] = defaultdict(list)
+        for metric in configuration.metrics:
+            metrics_by_path[(metric.business, metric.row_path, metric.column_path)].append(metric)
+            metrics_by_sheet_headers[(metric.business, metric.sheet, metric.row_header_titles)].append(metric)
+        self._metrics_by_path = {key: tuple(values) for key, values in metrics_by_path.items()}
+        self._metrics_by_sheet_headers = {
+            key: tuple(values) for key, values in metrics_by_sheet_headers.items()
+        }
         self._books: dict[tuple[str, str], _Workbook] = {}
         self._retrieval_cache: dict[tuple[Any, ...], EvalValue | RetrievalError] = {}
         self._external_layouts = {}
@@ -230,6 +235,8 @@ class SourceRepository:
             self.data_quality_warnings.append(warning)
 
     def hashes_unchanged(self) -> bool:
+        if not file_hashing_enabled():
+            return True
         unchanged = True
         for key, path in self._selected_paths.items():
             try:
@@ -251,6 +258,8 @@ class SourceRepository:
         return pairs
 
     def snapshot_selected_hashes(self) -> None:
+        if not file_hashing_enabled():
+            return
         for role, binding in self.selected_bindings():
             key = f"{role}:{binding.source_id}"
             path = Path(binding.path).resolve()
@@ -410,6 +419,13 @@ class SourceRepository:
             self._retrieval_cache[cache_key] = enriched
             raise enriched from exc
 
+    def _metrics_for_path(self, business: str, row_path: tuple[str, ...],
+                          col_path: tuple[str, ...], sheet_name: str) -> tuple[MetricSpec, ...]:
+        candidates = self._metrics_by_path.get((business, row_path, col_path), ())
+        if sheet_name:
+            return tuple(metric for metric in candidates if metric.sheet == sheet_name)
+        return candidates
+
     def _retrieve_template(self, function_name: str, args: tuple[Any, ...], keywords: dict[str, str],
                            rule: RuleDefinition) -> EvalValue:
         role = "current" if function_name == "V_CUR" else "previous"
@@ -432,15 +448,11 @@ class SourceRepository:
         row_path = _as_path(row_argument, "行路径")
         col_path = _as_path(column_argument, "列路径")
         sheet_name = positional_sheet or keywords.get("sheet") or rule.default_sheet or (contract.default_sheet if contract else "")
-        candidates = [metric for metric in self.configuration.metrics
-                      if metric.business == business and metric.row_path == row_path
-                      and metric.column_path == col_path and (not sheet_name or metric.sheet == sheet_name)]
+        candidates = self._metrics_for_path(business, row_path, col_path, sheet_name)
         if not candidates and (not binding.business or binding.business == rule.business):
             # When the runtime business name differs from the source ID, permit the rule business
             # only if its complete metric key remains unique.
-            candidates = [metric for metric in self.configuration.metrics
-                          if metric.business == rule.business and metric.row_path == row_path
-                          and metric.column_path == col_path and (not sheet_name or metric.sheet == sheet_name)]
+            candidates = self._metrics_for_path(rule.business, row_path, col_path, sheet_name)
         if not candidates:
             raise RetrievalError("CATALOG_METRIC_NOT_FOUND", "模板指标目录中不存在该业务、Sheet 和行列路径")
         if len(candidates) > 1:
@@ -487,9 +499,9 @@ class SourceRepository:
             self._selected_paths[f"layout:{source_id}"] = path
             self.start_hashes.setdefault(f"layout:{source_id}", digest)
         business = metric.business
-        configured_metrics = [item for item in self.configuration.metrics
-                              if item.business == business and item.sheet == metric.sheet
-                              and item.row_header_titles == metric.row_header_titles]
+        configured_metrics = self._metrics_by_sheet_headers.get(
+            (business, metric.sheet, metric.row_header_titles), (),
+        )
         column_paths = tuple(sorted({item.column_path for item in configured_metrics}))
         key = (role, str(book.path), book.binding.source_id, business, metric.sheet,
                metric.row_header_titles, column_paths)

@@ -1,0 +1,36 @@
+【时间】2026-10-22 21:10:51
+【执行者】Codex
+【修改前/后 commit】cac9e1068367bdc46f27685e043aff0cfcd2294c / 未提交，HEAD 未变化
+【WIP 状态】修改前工作树有多项未提交改动。本次仅修改 S5 审核引擎、测试与留痕文件，未覆盖、整理或回滚其他 WIP。
+
+【修改目的】优化 S5-F1 当前业务多机构审核的重复解析和模板指标目录定位耗时，同时保持所有启用规则都进入审核链。
+
+【修改内容】
+- `core/src/s1audit_configured/dsl.py`：缓存只读审核表达式 AST、取值字典解析项和依赖检查结果；取值字典每次仍返回独立字典，AST 节点不可变。
+- `core/src/s1audit_configured/sources.py`：按业务/行列路径、业务/工作表/行表头建立指标索引，保持重复指标顺序与歧义判断。
+- `core/tests/s5/test_s5_configured_engine.py`：增加取值字典返回独立映射的回归测试。
+- 更新 S5-F01 CHANGELOG、VERSION_MANIFEST、开发日志和用户更新日志。
+
+【配置与业务影响】没有减少规则、跳过审核、改变规则适用范围或取数/错误语义；不修改真实配置、S1-S4 功能或输出列。S5-CFG-01 与产品版本不变。
+
+【性能对照】在同一进程、同一组 16 个本地单位贷款工作簿、同一配置/模板/外部文件上，对照旧线性目录扫描和每次重新解析路径与优化后的索引/缓存：
+- 规则审核：19.92 秒 → 13.56 秒，约快 32%。
+- 整批执行：24.08 秒 → 17.79 秒，约快 26%。
+- 14 个识别文件生成 5,279 条规则结果；旧/新结果逐条签名相同：634 TRIGGERED、4,644 PASSED、1 CALCULATION_FAILED。另有 2 个文件未通过身份识别。这组本地样例用于性能与等价性对照，不代表所有业务数据均无错误。
+- 优化后解析缓存记录：表达式 124 次未命中、20,187 次命中；取值字典及依赖检查各 2,389 次未命中、5,281 次命中。
+
+【验证】
+- `.venv\Scripts\python.exe -X utf8 -m pytest -q core/tests/s5/test_s5_configured_engine.py core/tests/s5/test_s5_integration.py`：77 passed，6 warnings。
+- `.venv\Scripts\python.exe -X utf8 -m pytest -q -rs -m s5 core/tests`：339 passed / 884 deselected / 6 warnings / 3 subtests passed。
+- 6 条 warning 为测试环境未安装 python-calamine 时的预期 openpyxl 回退提示。
+- A/B 逐条结果签名一致；未运行 S1-S4 回归、未打包、未提交。
+
+【组件版本】
+系统：S5 逐笔统计系统（配置版）
+影响功能：S5-F01 汇总核查表校验 v3.0.0 → v3.0.1
+影响配置：S5-CFG-01 未变
+未修改的相关组件：S1、S2、S3、S4、S5-F02/F03/F04
+版本升级原因：内部解析与指标目录查找性能优化，业务结果契约不变，按 PATCH 升级。
+
+【删除清单】没有删除项目文件；A/B 临时输出由系统临时目录自动清理。
+【回滚提示】回退本记录列出的 dsl.py、sources.py 与测试改动，并恢复对应 S5-F01 版本/日志即可；无需迁移配置或回滚业务数据。

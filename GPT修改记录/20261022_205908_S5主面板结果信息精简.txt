@@ -1,0 +1,26 @@
+【时间】2026-10-22 20:59:08
+【执行者】Codex
+【修改前/后 commit】cac9e1068367bdc46f27685e043aff0cfcd2294c / 未提交，HEAD 未变化
+【WIP 状态】修改前工作树有多项未提交改动。本次仅改动下列 S5 页面、测试和留痕文件，未覆盖或整理其他 WIP。
+
+【修改目的】按用户反馈移除截图中不需要的重复结束信息和冗长配置检查明细。
+
+【修改内容】
+- `core/frontend/web/index.html`：移除 S5-F1 完成后的重复统计卡片与“打开审核结果/打开输出目录”按钮；主面板不再显示整段配置检查报告和逐条地址问题；配置检查弹窗只保留简短状态及问题/提示数量，完整报告仍可打开。
+- `core/tests/s5/test_s5_integration.py`：更新 S5 页面断言，覆盖重复结果卡片移除、主面板不展开配置检查明细、报告入口保留。
+- `版本管理/S5_逐笔统计系统配置版/功能/S5-F01_配置规则审核/CHANGELOG.md`、`日志/开发日志.txt`：记录本次界面调整。
+
+【配置与业务影响】没有改审核规则、配置文件、结果文件、输出目录或执行流程；完整配置检查报告仍照常生成。
+
+【验证】
+- `python -X utf8 -m pytest -q -rs -m s5 tests/s5/test_s5_integration.py`：42 passed，6 warnings，0 failed。6 条 warning 为测试环境未安装 python-calamine 时的既有 openpyxl 自动回退提示。
+- `git diff --check -- core/frontend/web/index.html core/tests/s5/test_s5_integration.py`：通过。
+- 未打包、未提交；未执行全量测试。
+
+【组件版本】
+系统：S5 逐笔统计系统（配置版）
+影响功能：S5-F01 汇总核查表校验 v3.0.0 → v3.0.0（纯界面信息精简，不升级）
+影响配置：S5-CFG-01 未变
+产品版本：未变
+
+【回滚提示】回退本记录列出的前端与测试改动，并删除本 GPT 记录及对应开发日志/CHANGELOG 条目即可；不涉及配置迁移或数据回滚。

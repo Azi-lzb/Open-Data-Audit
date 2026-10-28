@@ -1,0 +1,40 @@
+时间：2026-10-27 21:58:24
+执行者：Codex
+修改前 commit：cac9e10
+修改后 commit：cac9e10（未提交）
+WIP 状态：工作区已有多项用户未提交修改；本轮只在两个打包入口增加定向改动，未重置或覆盖其他文件。
+
+【目的】
+处理 PyWebView 完整版与 S1/S2 版 EXE 启动时无法解压 python312.dll 的问题，并处理 Flask 构建日志中的 base_library.zip 占用风险。
+
+【修改文件】
+- shell-pywebview/build_exe.py
+- shell-flask/build_exe.py
+- GPT修改记录/20261027_215824_WindowsPyInstaller并发打包修复.txt
+- 日志/开发日志.txt
+
+【修改内容】
+- PyWebView：PyInstaller workpath/specpath 改为每次构建独立的临时目录；增加 --noconfirm。构建完成后读取 onefile 归档，实际解压 Python runtime DLL 和 base_library.zip，并确认 PYZ 中包含 webview 与 webview.platforms.edgechromium；自检失败则构建失败。
+- Flask：workpath/specpath 改为每次构建独立的临时目录；构建后实际解压 Python runtime DLL 和 base_library.zip 自检。避免不同发行方案或 Win7/现代构建同时运行时清理同一 build 目录。
+- 使用 BAT 会选中的用户级 Python 3.12.10 重新生成 PyWebView 完整版与 S1/S2 版。两份产物均通过归档自检。此前直接用根目录 .venv（未安装 webview）生成的中间 EXE 已被正确环境构建的 EXE 覆盖。
+- 发行目录沿用当前 config-real，属于内部配置包。
+
+【组件版本】
+构建基础设施调整；产品版本 V26.1.7.13 不变，S1/S2/S3/S5 功能与配置组件版本均不升级。
+
+【验证】
+- .venv Python 3.12.10 对 shell-pywebview/build_exe.py 与 shell-flask/build_exe.py 执行 py_compile：通过。
+- git diff --check：通过。
+- PyWebView 完整版与 S1/S2 版构建：均成功。
+- 对两份最终 EXE 使用 CArchiveReader 解压 python312.dll 和 base_library.zip；base_library.zip CRC 检查通过；PYZ 内的 webview 与 EdgeChromium 模块均存在。
+- 未启动图形界面做人工操作验证；未运行全量 pytest。
+
+【未完成/已知情况】
+- 用户日志中的 Flask Win7 构建失败是另一问题：当前仅有 runtime/python38 嵌入式解释器，runtime/python38-full/python.exe 尚未安装；本轮未运行 Win7 构建。
+- Flask 现代版 base_library.zip 构建失败的修复已改为独立工作目录，但本轮只做语法及 diff 检查，未重打 Flask 包。
+
+【删除清单】
+无。临时 PyInstaller 工作目录由构建程序自动清理。dist 中原有其他产物未删除。
+
+【回滚提示】
+仅撤回两个打包脚本中本轮的独立 workpath 与归档自检代码即可；不要整体还原这些文件，因为它们在本轮前已有其他用户未提交改动。

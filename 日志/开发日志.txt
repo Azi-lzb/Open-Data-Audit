@@ -5,6 +5,21 @@
 （面向开发者，记录打包、内部机制、测试基建等开发向变更；逐文件细节见 GPT修改记录/。
  用户可感知的功能变化见 更新日志.txt——两份日志在每轮提交时同步维护。）
 
+────────────────── 2026-10-27（S2-F01 大集中数据提示分流） ──────────────────
+· 外部工作簿导入提示不再转换为校验规则 AuditFinding；逐条通过外部读取进度事件写入运行记录，并在非阻断完成状态显示数量。审核发现统计不包含这些数据质量提示，空白/非数值按0参与核对的行为不变；表头 null/NULL 在普通报表和时序格式均作为空白占位，不识别为指标列。
+· S2-F01 v10.8.0→v10.8.1；S2-CFG-01、S2-CFG-02 未变。S2 回归 464 passed / 6 skipped / 1 既有 S5 版本断言失败；详情见 GPT 修改记录/20261027_212204_S2-F01大集中数据提示移出审核清单.txt 及后续补充记录。
+
+────────────────── 2026-10-27（S1-F02 模板外隐藏工作表提示） ──────────────────
+· 待处理文件工作表预览统一使用“所选模板、同名工作表、模板外工作表”表述，移除界面中的 F1/F2 标签和兜底模板提示；从 workbook.xml 统计 hidden/veryHidden 数量，悬浮详情提示 veryHidden 需通过 VBA 编辑器修改 Visible 属性。审核与汇总链路不变。
+· S1-F02 v1.3.0→v1.3.1；配置不变。定向与 S1 回归结果见 GPT 修改记录/20261027_205145_S1-F02模板外隐藏工作表提示.txt。
+
+────────────────── 2026-10-22（S5-F1 单工作簿输出与耗时记录） ──────────────────
+· S5-F1 通过请求级 ContextVar 停用工作簿内容哈希；其他审核引擎调用仍默认执行完整性哈希校验。S5-F1 结果明确标记输入完整性为 NOT_CHECKED。
+· 移除 S5-F1 对每个机构调用 `write_run_outputs` 的路径，避免创建单机构 XLSX、审核副本和 JSON；仅将合并结果写为带时间戳的单份 XLSX，直接放在输出目录。
+· 汇总结果定位链接指向原始输入文件；跨盘符时写入绝对文件 URI。运行记录输出配置、参照、识别、审核、公式扫描、条件格式扫描、导出和总耗时。
+· S5-F01 v2.7.1→v3.0.0（输出协议破坏性变更）；产品 V26.1.7.12→V26.1.7.13；S5-CFG-01、S1/S2/S3 功能与配置不变。未打包、未提交。
+· S5 回归：331 passed / 6 skipped / 0 failed，3 subtests passed；6 项需 Flask 的测试按环境条件跳过，6 条 Calamine 缺包回退 warning 符合预期。
+
 ────────────────── 2026-10-21（S5 手动检查与待处理文件筛选） ──────────────────
 · S5 页面初始化、选择路径、F1 执行和维护工具执行不再自动触发配置检查/模板识别；保留手动检查按钮、手动识别按钮和手动选模板路径。
 · 待处理文件增加模板匹配状态、业务类型、日期信息及组合筛选；筛选保留隐藏文件勾选状态，全选/取消仅作用于可见项。
@@ -403,3 +418,105 @@
 【S5-F01 v2.3.2】
 · “检查配置”和“自动识别模板”改用 S1 的 `btn soft micro` 紧凑蓝色按钮，所在标题行使用 `field-head tight`，按钮紧跟字段标题左侧排列。
 · S5 路径及按钮、隐藏维护入口、交付版前端显示和版本清单定向测试 11 passed。未打包、未提交。
+
+────────────────── 2026-10-22 15:39:09（Rust 优先选型与分系统迁移规范） ──────────────────
+【治理】
+· 按用户要求将优化范围扩展到 S1/S2/S3/S5，S4 仅为预览 UI；默认按 S5、S2、S3、S1 分系统实施，新增 rules/12_Rust优化与引擎路由.md，并由 AGENTS.md 按需引用。
+· 性能敏感解析、计算、读写优先评估 Rust，以正确性和实测速度决定自动路由；读取、计算、写入及完整业务分别计时/对拍，包含跨语言转换、ZIP 压缩条件、内存和文件大小。每个系统完成后运行系统组及全项目回归。
+· S1 公式复制、重算和保存分开优化；Office 仍是现行真实计算路径。Rust 公式后端须隔离验证完整依赖、动态引用和输入变化后的缓存刷新，不能凭语言或函数名推断兼容。INDIRECT 易失、INDEX 通常非易失；不得为提速擅改业务公式。
+· 同步架构、Excel 边界、测试与后端实现治理，允许统一业务契约下注册多工具后端，禁止复制整套业务系统。原有未提交的用户版日志范围调整保留，未改业务代码、配置、用户版更新日志或版本清单。
+【检查】
+· git diff --check 通过；7 份规则/入口 Markdown 的空白、规则链接、范围和既有 WIP 条款保留校验通过。仅治理文档修改，不运行 pytest、Office 真机计算或性能基准；不升级版本，未打包、未提交。
+
+────────────────── 2026-10-22 16:24:18（按现有快路径收窄 Rust 迁移候选） ──────────────────
+【治理】
+· 按用户补充，S5 近期已优化，先评估不强制重写；迁移优先找现有 OpenPyXL 热点。已使用 Calamine 的读取和 Direct OOXML 写入不因 Rust 化而替换；Calamine 只用于读取，rust_xlsxwriter 面向新建工作簿，umya 才进入已有 XLSX 编辑候选。
+· S5 结果输出合成数据基准中，现有 Direct OOXML 在 50/500 行分别为 0.021/0.041 秒，5000 行为 0.247 秒；rust_xlsxwriter 子进程端到端为 0.092/0.101/0.263 秒，umya 为 0.070/0.089/0.342 秒。rust_xlsxwriter 仅在 5000 行的库内写入耗时略低，计入桥接后仍未胜出；umya 原型未覆盖完整报表格式能力。不建议替换 S5-F1 现有结果输出或添加用户可选后端。
+· 同步收窄 AGENTS、Excel/OOXML 与 Rust 路由规则；不改产品代码、UI、配置及用户版更新日志，不升级产品/组件/配置版本。探索 Rust CLI 源码及构建产物清理情况见本次 GPT 修改记录。
+
+────────────────── 2026-10-22 17:08:52（S2 大集中数据读取引擎路由与基准） ──────────────────
+【S2-F01 v10.8.0】
+· 大集中外部数据读取增加自动、Calamine、OpenPyXL 三种选择。自动优先 Calamine，仅自动模式允许因缺包或读取失败回退 OpenPyXL；显式引擎失败时返回明确错误。
+· S2 高级设置保存读取引擎选择；运行过程写出实际引擎/版本、读取耗时及回退原因。时序与普通报表识别、空值/异常处理、映射与输出语义不变。
+· 真实 55.8 KB 外部数据工作簿（1,488 个值、188 条机构映射）Calamine/OpenPyXL 中位数分别为 0.399/0.467 秒，值对拍一致。10,000 行×12 指标时序工作簿分别为 1.117/3.474 秒，值对拍一致。S2 配置工作簿读取的绝对耗时较低，未迁移。
+· 输出基准：Direct OOXML 对 S2 三表小中型写入远快于 OpenPyXL；Rust XLSX 原型 200/1,000 行端到端较慢，5,000/10,000 行分别快约 0.064/0.159 秒。只对拍了值、表顺序、冻结窗格和筛选范围，没有覆盖全部样式/列宽；未接入产品，暂不增加写入后端选择。
+· 验证：Windows core 全量 1,196 passed、7 skipped、8 warnings、5 subtests；WSL Ubuntu AMD64 core 全量 1,182 passed、21 skipped、8 warnings、5 subtests；版本清单定向测试 8 passed。未实际使用 Office/WPS 人工验收，未打包、未提交。
+· 详细计时和文件清单见 `GPT修改记录/20261022_170852_S2_大集中数据Calamine路由与读写基准.txt`。
+
+────────────────── 2026-10-22（S3 导数读取与比较表写入路由） ──────────────────
+【S3-F01 v1.6.0 / S3-F04 v1.3.0】
+· S3-F01 与 F04 的 XLSX 大集中导数增加 Calamine 读取路径和高级设置选择；自动优先 Calamine，自动失败时回退 OpenPyXL 并记录原因，手动选择失败时明确报错。CSV、XLS、表头/行列定位、业务计算与异常语义不变。
+· S3-F01 新建比较结果工作簿增加 Rust xlsxwriter 后端和 AUTO/Rust/OpenPyXL 选择；仅含 S3 的完整版构建可选附带 Windows AMD64/Linux AMD64 sidecar。自动模式缺少 sidecar 时使用 OpenPyXL；显式选择不可用时明确报错。Linux sidecar 为 musl 静态链接，不依赖目标 glibc。
+· 输入基准：20,000 行×14 列合成 XLSX 完整导入，Calamine 约 0.82 秒，OpenPyXL 约 6.83 秒；数据集记录和字段对拍一致。
+· 输出基准：20,000 行合成 S3-F01 比较结果表，Rust xlsxwriter 约 1.18 秒，OpenPyXL 约 404.58 秒；单元格值、列序、冻结窗格、筛选、列宽、表头和抽样警示格式一致。Rust 结果体积更小，不以 ZIP 字节相同作为正确性条件。
+· 验证：S3 系统组 556 passed、6 skipped、649 deselected、5 subtests passed；S3 writer Windows 定向 2 passed；Windows 与 WSL Linux core 全量回归待补。
+· 构建入口加入可选 sidecar 收集；S1-S2 profile 不收集 S3 writer。未打包、未提交。
+
+
+────────────────── 2026-10-22 18:41:34（S1 读写引擎路由与 OpenPyXL 热点优化） ──────────────────
+【S1-F01 v2.6.0 / S1-F02 v1.3.0】
+· F1 新建审核结果表独立路由 AUTO/Rust xlsxwriter/OpenPyXL；保留审核副本的外部文件目标、工作表和单元格定位及表格显示契约。F2 源值读取独立路由 AUTO/Calamine/OpenPyXL，新建汇总结果表路由 AUTO/Rust xlsxwriter/OpenPyXL。自动模式可回退，手动模式严格。
+· 公式复制与 Office 缓存重算流程未变；S1 模板命名区域/结构预检未迁移。S5 和 S4 未修改。
+· Windows 基准：F2 3 工作簿/9,000 行读取 0.1661s/1.1905s（Calamine/OpenPyXL，7.17x）；新建汇总表 1k/5k/20k 行 Rust/OpenPyXL 为 0.0444/0.1917、0.1439/0.8677、0.5256/3.5827 秒。F1 1k/3k 问题行审核表 Rust/OpenPyXL 为 0.419/1.532、1.228/7.980 秒。均含适配器/sidecar 桥接成本，并对拍业务可见内容与导航。
+· S1 组 512 passed / 13 skipped / 693 deselected / 3 subtests；Windows core 全量 1205 passed / 13 skipped / 8 warnings / 5 subtests；WSL Ubuntu AMD64 core 全量 1197 passed / 21 skipped / 8 warnings / 5 subtests。8 个 warning 是 S5 测试环境缺少 python-calamine 产生的自动回退提示，无测试失败。
+· Python compileall、版本清单测试 8 passed、Linux-2/Linux-7 bash -n 与 git diff --check 通过。Windows/Linux AMD64 writer sidecar 已构建并验证；完整应用包未构建。公开快照检查因没有暂存内容而未执行；本轮没有暂存或 Git 操作。
+· Excel/WPS COM 真机重算与 UOS 真机尚未验收。详细过程及文件清单见 `GPT修改记录/20261022_184134_S1_Rust读写路由与OpenPyXL热点优化.txt`。
+
+────────────────── 2026-10-22 19:54:22（S1 Linux LibreOffice 批量重算） ──────────────────
+【S1-F01 v2.6.1】
+· 将 Linux 原生审核流程的公式重算改为每批最多 8 份副本共用一次 LibreOffice 进程；暂存输出全部生成后才回写。公式写入耗时、批次数和批量重算耗时分别记录；Windows Excel/WPS COM 路径与公式语义不变。
+· 五轮基准：3 份各含 1,000 行、2,000 个 INDEX/MATCH 与 INDIRECT 公式的审核副本，逐份重算中位数 8.79 秒、批量 3.68 秒，约 2.39 倍；修改公式引用值及动态地址后重算缓存正确。10 份中文文件名副本以 8+2 两批实测，缓存全部正确。
+· Windows core 全量 1,207 passed / 13 skipped / 8 warnings / 5 subtests；WSL Ubuntu AMD64 core 全量 1,199 passed / 21 skipped / 8 warnings / 5 subtests。8 条 warning 为测试环境缺少 python-calamine 后既有自动回退提示。
+· 未在 Windows Excel/WPS COM 或 UOS 真机验收；未打包、未提交。S1-CFG-01、S2/S3/S5 与产品版本未变。
+· 具体文件和计时报告见 `GPT修改记录/20261022_195422_S1-F01_批量LibreOffice重算优化.txt`。
+
+────────────────── 2026-10-22 20:59:08（S5 主面板结果信息精简） ──────────────────
+【S5-F01 v3.0.0】
+· 移除 F1 结束后的重复结果统计卡片与快捷按钮；主面板状态区不再展开配置检查规则数、地址明细和逐条问题。
+· 配置检查弹窗只显示检查状态及问题/提示数量，完整报告仍保存到“执行结果”并可通过“打开检查报告”查看。
+· Windows S5 集成测试：42 passed，6 warnings；warning 为测试环境缺少 python-calamine 后自动回退 openpyxl。`git diff --check` 通过。未打包、未提交，业务与配置语义不变。
+· 详细记录见 `GPT修改记录/20261022_205908_S5主面板结果信息精简.txt`。
+
+
+────────────────── 2026-10-22 21:10:51（S5-F1 当前业务审核性能优化） ──────────────────
+【S5-F01 v3.0.0 → v3.0.1】
+· 规则审核复用不可变表达式 AST，并缓存取值字典解析和依赖检查；模板指标按业务/行列路径、业务/工作表/行表头建索引。没有减少规则、跳过取数或改变错误处理。
+· 同组 16 个本地样例旧/新路径 A/B：规则审核 19.92→13.56 秒，整批 24.08→17.79 秒；14 个识别文件的 5,279 条结果签名一致（634 TRIGGERED、4,644 PASSED、1 CALCULATION_FAILED；另 2 个文件身份识别失败）。
+· S5 回归：339 passed / 884 deselected / 6 warnings / 3 subtests；warning 为测试环境缺少 python-calamine 后的预期 openpyxl 回退。未打包、未提交，S5-CFG-01 与其他系统未变。
+· 详细记录见 `GPT修改记录/20261022_211051_S5-F1当前业务审核性能优化.txt`。
+
+
+────────────────── 2026-10-27 17:38:44（S1-F01 模板匹配与 Excel/WPS 打开兼容） ──────────────────
+【S1-F01 v2.6.1 → v2.6.2】
+· S1-F01 自动模板推荐与待处理列表根据工作表 `state` 忽略源文件 `veryHidden` 表；普通 `hidden` 表继续参与匹配，S1-F02 工作表提示保留原口径。模板结构比对仍只校验模板声明的工作表和区域。
+· “自动”模式遇到 Excel COM 无法打开的单个工作簿，且当前会话没有其他打开的工作簿时，自动尝试 WPS 并继续执行；明确选 Excel 不切换。打开失败原因和切换结果写入运行记录。
+· 对用户本次 7 份源文件及 Direct OOXML 输出副本实测：Excel COM 无法打开，WPS COM 可打开；对 7 份审核副本临时拷贝完成重算和保存，未修改原始源文件及失败批次输出。
+· 定向 `test_discovery.py`、`test_preflight_xlsx.py`、`test_native_uos.py`：69 passed。S1 组：518 passed / 13 skipped / 1 failed / 696 deselected / 3 subtests；唯一失败为既有 `test_version_manifest.py` 的 S5-F01 期望 3.0.0 与当前清单 3.0.1 不一致，未改 S5。
+· 未调整真实配置与产品整包版本，未打包、未提交。详细记录：`GPT修改记录/20261027_173844_S1-F01模板匹配与WPS打开兼容.txt`。
+
+────────────────── 2026-10-27 21:58:24（Windows PyInstaller 工作目录隔离与产物自检） ──────────────────
+【构建流程】
+· PyWebView 与 Flask 每次构建使用独立 PyInstaller workpath/specpath，避免不同交付方案并行时清理同一 base_library.zip；PyWebView 改为无交互覆盖。
+· 两个构建入口增加 onefile 归档检查，实际解压 Python runtime DLL/base_library.zip；PyWebView 还检查 webview 与 EdgeChromium 模块存在。失败产物会阻止构建完成。
+· 用 BAT 会选择的用户级 Python 3.12.10 重打 PyWebView 完整版与 S1/S2 版，两包的 DLL 解压、ZIP CRC 与 WebView 模块检查通过。根目录 .venv 未安装 webview，因此不用它作为 PyWebView 构建解释器。
+· 两个打包脚本 py_compile、git diff --check 通过。未运行完整 pytest，也未打开 GUI 做人工操作验收。
+· Flask Win7 另有 Python 3.8.10 full runtime 安装失败，本轮未处理；Flask 现代版只改了构建目录隔离，未重打包。产品版本与业务组件版本不变，用户更新日志未改。
+· 详细记录：`GPT修改记录/20261027_215824_WindowsPyInstaller并发打包修复.txt`。
+
+────────────────── 2026-10-27 22:36:18（PyWebView 发行目录整理） ──────────────────
+【构建流程】
+· PyWebView 每次构建生成独立的 windows-时间目录；S1/S2 目录带 _S1-S2 后缀，同秒重名自动追加序号。失败时保留 BUILD_INCOMPLETE.txt；自定义 PYWEBVIEW_DIST_DIR 仍可用。
+· 实际运行两个 BAT，生成 windows-20261027_221833 与 windows-20261027_222032_S1-S2，检查 profile、配置、核心目录和 Python DLL 归档通过。旧平铺完整包与 S1/S2 包已按原构建时间移入独立目录，EXE 的 SHA-256 在移动前后一致。
+· 交付范围定向测试 25 passed；模拟同秒冲突及成功/失败标记、py_compile、git diff --check 通过。未打开 GUI、未跑全量 pytest；产品与业务组件版本不变，用户更新日志未改。
+· 详细记录：`GPT修改记录/20261027_223618_PyWebView发行目录整理.txt`。
+
+────────────────── 2026-10-27 23:56:39（Win7 Python 3.8.10、全量回归与六类发行包）──────────────────
+【构建与验证】
+· 为 Flask Win7 构建准备项目独立 Python 3.8.10 x86 运行库、venv 与 PyInstaller 4.10；旧版归档检查兼容 PyInstaller 4.10。未改系统 PATH 或其他 Python 注册。
+· Windows 11 AMD64 全量：1,224 passed / 7 skipped / 6 warnings / 5 subtests；WSL Ubuntu AMD64 全量：1,210 passed / 21 skipped / 6 warnings / 5 subtests。均退出码 0。warning 为测试 venv 缺 python-calamine 时的预期回退。
+· 构建 PyWebView full 与 S1/S2、Flask full 与 S1/S2（Flask 两包均含现代版和 Win7 x86 版）、AMD64 DEB full 与 S1/S2。Win7 PE 架构 0x14c；六个 Windows EXE 均通过 --help 启动检查。
+· 两个 DEB 的版本与 amd64 元数据正确，最低 glibc 2.25（目标 2.28）；Debian 10 容器内两包启动冒烟 2/2 通过，HTTP 200，端口正常释放。包内含本机 config-real，仅供内部使用；不含 LibreOffice。
+· 本轮仅将两个 DEB 复制到 dist 根目录，不复制 .sha256/.build-info；临时 staging 已清理。dist 输出保持既有其他发行包。
+· 测试报告：test-output/full-test-reports/FullTest_windows-amd64_20261027_233531.txt、FullTest_linux-amd64_20261027_233903.txt。
+· 当前仅 Windows 11 主机验证 Win7 产物，未在真实 Windows 7 系统验收。未提交；用户版更新日志及产品/组件版本未改。
+· 详细记录：GPT修改记录/20261027_235639_Win7环境全量回归与六类发行包.txt。

@@ -96,17 +96,20 @@ EXPECTED_VERSIONS = {
     # 前序 S2-F01 v6.1.0：按通用设置可选隐藏两类正常结果行；v6.0.2 从主配置读取单位设置；
     # v6.0.0：源数据与外部金额先精确换算到输出单位后再计算；
     # S1/S3 各配置 PATCH：同步补充工作簿内字段说明与高级版教程。
-    # S1-F01 v2.4.0：源文件工作表均在模板中时按覆盖关系匹配，模板额外工作表不降级；v2.5.0 增加待处理文件筛选。
-    # S1-F02 v1.2.2：模板多出的表不显示部分匹配；源新增表区分兜底可用性。
-    "S1-F01": "2.5.0", "S1-F02": "1.2.2", "S1-F03": "1.1.0",
+    # S1-F01 v2.4.0：源表被模板覆盖即可匹配；v2.5.0 增加待处理文件筛选；v2.6.0 增加审核结果 Rust/OpenPyXL 写入路由。
+    # v2.6.3：外部文件快路径不支持复杂外部表时降级 openpyxl，写入器全失败也只标记该文件并继续链路。
+    # S1-F02 v1.2.2：模板多出的表不显示部分匹配；源表区分兜底可用性；v1.3.0 增加 Calamine/Rust 读写路由；v1.3.1 修正模板外隐藏工作表提示。
+    "S1-F01": "2.6.3", "S1-F02": "1.3.1", "S1-F03": "1.1.0",
     "S1-F04": "1.1.0", "S1-F05": "1.0.1",
     # S5-F01 v2.2.x unified external-layout reads, row diagnostics, and the F1-F4 card.
-    # v2.3.0 defaults to bundled paths; v2.3.1 migrates renamed defaults; v2.3.2 aligns buttons; v2.4.0 validates enabled rules; v2.4.1 streams config validation; v2.5.0 makes checks explicit; v2.6.0 refines sheet matching; v2.7.0 adds current-business and all-enabled check scopes.
-    "S5-F01": "2.7.1",
+    # v2.3.0-v2.7.1 add configured-path, configuration-check, and matching improvements;
+    # v3.0.0 changes F1 output to one consolidated workbook and removes the ledger/copy protocol;
+    # v3.0.1 caches immutable audit-expression ASTs and dictionary/path validation indexes.
+    "S5-F01": "3.0.1",
     # S5-F02/F03/F04 are separately registered hidden configuration tools.
     "S5-F02": "1.0.0", "S5-F03": "1.0.0", "S5-F04": "1.0.0",
-    "S2-F01": "10.7.0", "S3-F01": "1.5.2", "S3-F02": "1.1.0",
-    "S3-F03": "1.1.0", "S3-F04": "1.2.2", "S3-F05": "2.0.0",
+    "S2-F01": "10.8.1", "S3-F01": "1.6.0", "S3-F02": "1.1.0",
+    "S3-F03": "1.1.0", "S3-F04": "1.3.0", "S3-F05": "2.0.0",
     "S1-CFG-01": "2.0.0", "S2-CFG-01": "8.4.0", "S2-CFG-02": "1.0.0",
     "S5-CFG-01": "2.0.0",
     "S3-CFG-00": "2.0.2", "S3-CFG-01": "3.0.3",

@@ -1,10 +1,11 @@
-"""Batch S1F1: resolve identity per file and keep each audit context isolated."""
+"""Batch configured audits: resolve identity per file and consolidate one result workbook."""
 from __future__ import annotations
 
-import json
 import uuid
 from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path
+from time import perf_counter
 
 from .engine import AuditEngine, _result_dict
 from .conditional_audit import extract_conditional_triggers
@@ -12,8 +13,7 @@ from .formula_error_scan import scan_validation_formula_errors
 from .institutions import InstitutionCatalog, resolve_institution
 from .model import AuditRunResult, Configuration, RuleResult, RuntimeContext, SourceBinding
 from .outputs import _write_result_workbook
-from .sources import file_sha256
-from .source_reader import shared_readers, reader_diagnostics
+from .source_reader import file_hashing_enabled, shared_readers, reader_diagnostics
 from .runtime import RuntimePaths, AuditCancelled, check_cancel
 
 
@@ -44,6 +44,8 @@ def run_batch(configuration: Configuration, files: list[Path], *, business: str,
               identity_sheet: str = "", identity_cell: str = "",
               runtime_paths: RuntimePaths | None = None, on_progress=None, cancel_event=None,
               allow_external_time_series: bool = False) -> dict:
+    total_started = perf_counter()
+    timings: dict[str, float] = {}
     check_cancel(cancel_event)
     runtime_paths = runtime_paths or RuntimePaths()
     if not files:
@@ -51,25 +53,30 @@ def run_batch(configuration: Configuration, files: list[Path], *, business: str,
     if previous_files and not previous_period:
         raise ValueError("选择上期文件时必须填写上期报告期")
     output_root = output_root.resolve()
-    batch_id = "batch_" + uuid.uuid4().hex
-    batch_dir = output_root / batch_id
-    batch_dir.mkdir(parents=True, exist_ok=False)
-    # Capture reference integrity before identification as well as after auditing.
-    watched = dict(catalog.hashes)
-    if runtime_paths.template_path:
+    output_root.mkdir(parents=True, exist_ok=True)
+    batch_id = uuid.uuid4().hex
+    verify_input_integrity = file_hashing_enabled()
+    watched = dict(catalog.hashes) if verify_input_integrity else {}
+    if verify_input_integrity and runtime_paths.template_path:
+        from .sources import file_sha256
         watched[str(runtime_paths.template_path)] = file_sha256(runtime_paths.template_path)
-    if configuration.path:
+    if verify_input_integrity and configuration.path:
         watched[str(configuration.path)] = configuration.sha256
-    if external:
+    if verify_input_integrity and external:
+        from .sources import file_sha256
         watched.setdefault(str(external), file_sha256(external))
     files = list(dict.fromkeys(path.resolve() for path in files))
-    source_hashes = {}
-    for path in [*files, *(previous_files or [])]:
-        if path.is_file():
-            source_hashes[str(path)] = file_sha256(path)
-    watched.update(source_hashes)
+    previous_files = list(dict.fromkeys(Path(path).resolve() for path in (previous_files or [])))
+    if verify_input_integrity:
+        from .sources import file_sha256
+        for path in [*files, *previous_files]:
+            if path.is_file():
+                watched[str(path)] = file_sha256(path)
+    stage_started = perf_counter()
     records = inspect_institutions(files, catalog, identity_sheet=identity_sheet, identity_cell=identity_cell, on_progress=on_progress, cancel_event=cancel_event)
-    previous_records = inspect_institutions(previous_files or [], catalog, identity_sheet=identity_sheet, identity_cell=identity_cell, on_progress=on_progress, cancel_event=cancel_event)
+    previous_records = inspect_institutions(previous_files, catalog, identity_sheet=identity_sheet, identity_cell=identity_cell, on_progress=on_progress, cancel_event=cancel_event)
+    timings["file_recognition_seconds"] = perf_counter() - stage_started
+    _report_timing(on_progress, "文件识别", timings["file_recognition_seconds"], perf_counter() - total_started)
     previous_by_code = defaultdict(list)
     for record in previous_records:
         if record["status"] == "IDENTIFIED":
@@ -77,6 +84,7 @@ def run_batch(configuration: Configuration, files: list[Path], *, business: str,
     engine = AuditEngine(configuration)
     runs: list[AuditRunResult] = []
     errors = {"RETRIEVAL_FAILED", "STRUCTURE_ERROR", "CALCULATION_FAILED", "CONFIG_ERROR"}
+    timings.update(rule_audit_seconds=0.0, formula_scan_seconds=0.0, conditional_format_scan_seconds=0.0)
     for index, record in enumerate(records, 1):
         check_cancel(cancel_event)
         if on_progress:
@@ -103,13 +111,12 @@ def run_batch(configuration: Configuration, files: list[Path], *, business: str,
                 default_external_source=external_id if external else "",
                 allow_external_time_series=allow_external_time_series,
             )
-            run = engine.run(context, output_dir=batch_dir / "单机构", businesses=[business], runtime_paths=runtime_paths, cancel_event=cancel_event)
+            stage_started = perf_counter()
+            run = engine.run(context, businesses=[business], persist_schema_snapshots=False,
+                             runtime_paths=runtime_paths, cancel_event=cancel_event)
+            timings["rule_audit_seconds"] += perf_counter() - stage_started
             layout_paths = [runtime_paths.template_path] if runtime_paths.template_path else []
-            for entry in run.ledger.get("audit_copy_manifest", []):
-                if entry.get("role") == "layout":
-                    watched.setdefault(entry["source_path"], entry["sha256_before"])
-                    if Path(entry["source_path"]) not in layout_paths:
-                        layout_paths.append(Path(entry["source_path"]))
+            stage_started = perf_counter()
             try:
                 formula_scan = scan_validation_formula_errors(Path(record["source"]), layout_paths)
                 run.ledger["template_formula_scan"] = {
@@ -176,10 +183,11 @@ def run_batch(configuration: Configuration, files: list[Path], *, business: str,
                     run_id=run.run_id, rule_name="模板校验公式扫描失败",
                     error_evidence={"sheet": "", "cell": ""},
                 ))
+            finally:
+                timings["formula_scan_seconds"] += perf_counter() - stage_started
             run.ledger["rules"] = [_result_dict(item) for item in run.results]
             run.ledger["status_counts"] = dict(Counter(item.status for item in run.results))
-            copies = {str(Path(entry["source_path"]).resolve()): Path(entry["copy_path"])
-                      for entry in run.ledger.get("audit_copy_manifest", [])}
+            stage_started = perf_counter()
             try:
                 # Source rules and values are authoritative; the explicit
                 # layout template only bounds the conditional-format scan.
@@ -197,25 +205,35 @@ def run_batch(configuration: Configuration, files: list[Path], *, business: str,
                     "应用范围": "", "优先级": None, "来源文件": Path(record["source"]).name,
                     "判定说明": str(exc),
                 })
+            finally:
+                timings["conditional_format_scan_seconds"] += perf_counter() - stage_started
             check_cancel(cancel_event)
             run.ledger["conditional_format_results"] = run.conditional_format_results
-            _write_result_workbook(run, Path(run.output_files["result_workbook"]), copies)
-            Path(run.output_files["run_ledger"]).write_text(
-                json.dumps(run.ledger, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
             runs.append(run)
             counts = run.ledger["status_counts"]
             record.update(status="COMPLETED" if run.status == "COMPLETED" and not errors.intersection(counts) else "COMPLETED_WITH_ISSUES", run_id=run.run_id,
-                          counts=counts, result_path=run.output_files["result_workbook"], ledger_path=run.output_files["run_ledger"])
+                          counts=counts)
             if previous_files and not matched_previous:
                 record["message"] = "未匹配到同机构上期文件；涉及 V_PRE 的规则会报告取数失败"
         except AuditCancelled:
             raise
         except Exception as exc:
             record.update(status="FAILED", error_code=getattr(exc, "code", "AUDIT_FAILED"), message=str(exc))
+    for key, label in (
+        ("rule_audit_seconds", "规则审核"),
+        ("formula_scan_seconds", "模板公式扫描"),
+        ("conditional_format_scan_seconds", "条件格式扫描"),
+    ):
+        _report_timing(on_progress, label, timings[key], perf_counter() - total_started)
     check_cancel(cancel_event)
-    hashes = {path: {"before": before, "after": file_sha256(Path(path)) if Path(path).is_file() else "MISSING"}
-              for path, before in watched.items()}
-    unchanged = all(value["before"] == value["after"] for value in hashes.values())
+    if verify_input_integrity:
+        from .sources import file_sha256
+        hashes = {path: {"before": before, "after": file_sha256(Path(path)) if Path(path).is_file() else "MISSING"}
+                  for path, before in watched.items()}
+        unchanged = all(value["before"] == value["after"] for value in hashes.values())
+    else:
+        hashes = {}
+        unchanged = True
     if not unchanged:
         for run in runs:
             run.status = "INPUT_CHANGED_DURING_RUN"
@@ -228,9 +246,6 @@ def run_batch(configuration: Configuration, files: list[Path], *, business: str,
             run.ledger.update(run_status=run.status, rules=[_result_dict(item) for item in run.results],
                               status_counts=dict(Counter(item.status for item in run.results)),
                               batch_input_integrity="CHANGED_DURING_RUN")
-            copies = {entry["source_path"]: Path(entry["copy_path"]) for entry in run.ledger.get("audit_copy_manifest", [])}
-            _write_result_workbook(run, Path(run.output_files["result_workbook"]), copies)
-            Path(run.output_files["run_ledger"]).write_text(json.dumps(run.ledger, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         for record in records:
             if record.get("run_id"):
                 record.update(status="FAILED", error_code="INPUT_CHANGED_DURING_RUN", message="批量审核期间输入或机构参照发生变化，请重新运行")
@@ -242,8 +257,7 @@ def run_batch(configuration: Configuration, files: list[Path], *, business: str,
     processed = sum(record["status"].startswith("COMPLETED") for record in records)
     issue = any(record["status"] != "COMPLETED" for record in records) or any(record["status"] != "IDENTIFIED" for record in previous_records)
     status = "INPUT_CHANGED_DURING_RUN" if not unchanged else "FAILED" if not processed else "COMPLETED_WITH_ISSUES" if issue else "COMPLETED"
-    result_path = batch_dir / "批量审核结果.xlsx"
-    ledger_path = batch_dir / "批量运行总账.json"
+    result_path = _result_path(output_root)
     diagnostics = reader_diagnostics()
     reader_warnings = [f"{Path(item['path']).name}：已回退 openpyxl（{item['fallback_reason']}）"
                        for item in diagnostics if item["fallback_reason"]]
@@ -260,27 +274,52 @@ def run_batch(configuration: Configuration, files: list[Path], *, business: str,
         "files_total": len(records), "files_processed": processed,
         "files_failed": len(records) - processed, "status_counts": counts,
         "institutions": records, "previous_institutions": previous_records,
-        "input_integrity": "UNCHANGED" if unchanged else "CHANGED_DURING_RUN",
+        "input_integrity": ("UNCHANGED" if unchanged else "CHANGED_DURING_RUN") if verify_input_integrity else "NOT_CHECKED",
         "input_hashes": {path: {"sha256_before": value["before"], "sha256_after": value["after"]} for path, value in hashes.items()},
         "structure_checks": [event for run in runs for event in run.ledger.get("structure_checks", [])],
         "source_reader_diagnostics": diagnostics, "reader_warnings": reader_warnings,
         "data_quality_warnings": data_quality_warnings,
     }
     conditional_results = [row for run in runs for row in run.conditional_format_results]
-    combined = AuditRunResult(batch_id, period, configuration.version, configuration.sha256, status,
+    source_paths = [*files, *previous_files, external, runtime_paths.template_path]
+    source_map = {str(Path(path).resolve()): Path(path).resolve() for path in source_paths if path}
+    combined = AuditRunResult(batch_id, period, configuration.version,
+                              configuration.sha256 if verify_input_integrity else "", status,
                               all_results, ledger, conditional_format_results=conditional_results)
-    copies = {entry["source_path"]: Path(entry["copy_path"]) for run in runs for entry in run.ledger.get("audit_copy_manifest", [])}
     check_cancel(cancel_event)
     if on_progress:
-        on_progress({"phase": "export", "file_index": len(records), "files_total": len(records), "source": "", "message": "写出批量结果与运行总账"})
-    _write_result_workbook(combined, result_path, copies, batch_records=records, previous_records=previous_records)
-    ledger_path.write_text(json.dumps(ledger, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        on_progress({"phase": "export", "file_index": len(records), "files_total": len(records), "source": "", "message": "写出汇总审核结果"})
+    stage_started = perf_counter()
+    _write_result_workbook(combined, result_path, source_map, batch_records=records, previous_records=previous_records)
+    timings["result_export_seconds"] = perf_counter() - stage_started
+    timings["batch_seconds"] = perf_counter() - total_started
+    ledger["stage_timings"] = {key: round(value, 3) for key, value in timings.items()}
+    _report_timing(on_progress, "结果导出", timings["result_export_seconds"], timings["batch_seconds"])
+    _report_timing(on_progress, "审核与结果生成合计", timings["batch_seconds"], timings["batch_seconds"])
     return {"ok": status == "COMPLETED", "status": status, "run_id": batch_id,
-            "result_path": str(result_path), "ledger_path": str(ledger_path), "counts": counts,
+            "result_path": str(result_path), "output_dir": str(output_root), "counts": counts,
             "conditional_format_count": len(conditional_results),
             "conditional_triggered": sum(row.get("判定状态") == "已触发" for row in conditional_results),
             "conditional_unresolved": sum(row.get("判定状态") == "无法判定" for row in conditional_results),
             "files_total": len(records), "files_processed": processed, "files_failed": len(records) - processed,
             "institutions": records, "previous_institutions": previous_records,
             "source_reader_diagnostics": diagnostics, "reader_warnings": reader_warnings,
-            "data_quality_warnings": data_quality_warnings}
+            "data_quality_warnings": data_quality_warnings,
+            "input_integrity": ledger["input_integrity"], "stage_timings": ledger["stage_timings"]}
+
+
+def _result_path(output_root: Path) -> Path:
+    stem = f"汇总核查表校验_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    candidate = output_root / f"{stem}.xlsx"
+    suffix = 2
+    while candidate.exists():
+        candidate = output_root / f"{stem}_{suffix:02d}.xlsx"
+        suffix += 1
+    return candidate
+
+
+def _report_timing(on_progress, label: str, seconds: float, total_seconds: float) -> None:
+    if on_progress:
+        on_progress({"phase": "timing", "stage": label, "elapsed_seconds": round(seconds, 3),
+                     "total_elapsed_seconds": round(total_seconds, 3),
+                     "message": f"{label}耗时 {seconds:.2f} 秒"})

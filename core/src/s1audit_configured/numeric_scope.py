@@ -1,7 +1,6 @@
 """Resolve numeric rectangles without treating copied validation tables as data."""
 from __future__ import annotations
 
-import hashlib
 from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,7 +9,7 @@ from openpyxl import load_workbook
 
 from .errors import RetrievalError
 from .layout import NamedRegion, numeric_header_regions, numeric_regions
-from .source_reader import read_book
+from .source_reader import file_hashing_enabled, file_sha256, read_book
 
 
 from .runtime import default_data_dir
@@ -57,13 +56,13 @@ def _metadata(workbook):
 @lru_cache(maxsize=128)
 def _template_metadata(path_text, size, modified):
     path = Path(path_text)
-    before = hashlib.sha256(path.read_bytes()).hexdigest()
+    before = file_sha256(path) if file_hashing_enabled() else ""
     workbook = read_book(path, data_only=False)
     try:
         metadata = _metadata(workbook)
     finally:
         workbook.close()
-    if hashlib.sha256(path.read_bytes()).hexdigest() != before:
+    if file_hashing_enabled() and file_sha256(path) != before:
         raise RetrievalError("INPUT_CHANGED_DURING_RUN", "读取布局模板期间文件发生变化")
     return before, metadata
 

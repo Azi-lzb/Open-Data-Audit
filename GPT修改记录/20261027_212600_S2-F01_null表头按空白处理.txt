@@ -1,0 +1,39 @@
+时间：2026-10-27 21:26:00
+执行者：Codex
+
+修改前提交：cac9e10（desktop）
+修改后提交：cac9e10（未提交）
+WIP 状态：延续同一未提交 S2-F01 v10.8.1 工作批次；工作区有其他系统 WIP，未清理或覆盖。
+
+目的：根据用户补充的口径，将外部表头中的 null 占位视为空白，避免将其当作真实外部指标列并生成无意义的空白值提示。
+
+变化：
+- 普通报表和时序格式共用的表头归一逻辑将大小写不敏感的 `null` 归一为空表头。
+- 普通报表不再把 `null`/`NULL` 列登记为外部指标，也不会因为这些占位列的空单元格生成数据提示；时序格式保持相同语义。
+- 行名称和有效指标列的定位方式不变；配置中未引用 `null` 指标的情况下，取数与规则结果不变。
+- 作为此前 S2-F01 v10.8.1（未提交）变更的补充，不单独升级版本。
+
+修改文件：
+- `core/src/base_audit/systems/s2_report_collection/importer.py`
+- `core/tests/test_period_v2.py`
+- `core/tests/TEST_GROUPS.md`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md`
+- `日志/更新日志.txt`
+- `日志/开发日志.txt`
+
+验证：
+- `python -m pytest -q core/tests/test_period_v2.py::test_v2_external_null_header_placeholder_is_ignored core/tests/test_period_v2.py::test_v2_service_logs_external_import_warnings_without_exporting_findings core/tests/test_period_v2.py::test_v2_external_time_series_blank_matched_values_are_zero_with_soft_warning core/tests/test_period_v2.py::test_v2_external_plain_layout_treats_blank_value_as_zero_with_soft_warning`：7 passed。
+- `python -m pytest -q -rs -m s2 core/tests`：464 passed / 6 skipped / 1 failed / 760 deselected / 3 subtests passed。唯一失败是既有 S5-F01 版本断言期望 3.0.0、MANIFEST 为 3.0.1；与 S2 变更无关，未改 S5。
+- 定向测试在本次系统回归前为 7 passed；编译检查及最终 diff 检查随后执行。
+- 未修改配置工作簿和业务数据；未打包、未提交。
+
+【组件版本】
+系统：S2 报表采集系统
+影响功能：S2-F01 执行报表规则；沿用同一未提交 v10.8.1 PATCH 变更批次
+影响配置：S2-CFG-01、S2-CFG-02 未变
+未修改的相关组件：S1、S3、S5
+版本升级原因：本补充并入未发布的 v10.8.1 批次，不另行升级。
+
+删除清单：无。
+回滚提示：仅回退本记录中表头归一化的本轮局部修改及本记录；不要整文件恢复，因为该分支有既有 WIP。

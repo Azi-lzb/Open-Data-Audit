@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from pathlib import Path
+from time import perf_counter
 
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
@@ -17,6 +18,7 @@ from s1audit_configured.layout import scan_rule_paths, split_path
 from s1audit_configured.model import SourceBinding
 from s1audit_configured.runtime import RuntimePaths, check_cancel
 from s1audit_configured.sources import _Workbook
+from s1audit_configured.source_reader import file_hashing, shared_readers
 from s1audit_configured.workbook_config import load_configuration
 
 from .contracts import S5Request
@@ -678,17 +680,34 @@ def inspect_s5_institutions(request: S5Request):
                                 identity_sheet=request.identity_sheet, identity_cell=request.identity_cell)
 
 
+@shared_readers
 def run_s5_f1(request: S5Request, *, data_dir: Path, on_progress=None, cancel_event=None):
+    with file_hashing(False):
+        return _run_s5_f1_without_file_hashes(
+            request, data_dir=data_dir, on_progress=on_progress, cancel_event=cancel_event,
+        )
+
+
+def _run_s5_f1_without_file_hashes(request: S5Request, *, data_dir: Path, on_progress=None, cancel_event=None):
+    total_started = perf_counter()
+    timings = {}
     check_cancel(cancel_event)
+    stage_started = perf_counter()
     configuration = load_configuration(request.config_path)
+    timings["configuration_load_seconds"] = perf_counter() - stage_started
+    _report_s5_timing(on_progress, "配置加载", timings["configuration_load_seconds"], perf_counter() - total_started)
     businesses = {rule.business for rule in configuration.rules}
     if not request.business or request.business not in businesses:
         raise ValueError("请选择审核配置中登记的一项业务；每次仅执行一个业务")
     if not any(rule.enabled and rule.business == request.business for rule in configuration.rules):
         raise ValueError(f"业务“{request.business}”没有启用规则，请先在审核配置中核实启停设置")
+    stage_started = perf_counter()
+    catalog = InstitutionCatalog([request.external_path] if request.external_path else [])
+    timings["institution_reference_load_seconds"] = perf_counter() - stage_started
+    _report_s5_timing(on_progress, "机构参照加载", timings["institution_reference_load_seconds"], perf_counter() - total_started)
     result = run_batch(
         configuration, list(request.files), business=request.business, period=request.period,
-        output_root=request.output_dir, catalog=InstitutionCatalog([request.external_path] if request.external_path else []),
+        output_root=request.output_dir, catalog=catalog,
         previous_files=list(request.previous_files), previous_period=request.previous_period,
         external=request.external_path, external_period=request.external_period,
         identity_sheet=request.identity_sheet, identity_cell=request.identity_cell,
@@ -697,6 +716,10 @@ def run_s5_f1(request: S5Request, *, data_dir: Path, on_progress=None, cancel_ev
         on_progress=on_progress, cancel_event=cancel_event,
         allow_external_time_series=True,
     )
+    timings.update(result.get("stage_timings", {}))
+    timings["total_seconds"] = perf_counter() - total_started
+    result["stage_timings"] = {key: round(value, 3) for key, value in timings.items()}
+    _report_s5_timing(on_progress, "S5-F1 任务合计", timings["total_seconds"], timings["total_seconds"])
     errors = sum(result["counts"].get(key, 0) for key in
                  ("RETRIEVAL_FAILED", "STRUCTURE_ERROR", "CALCULATION_FAILED", "CONFIG_ERROR"))
     failed = result["status"] in {"FAILED", "INPUT_CHANGED_DURING_RUN"}
@@ -725,3 +748,10 @@ def run_s5_f1(request: S5Request, *, data_dir: Path, on_progress=None, cancel_ev
         warnings=warnings,
     )
     return result
+
+
+def _report_s5_timing(on_progress, label: str, seconds: float, total_seconds: float) -> None:
+    if on_progress:
+        on_progress({"phase": "timing", "stage": label, "elapsed_seconds": round(seconds, 3),
+                     "total_elapsed_seconds": round(total_seconds, 3),
+                     "message": f"{label}耗时 {seconds:.2f} 秒"})

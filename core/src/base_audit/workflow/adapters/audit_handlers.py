@@ -514,36 +514,44 @@ def handle_external_copy(ctx: NodeContext, parameters: Dict[str, Any], inputs: D
     if writer_mode not in EXTERNAL_SHEET_WRITERS:
         writer_mode = "OPENPYXL"
     direct_writer = None
-    prepare_error: Exception | None = None
+    prepare_fallback = ""
     prepare_seconds = 0.0
     if writer_mode == EXTERNAL_SHEET_WRITER_DIRECT_OOXML:
         try:
-            direct_writer = DirectOoxmlExternalSheetWriter(
+            candidate = DirectOoxmlExternalSheetWriter(
                 Path(parameters["external_path"]), external_plan.sheet_names,
             )
-            prepared = direct_writer.prepare()
+            prepared = candidate.prepare()
+        except Exception as exc:
+            # Direct OOXML 只接受纯数据表；合并/公式/数据验证/图片等必须回到 openpyxl。
+            prepare_fallback = str(exc)
+            ctx.log("外部文件快路径不可用，改用 openpyxl 添加：" + prepare_fallback)
+        else:
+            direct_writer = candidate
             prepare_seconds = prepared.prepare_seconds
             for message in prepared.messages:
                 ctx.log(message)
-        except Exception as exc:
-            prepare_error = exc
-    ctx.log(f"外部文件添加方式：{writer_mode}")
+    ctx.log("外部文件添加方式：" + ("OPENPYXL" if prepare_fallback else writer_mode))
     log_rows: List[tuple] = []
     write_seconds = 0.0
+    external_path = Path(parameters["external_path"])
     for record in records:
         external_ok = True
         try:
-            if prepare_error is not None:
-                raise prepare_error
             if direct_writer is not None:
-                written = direct_writer.write(Path(record.audit))
-                write_seconds += written.write_seconds
-                for message in written.messages:
-                    ctx.log(f"  {message}")
+                try:
+                    written = direct_writer.write(Path(record.audit))
+                except Exception as exc:
+                    # write 是临时文件加原子替换，失败时审核副本仍完整，可安全改用 openpyxl 重试。
+                    ctx.log("外部文件快路径写入失败，改用 openpyxl 重试："
+                            + Path(record.source).name + "｜" + str(exc))
+                    add_external_sheets(Path(record.audit), external_path, external_plan.sheet_names)
+                else:
+                    write_seconds += written.write_seconds
+                    for message in written.messages:
+                        ctx.log(f"  {message}")
             else:
-                add_external_sheets(
-                    Path(record.audit), Path(parameters["external_path"]), external_plan.sheet_names,
-                )
+                add_external_sheets(Path(record.audit), external_path, external_plan.sheet_names)
             checkpoint_dir = parameters.get("checkpoint_dir_name") or ""
             if checkpoint_dir:
                 checkpoint = output_dir / f"{checkpoint_dir}_{batch_id}"
@@ -957,7 +965,12 @@ def handle_result_workbook(ctx: NodeContext, parameters: Dict[str, Any], inputs:
     path = output_dir / (
         f"{_output_prefix(int(parameters.get('order', 80)), parameters.get('feature_name', '审核结果输出'), parameters.get('output_name') or '')}_{batch_id}.xlsx"
     )
-    write_audit_summary(path, list(inputs["enriched"].issues), sheet_name=result_set)
+    service = ctx.run.services.get("service")
+    writer = str(getattr(service, "audit_result_writer", "AUTO") or "AUTO")
+    write_audit_summary(
+        path, list(inputs["enriched"].issues), sheet_name=result_set,
+        mode=writer, on_engine=ctx.log,
+    )
     artifact = ResultWorkbookArtifact(
         path=str(path), sheet_name=result_set,
         subtype=ArtifactSubtype.RESULT_WORKBOOK,

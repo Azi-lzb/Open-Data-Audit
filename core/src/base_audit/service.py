@@ -141,6 +141,9 @@ class AuditService:
     def __init__(
         self, *, config_path: Path | None = None, engine_preference: str = "自动",
         summary_read_engine: str = "纯 Python",
+        summary_source_reader: str = "AUTO",
+        summary_result_writer: str = "AUTO",
+        audit_result_writer: str = "AUTO",
         conditional_format_evaluator: str = "PYTHON",
         conditional_format_rule_reader: str = "DIRECT_OOXML",
         formula_region_writer: str = "DIRECT_OOXML",
@@ -151,6 +154,9 @@ class AuditService:
         self.config_path = config_path
         self.engine_preference = engine_preference
         self.summary_read_engine = summary_read_engine
+        self.summary_source_reader = summary_source_reader
+        self.summary_result_writer = summary_result_writer
+        self.audit_result_writer = audit_result_writer
         # 条件格式检测模式：NATIVE=Excel/WPS 真实渲染（Windows 默认）；
         # OOXML=纯规则求值。UOS（native 管线）固定 OOXML，与此设置无关。
         self.conditional_format_evaluator = conditional_format_evaluator
@@ -227,6 +233,8 @@ class AuditService:
                     input_dir=input_dir, output_dir=output_dir, recursive=recursive,
                     selected_files=selected_files, on_step=on_step,
                     output_name=output_name or "汇总表合并",
+                    source_reader=self.summary_source_reader,
+                    result_writer=self.summary_result_writer,
                 )
                 return RegionSummaryResult(output_path=path, items=[RegionSummaryItem("汇总表合并", 0, "")])
             if not row_features:
@@ -270,6 +278,8 @@ class AuditService:
                         on_step=on_step, output_name=output_name or "区域汇总",
                         on_result=record_result,
                         history_config_path=self.config_path if with_history else None,
+                        source_reader=self.summary_source_reader,
+                        result_writer=self.summary_result_writer,
                     )
             else:
                 path = native_run_region_summaries(
@@ -278,6 +288,8 @@ class AuditService:
                     on_step=on_step, output_name=output_name or "区域汇总",
                     on_result=record_result,
                     history_config_path=self.config_path if with_history else None,
+                    source_reader=self.summary_source_reader,
+                    result_writer=self.summary_result_writer,
                 )
             if feature_log is not None:
                 log_name = row_features[0].name if len(row_features) == 1 else "区域汇总"

@@ -171,9 +171,6 @@ input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offse
 .s5-maintenance-actions{display:flex;flex-direction:column;gap:8px}
 .s5-maintenance-actions[hidden]{display:none!important}
 .s5-maintenance-actions .btn{width:100%}
-.s5-result{display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;line-height:1.8}
-.s5-result-message{white-space:pre-wrap}
-.s5-result[hidden]{display:none!important}
 .files-wrap{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,1fr);gap:16px;min-height:0;align-items:start}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-card);padding:18px;min-width:0;display:flex;flex-direction:column}
 #page-configured .card[hidden]{display:none!important}
@@ -1092,7 +1089,6 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
           <button class="btn" data-action="S5-F03" onclick="openS5MaintenanceTool('vext')">F3 外部文件 V_EXT 表达式</button>
           <button class="btn" data-action="S5-F04" onclick="openS5MaintenanceTool('candidates')">F4 模板校验公式转配置</button>
         </div>
-        <div class="s5-result" id="s5-result" role="status" hidden></div>
       </div></div>
     </div>
   </main>
@@ -2149,7 +2145,7 @@ const GUIDE_FLOWS=[
   {n:'S1F3',editionSystem:'S1',name:'组合工作表（核查表）',egg:true,scenario:'文件名规范、需要把同一机构的多类报表（如个人贷款和单位贷款）合成一本，供制作联合模板或跨表核查。',prep:'源文件主名第一个下划线前必须是机构全称。',steps:'① 选择源数据目录；② 需要时勾选递归；③ 点击“组合工作表（核查表）”。',output:'每家机构一本合并工作簿。',tip:'同名工作表只保留先复制的一张；本流程不需要模板、外部文件或数据期。'},
   {n:'S1F4',editionSystem:'S1',name:'组合工作表（按配置）',egg:true,scenario:'按设置中心中当前选择的组合方案分组，适合机构名称或文件命名不规则的情况。',prep:'连续点击“设置中心”五次，进入“组合工作表配置”维护方案与分组。',steps:'① 选择源数据目录；② 在设置中心保存组合方案；③ 点击“组合工作表（按配置）”。',output:'按当前方案生成组合工作簿。',tip:'文件名正则和文件名关键字两种分组方式均可用。'},
   {n:'S1F5',editionSystem:'S1',name:'制作联合模板',egg:true,scenario:'需要把多个模板的独有工作表合并成一本“联合模板”，集中存放集中系统数据、参照表等公共依赖工作表，供跨表核查或制作模板时使用；这是低频的模板制作动作。',prep:'准备一个“基准模板”（包含集中系统数据、参照表等公共依赖工作表）和若干要并入的模板文件。',steps:'① 点击主界面“制作联合模板”按钮；② 阅读中文说明并确认；③ 第 1 步选择“基准模板”；④ 第 2 步批量选择“并入模板”；⑤ 等待制作完成。',output:'基准模板同级的“联合模板”目录：联合模板文件与“联合模板检查报告”。',tip:'基准模板只会另存为最终联合模板，原文件不修改；同名工作表保留先出现的一张，后续跳过；本动作不使用页面路径，也不会自动识别模板，不要将普通业务模板误选为基准模板。'},
-  {n:'S5F1',editionSystem:'S5',name:'汇总核查表校验',scenario:'使用 S5 独立审核配置，对一个业务的报送文件执行规则校验。',prep:'选择本期源目录、模板目录与 S5 审核配置；手动点击“识别模板”后核对业务和报告期。外部核对需要外部文件。',steps:'① 选择源数据目录和模板目录；② 点击“识别模板”，或手动选择匹配模板；③ 按匹配状态、业务类型和日期筛选待处理文件并勾选；④ 需要时手动点击“检查配置”；⑤ 点击 F1 汇总核查表校验。',output:'源数据目录下“执行结果”中的本批次审核结果、运行总账和机构副本。',tip:'配置检查和模板识别均由用户手动触发；S5 使用独立配置规则引擎，不调用 S1-F01 模板公式审核流程。上期选择框暂不显示，V_PRE 取数能力保留，未提供上期时会报告取数失败。'}
+  {n:'S5F1',editionSystem:'S5',name:'汇总核查表校验',scenario:'使用 S5 独立审核配置，对一个业务的报送文件执行规则校验。',prep:'选择本期源目录、模板目录与 S5 审核配置；手动点击“识别模板”后核对业务和报告期。外部核对需要外部文件。',steps:'① 选择源数据目录和模板目录；② 点击“识别模板”，或手动选择匹配模板；③ 按匹配状态、业务类型和日期筛选待处理文件并勾选；④ 需要时手动点击“检查配置”；⑤ 点击 F1 汇总核查表校验。',output:'审核结果直接保存到“执行结果”目录，每次只生成一份汇总 XLSX，运行记录显示各阶段耗时。',tip:'配置检查和模板识别均由用户手动触发；S5 使用独立配置规则引擎，不调用 S1-F01 模板公式审核流程。上期选择框暂不显示，V_PRE 取数能力保留，未提供上期时会报告取数失败。'}
 ];
 /* 设置中心卡片标题条：点击收起/展开卡片内容（事件委托，重渲染后仍有效）。 */
 document.getElementById('settingsPane').addEventListener('click',function(e){
@@ -2505,25 +2501,23 @@ function renderS5ConfigCheckTask(task){
   document.getElementById('s5-config-check-percent').textContent=Math.round(percent)+'%';
   const fill=document.getElementById('s5-config-check-fill');fill.style.width=percent+'%';fill.className='s5-check-fill'+(running?' running':'');
   const report=task.report||{};
-  const lines=[report.message||task.message||'等待检查结果'];
-  if(report.rules!==undefined)lines.push('规则总数：'+report.rules+'；启用：'+report.enabled_rules+'；禁用：'+report.disabled_rules);
-  Object.entries(report.checks||{}).forEach(([key,item])=>{
-    const names={expressions:'审核表达式',dictionary_keys:'字典键引用',template_addresses:'模板地址',external_addresses:'外部文件地址'};
-    lines.push((names[key]||key)+'：'+item.status+(item.checked!==undefined?'（定位 '+item.resolved+'/'+item.checked+'）':''));
-  });
-  (report.business_checks||[]).forEach(item=>{
-    const check=item.template_addresses||{};
-    lines.push((item.name||'业务')+'：启用 '+(item.enabled_rules||0)+' 条；模板 '+(item.template||'未匹配')+'；地址 '+(check.status||'not_checked')+'（定位 '+(check.resolved||0)+'/'+(check.checked||0)+'）');
-  });
-  (report.warnings||[]).forEach(item=>lines.push('提示：'+item));
-  (report.configuration_errors||[]).forEach(issue=>{
-    const location=(issue.locations||[])[0]||{};
-    const where=[location.sheet,location.cell,location.rule_id?'规则 '+location.rule_id:''].filter(Boolean).join(' / ');
-    const context=[issue.business?'业务 '+issue.business:'',where].filter(Boolean).join(' / ');
-    lines.push((context?context+'：':'')+(issue.message||'配置检查发现问题'));
-  });
-  if(report.error_count>(report.configuration_errors||[]).length)lines.push('其余 '+(report.error_count-report.configuration_errors.length)+' 项问题已写入完整报告。');
-  document.getElementById('s5-config-check-detail').textContent=lines.join('\n');
+  const detail=[];
+  if(state==='queued'||state==='running'){
+    detail.push(progress.message||task.message||'等待检查结果');
+  }else if(report.valid===false){
+    detail.push('检查发现配置问题');
+  }else if(report.complete===false){
+    detail.push('检查完成，部分项目未检查');
+  }else if(state==='succeeded'){
+    detail.push('配置检查完成');
+  }else{
+    detail.push(task.message||'配置检查未完成');
+  }
+  const issueCount=Number(report.error_count)||((report.configuration_errors||[]).length);
+  const warningCount=(report.warnings||[]).length;
+  if(issueCount)detail.push('发现 '+issueCount+' 项配置问题，详细内容请打开检查报告查看。');
+  else if(warningCount)detail.push('有 '+warningCount+' 条提示，详细内容请打开检查报告查看。');
+  document.getElementById('s5-config-check-detail').textContent=detail.join('\n');
   const close=document.getElementById('s5-config-check-close');close.disabled=running;
   const open=document.getElementById('s5-config-check-open-report');open.hidden=!task.report_path;
   open.onclick=()=>openPath(task.report_path);
@@ -2643,17 +2637,9 @@ function renderS5(s){
   ['input_dir','template_dir','output_dir','config_path','template_path','external_path'].forEach(key=>{
     renderS5PathName('s5-'+key+'-name',form[key]);
   });
-  const report=form.configuration||{},recognition=form.recognition||{},messages=[];
+  const recognition=form.recognition||{},messages=[];
   if(form.business)messages.push('识别业务：'+form.business);
   if(form.period)messages.push('本期：'+form.period+'（'+(recognition.period_source||'已识别')+'）');
-  if(report.message)messages.push(report.message);
-  else if(report.valid)messages.push('配置 '+report.rules+' 条规则，启用 '+report.enabled_rules+' 条');
-  (report.configuration_errors||[]).slice(0,8).forEach(issue=>{
-    const location=(issue.locations||[])[0]||{};
-    const where=[location.sheet,location.cell,location.rule_id?('规则 '+location.rule_id):''].filter(Boolean).join(' / ');
-    messages.push((where?where+'：':'')+(issue.message||'配置检查发现问题'));
-  });
-  if((report.configuration_errors||[]).length>8)messages.push('其余 '+(report.configuration_errors.length-8)+' 条问题请查看日志或分批检查。');
   Object.values(recognition.errors||{}).forEach(message=>messages.push(message));
   document.getElementById('s5-config-status').textContent=messages.join('；')||'请选择源数据目录和模板目录，再手动点击“识别模板”；配置检查也需要手动点击。';
   const pin=document.getElementById('s5OutputPin');
@@ -2681,16 +2667,6 @@ function renderS5(s){
       +'<span class="file-tag'+(unmatched?' warn':'')+'">'+esc(status(item.match_status))+'</span></label>';
   }).join(''):'<div class="empty"><p>没有符合当前筛选条件的文件，请调整或清空筛选。</p></div>'):'<div class="empty"><p>选择源数据目录后列出本期 XLSX/XLSM 文件</p></div>';
   if(list.innerHTML!==html)list.innerHTML=html;
-  const task=form.task||{},box=document.getElementById('s5-result');box.innerHTML='';box.hidden=!task.task_state;
-  if(task.task_state){
-  const text=document.createElement('div');text.className='s5-result-message';
-  const states={queued:'准备执行',running:'正在执行',succeeded:'审核完成',partial_failed:'审核完成，部分项目需处理',failed:'执行失败',cancelled:'已终止，未处理项目未执行'};
-  text.textContent=states[task.task_state]+(task.message?'\n'+task.message:'')+(task.finding_counts?'\n规则提示 '+task.finding_counts.rule_triggered+' 条；条件格式触发 '+task.finding_counts.conditional_triggered+' 条；无法判定 '+task.finding_counts.conditional_unresolved+' 条；规则执行错误 '+task.finding_counts.rule_execution_errors+' 条':'');
-  box.appendChild(text);
-  [['result_path','打开审核结果'],['ledger_path','打开运行总账'],['output_dir','打开输出目录']].forEach(([key,label])=>{
-    if(!task[key])return;const button=document.createElement('button');button.className='btn tiny';button.textContent=label;button.onclick=()=>openPath(task[key]);box.appendChild(button);
-  });
-  }
   renderS5Maintenance(form);
 }
 function s5ProgressState(s){
@@ -2907,6 +2883,14 @@ function renderAdvanced(){
       +'</select>'),
   ].join('');
   const rowsAuditExcel=[
+    row('S1-F01 审核结果写入','仅影响新建的审核结果汇总工作簿；Rust 写入会保留工作表、表头样式、筛选、冻结及跳转到审核副本指定单元格的链接。自动模式优先 Rust xlsxwriter，缺少或写入失败时回退 OpenPyXL；不参与公式计算。',
+      '<select class="gen-select" id="setAuditResultWriter" onchange="setAuditResultWriter(this.value)">'
+      +'<option value="AUTO"'+(s.auditResultWriter==='AUTO'?' selected':'')+'>自动（Rust xlsxwriter 优先）</option>'
+      +(s.auditRustWriterAvailable||s.auditResultWriter==='RUST_XLSXWRITER'
+        ?'<option value="RUST_XLSXWRITER"'+(s.auditResultWriter==='RUST_XLSXWRITER'?' selected':'')+'>Rust xlsxwriter</option>'
+        :'<option value="RUST_XLSXWRITER" disabled>Rust xlsxwriter（当前程序未附带）</option>')
+      +'<option value="OPENPYXL"'+(s.auditResultWriter==='OPENPYXL'?' selected':'')+'>OpenPyXL（兼容）</option>'
+      +'</select>'),
     row('公式校验复制方式','直接写入使用 zipfile、ElementTree 和 XML 文本处理复制公式、样式及合并信息；结构化模板还会通过 openpyxl 复制“审核规则”页。区域复制通过 Excel/WPS 接口执行。两种方式写入后仍需办公软件重算；Linux 固定使用 openpyxl 复制、LibreOffice 重算。',
       nativePipeline?'<span>复制公式（openpyxl，固定）</span>':'<select class="gen-select" id="setFormulaRegionWriter" onchange="setFormulaRegionWriter(this.value)">'
       +'<option value="DIRECT_OOXML"'+(s.formulaRegionWriter==='DIRECT_OOXML'?' selected':'')+'>直接写入（Python 标准库）</option>'
@@ -2920,6 +2904,44 @@ function renderAdvanced(){
     row('汇总读取方式','读取已保存结果：使用 openpyxl 读取数据或公式缓存，不重新计算，缓存过期可能导致结果过期。Office 方式：Windows 通过 Excel/WPS 读取；Linux 由 LibreOffice 在临时副本上重算，再通过 openpyxl 读取。适用于汇总校验结果说明。',
       '<select class="gen-select" id="setSummaryReadEngine" onchange="setSummaryReadEngine(this.value)">'
       +summaryReaderOptions.map(function(item){return '<option value="'+esc(item.value)+'"'+(summaryReader===String(item.value)?' selected':'')+' title="'+esc(item.description||'')+'">'+esc(item.label||item.value)+'</option>';}).join('')
+      +'</select>'),
+    row('S1-F02 源数据读取器','只影响“汇总校验结果说明”的纯 Python 管线；模板命名区域、配置和 Office 公式缓存刷新不受影响。自动优先 Calamine，兼容失败回退 OpenPyXL；手动模式严格使用所选读取器。',
+      '<select class="gen-select" id="setSummarySourceReader" onchange="setSummarySourceReader(this.value)">'
+      +'<option value="AUTO"'+(s.summarySourceReader==='AUTO'?' selected':'')+'>自动（Calamine 优先）</option>'
+      +'<option value="CALAMINE"'+(s.summarySourceReader==='CALAMINE'?' selected':'')+'>Calamine（Rust）</option>'
+      +'<option value="OPENPYXL"'+(s.summarySourceReader==='OPENPYXL'?' selected':'')+'>OpenPyXL（兼容）</option>'
+      +'</select>'),
+    row('S1-F02 汇总结果写入','只影响新建汇总结果工作簿。自动模式在附带 Rust 写入器时优先 Rust xlsxwriter，否则使用 OpenPyXL；不用于编辑已有工作簿。',
+      '<select class="gen-select" id="setSummaryResultWriter" onchange="setSummaryResultWriter(this.value)">'
+      +'<option value="AUTO"'+(s.summaryResultWriter==='AUTO'?' selected':'')+'>自动（Rust xlsxwriter 优先）</option>'
+      +(s.summaryRustWriterAvailable||s.summaryResultWriter==='RUST_XLSXWRITER'
+        ?'<option value="RUST_XLSXWRITER"'+(s.summaryResultWriter==='RUST_XLSXWRITER'?' selected':'')+'>Rust xlsxwriter</option>'
+        :'<option value="RUST_XLSXWRITER" disabled>Rust xlsxwriter（当前程序未附带）</option>')
+      +'<option value="OPENPYXL"'+(s.summaryResultWriter==='OPENPYXL'?' selected':'')+'>OpenPyXL</option>'
+      +'</select>'),
+  ].join('');
+  const rowsPeriodExcel=[
+    row('大集中数据读取方式','仅影响 S2-F01 外部大集中工作簿。自动模式优先使用 Calamine（Rust 原生读取），遇到不兼容时记录原因并回退 OpenPyXL；手动指定的引擎失败时会明确报错。普通报表/时序格式及机构参照读取规则不变。',
+      '<select class="gen-select" id="setPeriodExternalReader" onchange="setPeriodExternalReader(this.value)">'
+      +'<option value="AUTO"'+(s.periodExternalReader==='AUTO'?' selected':'')+'>自动（Calamine 优先）</option>'
+      +'<option value="CALAMINE"'+(s.periodExternalReader==='CALAMINE'?' selected':'')+'>Calamine（Rust）</option>'
+      +'<option value="OPENPYXL"'+(s.periodExternalReader==='OPENPYXL'?' selected':'')+'>OpenPyXL（兼容）</option>'
+      +'</select>'),
+  ].join('');
+  const rowsCentralExcel=[
+    row('大集中导数读取方式','影响 S3-F01 两期比较和 S3-F04 本期数值核对的 XLSX 导数。自动模式优先使用 Calamine，读取失败时记录原因并回退 OpenPyXL；手动指定的引擎失败会明确报错。CSV 与 XLS 仍使用原读取方式。',
+      '<select class="gen-select" id="setCentralDataReader" onchange="setCentralDataReader(this.value)">'
+      +'<option value="AUTO"'+(s.centralDataReader==='AUTO'?' selected':'')+'>自动（Calamine 优先）</option>'
+      +'<option value="CALAMINE"'+(s.centralDataReader==='CALAMINE'?' selected':'')+'>Calamine（Rust）</option>'
+      +'<option value="OPENPYXL"'+(s.centralDataReader==='OPENPYXL'?' selected':'')+'>OpenPyXL（兼容）</option>'
+      +'</select>'),
+    row('比较结果写入方式','仅影响 S3-F01 新建比较结果工作簿。自动模式在附带 Rust 写入器时优先使用 Rust xlsxwriter，失败后安全回退 OpenPyXL；手动指定失败会明确报错。',
+      '<select class="gen-select" id="setCentralComparisonWriter" onchange="setCentralComparisonWriter(this.value)">'
+      +'<option value="AUTO"'+(s.centralComparisonWriter==='AUTO'?' selected':'')+'>自动（Rust xlsxwriter 优先）</option>'
+      +(s.centralRustWriterAvailable||s.centralComparisonWriter==='RUST_XLSXWRITER'
+        ?'<option value="RUST_XLSXWRITER"'+(s.centralComparisonWriter==='RUST_XLSXWRITER'?' selected':'')+'>Rust xlsxwriter</option>'
+        :'<option value="RUST_XLSXWRITER" disabled>Rust xlsxwriter（当前程序未附带）</option>')
+      +'<option value="OPENPYXL"'+(s.centralComparisonWriter==='OPENPYXL'?' selected':'')+'>OpenPyXL</option>'
       +'</select>'),
   ].join('');
   const rowsAuditCalc=[
@@ -2964,14 +2986,15 @@ function renderAdvanced(){
   const cards=advancedLayoutMode()==='function'?[
     envZoneCard,
     advCard('文件选择',rowsPicker),
-    ...(isSystemVisible('S1')||isSystemVisible('S3')?[advCard('Excel 文件处理',(isSystemVisible('S3')?rowsCentralForm:'')+(isSystemVisible('S1')?rowsAuditExcel:''))]:[]),
+    ...(isSystemVisible('S1')||isSystemVisible('S2')||isSystemVisible('S3')?[advCard('Excel 文件处理',(isSystemVisible('S3')?rowsCentralForm+rowsCentralExcel:'')+(isSystemVisible('S2')?rowsPeriodExcel:'')+(isSystemVisible('S1')?rowsAuditExcel:''))]:[]),
     ...(isSystemVisible('S1')?[advCard('计算与条件格式',rowsAuditCalc)]:[]),
     ...(isSystemVisible('S3')?[advCard('大集中表达式求值',rowsCentralExpr)]:[]),
   ]:[
     envZoneCard,
     advCard('通用设置',rowsPicker),
     ...(isSystemVisible('S1')?[advCard('逐笔统计系统',rowsAuditExcel+rowsAuditCalc)]:[]),
-    ...(isSystemVisible('S3')?[advCard('大集中统计系统',rowsCentralForm+rowsCentralExpr)]:[]),
+    ...(isSystemVisible('S2')?[advCard('报表采集系统',rowsPeriodExcel)]:[]),
+    ...(isSystemVisible('S3')?[advCard('大集中统计系统',rowsCentralForm+rowsCentralExcel+rowsCentralExpr)]:[]),
   ];
   pane.innerHTML= ''
     +'<div class="advanced-zone" id="advancedZone">'
@@ -3031,9 +3054,14 @@ function syncGeneralControls(){
   syncSel('setRecursiveDepth',(s.recursiveDepth===undefined||s.recursiveDepth===null)?-1:s.recursiveDepth);
   syncSel('setEngine',String(s.calculationEngine||'自动'));
   syncSel('setSummaryReadEngine',String(s.summaryReadEngine||'纯 Python'));
+  syncSel('setSummarySourceReader',String(s.summarySourceReader||'AUTO'));
+  syncSel('setSummaryResultWriter',String(s.summaryResultWriter||'AUTO'));
+  syncSel('setAuditResultWriter',String(s.auditResultWriter||'AUTO'));
   syncSel('setConditionalFormatReader',String(s.conditionalFormatRuleReader||'DIRECT_OOXML'));
   syncSel('setFormulaRegionWriter',String(s.formulaRegionWriter||'DIRECT_OOXML'));
   syncSel('setExternalSheetWriter',String(s.externalSheetWriter||'DIRECT_OOXML'));
+  syncSel('setCentralDataReader',String(s.centralDataReader||'AUTO'));
+  syncSel('setCentralComparisonWriter',String(s.centralComparisonWriter||'AUTO'));
   syncSel('setConditionalFormatEvaluator',String(s.conditionalFormatEvaluator||'PYTHON'));
   syncSel('setXlsxRenderMode',String(s.xlsxRenderMode||'FAST_OOXML'));
   syncSel('setExpressionMode',String(s.expressionEvaluationMode||'SBE'));
@@ -3167,6 +3195,39 @@ async function setExternalSheetWriter(value){
   catch(e){ alert('切换外部文件添加方式失败：'+((e&&e.message)?e.message:String(e))); }
   if(state)state.externalSheetWriter=value;
 }
+async function setPeriodExternalReader(value){
+  if(state&&state.busy)return;
+  try{
+    const next=await bridge.api.update({periodExternalReader:value});
+    if(next&&typeof next==='object')state=next;
+  }catch(e){
+    await refresh();
+    return;
+  }
+  if(CFG.tab==='advanced')renderAdvanced();
+}
+async function setCentralDataReader(value){
+  if(state&&state.busy)return;
+  try{
+    const next=await bridge.api.update({centralDataReader:value});
+    if(next&&typeof next==='object')state=next;
+  }catch(e){
+    await refresh();
+    return;
+  }
+  if(CFG.tab==='advanced')renderAdvanced();
+}
+async function setCentralComparisonWriter(value){
+  if(state&&state.busy)return;
+  try{
+    const next=await bridge.api.update({centralComparisonWriter:value});
+    if(next&&typeof next==='object')state=next;
+  }catch(e){
+    await refresh();
+    return;
+  }
+  if(CFG.tab==='advanced')renderAdvanced();
+}
 async function setEngine(value){
   if(state&&state.busy)return;
   try{await bridge.api.update({calculationEngine:value})}catch(e){}
@@ -3182,6 +3243,24 @@ async function setSummaryReadEngine(value){
     return;
   }
   renderGeneral();
+}
+async function setSummarySourceReader(value){
+  if(state&&state.busy)return;
+  try{const next=await bridge.api.update({summarySourceReader:value});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();return;}
+  if(CFG.tab==='advanced')renderAdvanced();
+}
+async function setSummaryResultWriter(value){
+  if(state&&state.busy)return;
+  try{const next=await bridge.api.update({summaryResultWriter:value});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();return;}
+  if(CFG.tab==='advanced')renderAdvanced();
+}
+async function setAuditResultWriter(value){
+  if(state&&state.busy)return;
+  try{const next=await bridge.api.update({auditResultWriter:value});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();return;}
+  if(CFG.tab==='advanced')renderAdvanced();
 }
 /* ---- 模块说明：模块由代码实现，只读展示 ---- */
 function renderModuleCatalog(){
@@ -4580,15 +4659,22 @@ function renderFiles(s){
   const rows=files.map(f=>{
     const isSel=selected.has(f.path),matched=f.template!=='未识别',isExtra=extraSet.has(f.path);
     const summary=f.summaryMatch,hasExtra=!!(summary&&summary.extra.length);
-    const summaryText=summary?'F2：'+summary.matched.length+'/'+summary.sourceCount+' 张源表同名'+(hasExtra?'；新增 '+summary.extra.length+' 张':''):'';
-    const summaryTip=summary?'F1 模板识别：'+f.template+'；F2 对照当前模板：'+summary.template+'；同名表：'+(summary.matched.join('、')||'无')+'；表头和汇总区域仍按执行时检查。'+(hasExtra?'新增工作表：'+summary.extra.join('、')+'；'+(summary.fallbackAvailable?'模板含“兜底模板”，执行时会尝试按兜底区域汇总。':'模板未配置“兜底模板”，这些新增工作表不会参与汇总。'):'')+(summary.missing.length?'模板中其他工作表（源文件未包含，不影响匹配）：'+summary.missing.join('、'):''):'';
-    const tag=hasExtra?(summary.fallbackAvailable?'可尝试兜底':'有新增工作表'):(matched?'已匹配':(summary&&summary.matched.length?'F2表名匹配':(summary&&summary.fallbackAvailable?'可尝试兜底':(summary?'无同名工作表':'未识别'))));
-    const warning=!matched&&(!summary||(!summary.matched.length&&!summary.fallbackAvailable));
+    const extraHidden=summary?Number(summary.extraHiddenCount||0):0;
+    const extraVeryHidden=summary?Number(summary.extraVeryHiddenCount||0):0;
+    const normalHidden=Math.max(0,extraHidden-extraVeryHidden);
+    const visibilityNotes=[];
+    if(normalHidden)visibilityNotes.push(normalHidden+' 张是隐藏工作表，可在工作表标签右键“取消隐藏”');
+    if(extraVeryHidden)visibilityNotes.push(extraVeryHidden+' 张是深度隐藏（veryHidden），普通“取消隐藏”列表不会显示；需在 VBA 编辑器把工作表 Visible 属性改为可见');
+    const extraLabel=hasExtra?'模板外有 '+summary.extra.length+' 张表'+(extraHidden?'（其中隐藏 '+extraHidden+' 张）':''):'';
+    const summaryText=summary?'工作表同名：'+summary.matched.length+'/'+summary.sourceCount+' 张'+(hasExtra?'；'+extraLabel:''):'';
+    const summaryTip=summary?'所选模板：'+summary.template+'；同名工作表：'+(summary.matched.join('、')||'无')+'；表结构会在执行时检查。'+(hasExtra?'模板外工作表（源文件有、所选模板没有）：'+summary.extra.join('、')+'；'+(visibilityNotes.length?visibilityNotes.join('；')+'。':'这些工作表当前均为可见状态。')+'这里只提示模板外工作表，匹配情况以同名工作表为准。':'')+(summary.missing.length?'模板中有、源文件中没有的工作表：'+summary.missing.join('、'):''):'';
+    const tag=hasExtra?'模板外 '+summary.extra.length+' 张':(matched?'已匹配':(summary&&summary.matched.length?'有同名工作表':(summary?'无同名工作表':'未识别')));
+    const warning=!matched&&(!summary||!summary.matched.length);
     return '<label class="file-row'+(isSel?' checked':'')+'"'+(s1FileMatchesFilters(f)?'':' hidden')+' title="'+esc(f.path+(summaryTip?'\n'+summaryTip:''))+'">'
       +'<input class="file-check" type="checkbox" value="'+esc(f.path)+'"'+(isSel?' checked':'')+' onchange="sendSelection()">'
       +'<span class="file-doc">'+ICON.file+'</span>'
       +'<span class="file-main"><span class="file-name">'+esc(f.name)+(isExtra?' <span class="file-extra-tag">追加</span>':'')+'</span>'
-      +'<span class="file-meta">'+(summaryText?esc(summaryText)+'；F1：':'')+(matched?esc(f.template):'未匹配到模板')+'</span></span>'
+      +'<span class="file-meta">'+(summaryText?esc(summaryText)+'；':'')+'所选模板：'+(matched?esc(f.template):'未匹配到模板')+'</span></span>'
       +(isExtra?'<span class="file-remove" title="移除该追加文件" onclick="event.preventDefault();removeExtraFile(this.dataset.path)" data-path="'+esc(f.path)+'">✕</span>':'')
       +'<span class="file-tag'+(warning?' warn':'')+'">'+esc(tag)+'</span>'
       +'</label>';
@@ -4909,7 +4995,6 @@ setInterval(()=>{if(window.bridge&&libreOfficeInstallVisible())refreshLibreOffic
     <div class="s5-check-body">
       <p class="s5-check-status" id="s5-config-check-progress-message">准备读取审核配置</p>
       <div class="s5-check-progress"><div class="s5-check-track"><div class="s5-check-fill" id="s5-config-check-fill"></div></div><span class="s5-check-percent" id="s5-config-check-percent">0%</span></div>
-      <p class="collect-tip">完整报告保存到输出目录；默认是源数据目录下的“执行结果”。</p>
       <pre class="s5-check-detail" id="s5-config-check-detail">检查结果会显示在这里。</pre>
     </div>
     <footer class="s5-check-foot"><button class="btn" id="s5-config-check-open-report" hidden>打开检查报告</button><button class="btn primary" id="s5-config-check-close" onclick="closeS5ConfigCheck()" disabled>关闭</button></footer>

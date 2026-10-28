@@ -48,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
 
     env = os.environ.copy()
     env["FLASK_DIST_DIR"] = str(output)
+    env["AUDITTOOLS_DISTRIBUTION_PROFILE"] = args.profile
     for label, script in (
         ("Windows 10/11", "windows-build/build-modern.bat"),
         ("Windows 7", "windows-build/build-win7.bat"),

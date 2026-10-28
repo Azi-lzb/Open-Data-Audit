@@ -7,7 +7,16 @@ Python 版：流式读取、前导单引号清理、日期与数值解析、按�
 from __future__ import annotations
 
 import csv
+import time
+from datetime import date, datetime
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
+from typing import Callable
+
+try:  # Calamine 是可选加速器；兼容性构建仍可自动回退 OpenPyXL。
+    from python_calamine import load_workbook as _calamine_load
+except ImportError:  # pragma: no cover - 由打包和目标环境决定
+    _calamine_load = None
 
 from .models import (
     CentralDataset,
@@ -50,6 +59,8 @@ def read_central_csv(
     *,
     unit_factor: float = 1.0,
     exempt_indicators: set[str] | None = None,
+    xlsx_reader: str = "AUTO",
+    on_read: Callable[[str], None] | None = None,
 ) -> CentralDataset:
     """读取一期大集中导数（CSV / XLSX / XLS，表头同为固定 14 列）。
 
@@ -62,7 +73,7 @@ def read_central_csv(
     if suffix not in SUPPORTED_SUFFIXES:
         raise ValueError(f"大集中原始导数只支持 csv、xlsx 或 xls：{path.name}")
     if suffix == ".xlsx":
-        rows = _read_xlsx_grid(path)
+        rows = _read_xlsx_grid(path, reader=xlsx_reader, on_read=on_read)
     elif suffix == ".xls":
         rows = _read_xls_grid(path)
     else:
@@ -86,18 +97,73 @@ def _read_csv_grid(path: Path) -> list[list[str]]:
     return [list(fields) for fields in csv.reader(text.splitlines())]
 
 
-def _read_xlsx_grid(path: Path) -> list[list[str]]:
-    """XLSX：openpyxl 只读取第一个表头相符的工作表；单元格规范化为文本。"""
-    from openpyxl import load_workbook
+def _read_xlsx_grid(
+    path: Path,
+    *,
+    reader: str = "AUTO",
+    on_read: Callable[[str], None] | None = None,
+) -> list[list[str]]:
+    """XLSX：按指定读取器返回第一个表头相符的工作表，并规范化为文本。"""
+    reader = str(reader or "AUTO").strip().upper()
+    if reader not in {"AUTO", "CALAMINE", "OPENPYXL"}:
+        raise ValueError(f"未知 XLSX 读取方式：{reader}（应为 AUTO/CALAMINE/OPENPYXL）")
 
-    def _cell_text(value) -> str:
-        if value is None:
-            return ""
-        if isinstance(value, float) and value.is_integer():
-            # Excel 会把 20260731、批次 2 之类的整数存成浮点；转回整数字面量
-            # 才能与 CSV 的文本形态一致地进入日期/数值解析。
-            return str(int(value))
-        return str(value)
+    started = time.perf_counter()
+    fallback_reason = ""
+    if reader in {"AUTO", "CALAMINE"}:
+        try:
+            if _calamine_load is None:
+                raise ImportError("未安装 python-calamine")
+            grid = _read_xlsx_grid_calamine(path)
+            engine = "Calamine"
+            try:
+                engine_version = package_version("python-calamine")
+            except PackageNotFoundError:
+                engine_version = "未知版本"
+        except Exception as exc:
+            if reader == "CALAMINE":
+                raise ValueError(f"XLSX Calamine 读取失败：{path.name}；{exc}") from exc
+            fallback_reason = f"{type(exc).__name__}: {exc}"
+            grid = _read_xlsx_grid_openpyxl(path)
+            engine = "OpenPyXL"
+            try:
+                engine_version = package_version("openpyxl")
+            except PackageNotFoundError:
+                engine_version = "未知版本"
+    else:
+        grid = _read_xlsx_grid_openpyxl(path)
+        engine = "OpenPyXL"
+        try:
+            engine_version = package_version("openpyxl")
+        except PackageNotFoundError:
+            engine_version = "未知版本"
+
+    elapsed = time.perf_counter() - started
+    if on_read is not None:
+        message = (
+            f"{path.name}：XLSX 读取引擎={engine} {engine_version}，"
+            f"耗时 {elapsed:.3f} 秒"
+        )
+        if fallback_reason:
+            message += f"；自动回退原因：{fallback_reason}"
+        on_read(message)
+    return grid
+
+
+def _cell_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, date) and not isinstance(value, datetime):
+        # OpenPyXL 把 Excel 日期序列读为零点 datetime；补时间部分以一致转成文本。
+        value = datetime(value.year, value.month, value.day)
+    if isinstance(value, float) and value.is_integer():
+        # Excel 会把日期码、批次号等整数保存成浮点；与 OpenPyXL 口径相同。
+        return str(int(value))
+    return str(value)
+
+
+def _read_xlsx_grid_openpyxl(path: Path) -> list[list[str]]:
+    from openpyxl import load_workbook
 
     book = load_workbook(path, read_only=True, data_only=True)
     try:
@@ -111,6 +177,42 @@ def _read_xlsx_grid(path: Path) -> list[list[str]]:
                 return grid
     finally:
         book.close()
+    raise ValueError(f"XLSX 首行表头与大集中导数 14 列不符：{path.name}")
+
+
+def _read_xlsx_grid_calamine(path: Path) -> list[list[str]]:
+    """Calamine 读取 XLSX，并补回其裁掉的空白边缘，保持 OpenPyXL 行列定位。"""
+    assert _calamine_load is not None
+    book = _calamine_load(path)
+    try:
+        for sheet_name in book.sheet_names:
+            sheet = book.get_sheet_by_name(sheet_name)
+            matrix = sheet.to_python()
+            if isinstance(sheet.start, tuple):
+                row_start, col_start = sheet.start
+            else:
+                row_start, col_start = 0, 0
+            width = max(
+                int(getattr(sheet, "total_width", 0) or 0),
+                col_start + max((len(row) for row in matrix), default=0),
+            )
+            height = max(
+                int(getattr(sheet, "total_height", 0) or 0),
+                row_start + len(matrix),
+            )
+            grid = [[""] * width for _ in range(row_start)]
+            for values in matrix:
+                row = [""] * col_start + [_cell_text(value) for value in values]
+                row.extend([""] * max(0, width - len(row)))
+                grid.append(row)
+            grid.extend([[""] * width for _ in range(max(0, height - len(grid)))])
+            header = [cell.strip() for cell in (grid[0] if grid else [])]
+            if header[: len(EXPECTED_HEADERS)] == list(EXPECTED_HEADERS):
+                return grid
+    finally:
+        close = getattr(book, "close", None)
+        if close is not None:
+            close()
     raise ValueError(f"XLSX 首行表头与大集中导数 14 列不符：{path.name}")
 
 

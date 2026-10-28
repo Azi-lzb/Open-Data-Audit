@@ -61,7 +61,17 @@ def test_v2_generates_values_not_excel_formulas(tmp_path: Path) -> None:
     _source(cur / "9144#2026-06-30#01#20202#甲银行.xlsx", deposit=2_000_000, loan=1_000_000, asset=1_000_000, debt=600_000, equity=300_000)
     _source(pre / "9144#2026-03-31#01#20202#甲银行.xlsx", deposit=1_000_000, loan=1_000_000, asset=1_000_000, debt=600_000, equity=400_000)
     _central(central)
-    result = PeriodAuditV2Service().run(current_dir=cur, previous_dir=pre, config_path=config, output_dir=output, central_path=central)
+    progress = []
+    result = PeriodAuditV2Service().run(
+        current_dir=cur, previous_dir=pre, config_path=config, output_dir=output,
+        central_path=central, on_progress=progress.append,
+    )
+    external_read_messages = [
+        event.get("message", "") for event in progress
+        if event.get("stage") == "external_read"
+    ]
+    assert any("Calamine" in message or "OpenPyXL" in message for message in external_read_messages)
+    assert any("耗时" in message for message in external_read_messages)
     assert result.summary.institutions == 1
     assert any(item.audit_type == "规则" and item.rule_id == "R1" for item in result.findings)
     assert not (output / "审核工作底稿.xlsx").exists()
@@ -1392,7 +1402,37 @@ def test_v2_external_blank_row_label_is_ignored_with_soft_warning(tmp_path: Path
     assert values.warnings == expected_warnings
 
 
-def test_v2_service_exports_external_import_warnings_as_soft_findings(tmp_path: Path) -> None:
+@pytest.mark.parametrize("time_series", [False, True])
+def test_v2_external_null_header_placeholder_is_ignored(tmp_path: Path, time_series: bool) -> None:
+    from base_audit.systems.s2_report_collection.importer import import_external_workbook
+
+    path = tmp_path / ("central_time_null_header.xlsx" if time_series else "central_plain_null_header.xlsx")
+    if time_series:
+        headers = ["数据日期", "行名称", "存款", "null", "NULL"]
+        _time_series_external_xlsx(
+            path,
+            [{"数据日期": "20260630", "行名称": "甲行", "存款": 10}],
+            headers=headers,
+        )
+        expected_key = ("2026-06-30", "甲行", "存款")
+    else:
+        book = Workbook()
+        sheet = book.active
+        sheet.title = "集中系统数据"
+        sheet.append(["行名称", "存款", "null", "NULL"])
+        sheet.append(["甲行", 10, None, None])
+        book.save(path)
+        book.close()
+        expected_key = ("甲行", "存款")
+
+    values, _org_map = import_external_workbook(path)
+
+    assert values.indicator_names == {"存款"}
+    assert set(values) == {expected_key}
+    assert not values.warnings
+
+
+def test_v2_service_logs_external_import_warnings_without_exporting_findings(tmp_path: Path) -> None:
     config, cur, pre, central = tmp_path / "config.xlsx", tmp_path / "cur", tmp_path / "pre", tmp_path / "central.xlsx"
     cur.mkdir(); pre.mkdir(); _config(config)
     _source(cur / "9144#2026-06-30#01#20202#甲银行.xlsx", deposit=2_000_000, loan=1_000_000, asset=1_000_000, debt=600_000, equity=400_000)
@@ -1405,16 +1445,21 @@ def test_v2_service_exports_external_import_warnings_as_soft_findings(tmp_path: 
         central_path=central, on_progress=progress.append,
     )
 
-    warnings = [finding for finding in result.findings if finding.rule_type == "外部数据导入"]
-    assert len(warnings) == 1
-    assert warnings[0].audit_type == "校验规则" and warnings[0].severity == "软性"
-    assert "已按 0 参与外部核对" in warnings[0].description
-    assert "外部数据提示 1 条" in next(item["message"] for item in progress if item["stage"] == "complete")
+    assert len(result.external_warnings) == 1
+    assert "已按 0 参与外部核对" in result.external_warnings[0]
+    assert not any(finding.rule_type == "外部数据导入" for finding in result.findings)
+    assert any(
+        item["stage"] == "external_read" and "数据提示 1/1：" in item["message"]
+        and "已按 0 参与外部核对" in item["message"]
+        for item in progress
+    )
+    complete = next(item["message"] for item in progress if item["stage"] == "complete")
+    assert "大集中数据发现 1 条非阻断提示，请查看运行记录核实" in complete
     book = load_workbook(result.paths.result, read_only=True, data_only=True)
     try:
         sheet = book["校验规则"]
         headers = [cell.value for cell in sheet[1]]
-        assert any(
+        assert not any(
             "已按 0 参与外部核对" in str(row[headers.index("审核说明")].value)
             for row in sheet.iter_rows(min_row=2)
         )

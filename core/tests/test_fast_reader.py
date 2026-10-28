@@ -9,12 +9,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 from openpyxl import Workbook
 
 from base_audit.systems.s2_report_collection import importer
 from base_audit.systems.s2_report_collection.importer import import_period_directory
+from base_audit.systems.s2_report_collection.importer import import_external_workbook
 from base_audit.systems.s2_report_collection.models import IndicatorConfig, ReportAuditConfig, UnitSettings
 
 
@@ -102,6 +104,29 @@ def _write_xls(path: Path) -> None:
     book.save(path)
 
 
+def _write_external_xlsx(path: Path, *, time_series: bool) -> None:
+    book = Workbook(); sheet = book.active; sheet.title = "集中系统数据"
+    # 故意在表头前留空行、A列留空，校验 Calamine 的坐标恢复与普通/时序识别。
+    if time_series:
+        headers = ["", "数据日期", "行名称", "指标甲", "指标乙"]
+        sheet.append([None] * len(headers))
+        sheet.append([None] * len(headers))
+        sheet.append(headers)
+        sheet.append([None, datetime(2026, 6, 30), "甲行", 12.5, None])
+        sheet.append([None, datetime(2026, 3, 31), "甲行", 10, "文本值"])
+    else:
+        headers = ["", "报表项目", "指标甲", "指标乙"]
+        sheet.append([None] * len(headers))
+        sheet.append([None] * len(headers))
+        sheet.append(headers)
+        sheet.append([None, "甲行", 12.5, None])
+        sheet.append([None, "乙行", 0, "文本值"])
+    reference = book.create_sheet("机构参照表")
+    reference.append(["统一社会信用代码", "报表项目"])
+    reference.append(["9144", "甲行"])
+    book.save(path)
+
+
 @pytest.mark.skipif(not CALAMINE_INSTALLED, reason="未安装 python-calamine")
 @pytest.mark.parametrize(
     ("writer", "suffix"),
@@ -184,3 +209,73 @@ def test_import_results_are_identical_between_engines(tmp_path: Path) -> None:
     assert fast_result.warnings == legacy_result.warnings
     assert fast_result.duplicates == legacy_result.duplicates
     assert fast_result.records, "样例应产生导入记录"
+
+
+@pytest.mark.skipif(not CALAMINE_INSTALLED, reason="未安装 python-calamine")
+@pytest.mark.parametrize("time_series", [False, True], ids=["plain", "time-series"])
+def test_external_reader_calamine_matches_openpyxl(tmp_path: Path, time_series: bool) -> None:
+    """S2 外部表的普通/时序布局、空值、提示与机构映射保持逐值一致。"""
+    path = tmp_path / "central.xlsx"
+    _write_external_xlsx(path, time_series=time_series)
+    fast, fast_map = import_external_workbook(path, reader_engine="CALAMINE")
+    legacy, legacy_map = import_external_workbook(path, reader_engine="OPENPYXL")
+
+    assert fast == legacy
+    assert fast_map == legacy_map == {"9144": "甲行"}
+    for field in (
+        "time_series", "available_dates", "date_labels", "row_labels",
+        "indicator_names", "blank_values", "warnings",
+    ):
+        assert getattr(fast, field) == getattr(legacy, field), field
+    assert fast.reader_engine == "Calamine"
+    assert legacy.reader_engine == "OpenPyXL"
+    assert fast.reader_version
+    assert legacy.reader_version
+
+
+@pytest.mark.skipif(not CALAMINE_INSTALLED, reason="未安装 python-calamine")
+def test_external_auto_reader_reports_openpyxl_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Auto 在 Calamine 不可用时用兼容读取器，并保留明确回退原因。"""
+    path = tmp_path / "central.xlsx"
+    _write_external_xlsx(path, time_series=False)
+    monkeypatch.setattr(importer, "_calamine_load", None)
+    values, _mapping = import_external_workbook(path, reader_engine="AUTO")
+    assert values.reader_engine == "OpenPyXL"
+    assert "未安装 python-calamine" in values.reader_fallback_reason
+
+
+def test_external_forced_calamine_does_not_fall_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """手动指定 Calamine 时读取失败必须显式报错，不能改走另一引擎。"""
+    path = tmp_path / "central.xlsx"
+    _write_external_xlsx(path, time_series=False)
+
+    def broken(_path):
+        raise RuntimeError("unsupported workbook feature")
+
+    monkeypatch.setattr(importer, "_calamine_load", broken)
+    with pytest.raises(importer.ImportErrorV2, match="已指定 Calamine.*读取失败"):
+        import_external_workbook(path, reader_engine="CALAMINE")
+
+
+@pytest.mark.skipif(not CALAMINE_INSTALLED, reason="未安装 python-calamine")
+def test_external_reader_preserves_formula_cached_values(tmp_path: Path) -> None:
+    """Calamine 与 data_only=True 的 OpenPyXL 对齐，读取公式缓存值而不计算公式。"""
+    path = tmp_path / "central_formula.xlsx"
+    book = Workbook(); sheet = book.active; sheet.title = "集中系统数据"
+    sheet.append(["行名称", "指标甲"])
+    sheet.append(["甲行", "=1+2"])
+    book.save(path)
+    patched = path.with_suffix(".patched")
+    with ZipFile(path, "r") as source, ZipFile(patched, "w") as target:
+        for item in source.infolist():
+            payload = source.read(item.filename)
+            if item.filename == "xl/worksheets/sheet1.xml":
+                assert b"<f>1+2</f><v></v>" in payload
+                payload = payload.replace(b"<f>1+2</f><v></v>", b"<f>1+2</f><v>3</v>")
+            target.writestr(item, payload)
+    patched.replace(path)
+
+    calamine_values, _ = import_external_workbook(path, reader_engine="CALAMINE")
+    openpyxl_values, _ = import_external_workbook(path, reader_engine="OPENPYXL")
+    assert calamine_values == openpyxl_values
+    assert calamine_values[("甲行", "指标甲")].value == 3

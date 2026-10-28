@@ -1,0 +1,127 @@
+# S1-F01 外部文件添加降级与链路续跑
+
+时间：2026-10-28 11:37（Asia/Shanghai）
+范围：S1-F01 汇总核查表校验；Windows/COM 与 UOS/native 两条适配器；不改默认引擎路由。
+
+## 问题
+
+UOS20 上 S1-F01 无法添加外部文件，整条审核链被阻断。
+
+复现与定位结论：
+
+- `core/src/base_audit/external_sheet_writer.py` 的 `DirectOoxmlExternalSheetWriter.prepare()`
+  只接受纯数据表；外部表含合并单元格、条件格式、数据验证、tableParts、drawing 或公式时，
+  抛出 `UnsupportedExternalSheetOperation`，错误文本为“Direct OOXML 仅支持纯数据表，请切换 openpyxl”。
+- `core/src/base_audit/workflow/adapters/native_audit_handlers.py` 的 `handle_external_copy`
+  在 `external_sheet_writer=DIRECT_OOXML`（设置默认值）时直接调用 `prepare()`，没有 try/except；
+  异常冒泡导致该 DAG 节点失败，`FAIL_WORKFLOW` 策略下后续节点全部标记“上游失败，工作流已中止”。
+- 该适配器也未引入 `FailurePolicy` / `_item_failure_policy`，不存在“跳过该项继续”的分支。
+- Windows 适配器 `audit_handlers.py` 虽有 try/except，但把 prepare 异常存进 `prepare_error` 后
+  在每个文件循环里重新抛出，按“跳过”策略时会把整批文件全部标记为外部文件添加失败，同样得不到
+  “正常添加”的结果。
+
+实测复现（临时目录，合成文件）：
+
+- 外部表含 `merge_cells("A1:B1")` 与公式 `=CONCAT("机构",A2)` 时，`prepare()` 抛出
+  `UnsupportedExternalSheetOperation: 外部工作表“参照表”含 合并单元格；Direct OOXML 仅支持纯数据表，请切换 openpyxl`。
+- 同一文件改用 `add_external_sheets`（openpyxl）可成功追加工作表，合并区域 `A1:B1` 与公式文本完整保留。
+
+## 修改
+
+`core/src/base_audit/workflow/adapters/native_audit_handlers.py`：
+
+- `handle_external_copy` 改为三级降级：
+  1. `DIRECT_OOXML` 的 `prepare()` 失败 → 记录原因、写运行日志、整批改用 openpyxl `add_external_sheets`。
+  2. 单文件 `write()` 失败 → 因写入是临时文件加原子替换、审核副本仍完整，对该文件改用 openpyxl 重试。
+  3. openpyxl 也失败 → 该文件写入 `stage_errors`、计入 `partial_failures`，节点返回 PARTIAL，
+     审核副本保留，链路继续。
+- 新增指标 `external_openpyxl_fallback_writes`、`external_failed_files`；降级原因进 `warnings`。
+- 外部表缺失会让引用它的公式显示 `#REF!`，因此失败必须可见，不能静默吞掉。
+
+`core/src/base_audit/workflow/adapters/audit_handlers.py`：
+
+- 把 `prepare_error` 改为整批降级 openpyxl，不再在每个文件上重复抛出同一异常；
+  “停止/跳过”策略仅用于真正的写入失败，语义与旧配置保持一致。
+- 单文件 `write()` 失败同样先尝试 openpyxl 重试。
+
+未变化：
+
+- `external_sheet_writer` 默认值仍为 `DIRECT_OOXML`，纯数据外部表继续走快路径。
+- 未修改 `service.py`、`settings.py`、`web_app.py` 的引擎选项、未改 AGENTS.md、
+  未触碰迁移中的 workspace 文件。
+- 未实现“写死外部文件添加、绕开 DAG”的改造；当前仍在 DAG 节点内执行，
+  只补齐了失败降级与链路续跑。
+
+## 测试
+
+新增 `core/tests/test_external_copy_fallback.py`（3 项）：
+
+- 纯数据外部表仍走 Direct OOXML 快路径，零降级、零失败。
+- 含合并单元格与公式的外部表自动降级 openpyxl，工作表、合并区域、公式文本均保留。
+- 两个写入器都失败时节点为 PARTIAL、审核副本保留、失败原因进入 `stage_errors`。
+
+已在 `core/tests/conftest.py` 的 s1 分组登记该模块。
+
+执行结果：
+
+- 定向：3 passed。
+- 相关回归（`test_external_sheet_writer.py`、`test_external.py`、`test_native_uos.py`、`core/tests/workflow/`）：83 passed。
+- S1 回归 `pytest -m s1`：523 passed / 13 skipped / 698 deselected / 3 subtests passed；
+  跳过项均为 Linux/UOS 探测与 Flask 路由环境缺失，与本次改动无关。
+- `test_version_manifest.py`：8 passed（已同步 S1-F01 期望版本）。
+
+## 版本
+
+- S1-F01：2.6.2 → 2.6.3，PATCH（缺陷修复，业务契约不变）。
+- `版本管理/VERSION_MANIFEST.json` 同步；`版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md` 追加 v2.6.3。
+- S1-CFG-01 v2.0.0 不变，产品整包版本不变。
+
+## 风险与待确认
+
+- 降级到 openpyxl 后，外部表整表复制会带上样式与批注，但对 `tableParts`/drawing/图表等
+  openpyxl 保留能力有限的对象仍需实机确认；本次只用合成样本验证了合并与公式。
+- 未在 UOS20 真机与真实业务外部表上验证，仅有 Windows 侧单元/回归证据。
+- 外部表添加失败但链路继续时，引用外部表的公式可能得到 `#REF!` 并进入审核发现；
+  这是可见的失败结果，不是静默错误，但需要在真实业务文件上确认提示是否足够明确。
+- 本次工作期间观察到另一会话在并发修改本仓库（`VERSION_MANIFEST.json`、多个源码文件在同一时段变化）。
+  manifest 为整体重写方式更新，已核对 23 个组件完整、版本测试通过，但仍建议提交前人工复核该文件 diff。
+
+## 追加：跨簿复制样式越界修复（2026-10-28 11:47）
+
+用户确认 Windows 侧同样存在外部文件添加问题，并要求统一改用工作表整表复制。
+
+进一步实测发现 `native/openpyxl_workbook._copy_sheet` 存在独立缺陷：
+
+- 它直接 `destination._style = copy(cell._style)` 搬运样式索引，但目标工作簿没有登记对应的
+  font/fill/border/alignment 记录。报送文件同源于模板时侥幸成立，外部文件是独立工作簿、
+  样式表编号不同，复制后读回即报 `IndexError: list index out of range`（已用带字体/填充/
+  数字格式的合成表复现）。
+- 同函数也未复制条件格式与数据验证，真实模板外部表会因此丢失这两类对象。
+
+处理：
+
+- `_copy_sheet` 改为按原型逐项登记样式（font/fill/border/alignment/number_format/protection），
+  以 `(来源簿 id, 来源 _style)` 为键去重缓存，再写入目标样式；同时跳过 `MergedCell`、
+  补齐条件格式规则与数据验证复制、行列 outline_level、sheet_view 与 tabColor。
+- `add_external_sheets` 在整批复制间共享同一份样式缓存。
+
+验证：
+
+- 合成表：字体（粗体/14 号/白色）、填充 `1F4E78`、`0.00%` 数字格式、列宽 25、冻结 `A2`、
+  合并 `A1:B1`、数据验证 `A2:A3`、条件格式 `B2:B3` 全部正确保留，无 `IndexError`。
+- 真实业务文件 `config-real/外部文件-大集中相关数据.xlsx`：参照表 211 行、机构参照表 221 行、
+  含 `=VLOOKUP(A2,机构参照表!B:H,5,0)`；UOS 与 Windows 两条降级路径均成功添加，
+  公式与内容保留，审核副本可正常打开。
+- 回归：相关 84 passed；S1 全量 524 passed / 13 skipped。
+
+## 追加：混合计划补充验证
+
+新增用例 `test_mixed_plan_falls_back_for_whole_batch_and_keeps_formula`：
+外部计划同时包含纯数据表「集中系统数据」与含公式表「参照表」时，快路径整批 prepare 失败，
+转 openpyxl 后两张表都正确写入，纯数据值 `456.0` 与公式
+`=VLOOKUP(A2,参照表!A:B,2,0)` 均保留。这覆盖了真实外部文件的典型结构
+（一份文件里既有纯数据表也有公式表），确认降级是按整批生效而不是逐表挑拣。
+
+## Git
+
+未提交、未推送。

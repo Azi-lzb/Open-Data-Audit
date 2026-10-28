@@ -60,15 +60,23 @@ from .engines import (
 from .service import AuditService
 from .systems.s2_report_collection.config_check import check_s2_config, format_config_report
 from .path_browser import browse_directory
+from .native.s3_comparison_writer import writer_available as s3_comparison_writer_available
+from .native.s1_summary_writer import writer_available as s1_summary_writer_available
 from .settings import (
     CONDITIONAL_FORMAT_ENGINE_MODES,
     EXPRESSION_EVALUATION_BACKENDS,
     EXPRESSION_EVALUATION_MODES,
     CONDITIONAL_FORMAT_EVALUATORS,
     CONDITIONAL_FORMAT_RULE_READERS,
+    CENTRAL_DATA_READERS,
+    CENTRAL_COMPARISON_WRITERS,
+    SUMMARY_SOURCE_READERS,
+    SUMMARY_RESULT_WRITERS,
+    AUDIT_RESULT_WRITERS,
     EXTERNAL_SHEET_WRITERS,
     FILE_PICKER_MODES,
     FORMULA_REGION_WRITERS,
+    PERIOD_EXTERNAL_READERS,
     DEFAULT_CENTRAL_RULE_ENGINE,
     DEFAULT_EXPRESSION_EVALUATION_BACKEND,
     DEFAULT_EXPRESSION_EVALUATION_MODE,
@@ -181,6 +189,7 @@ DIAGNOSTIC_SETTINGS_GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] 
     ("报表采集系统", (
         ("period_current_dir", "本期目录"), ("period_previous_dir", "上期目录"),
         ("period_central_file", "大集中参照文件"),
+        ("period_external_reader", "大集中数据读取方式"),
         ("period_output_dir", "输出目录"), ("period_output_auto", "输出位置自动"),
     )),
     ("大集中统计系统", (
@@ -189,6 +198,8 @@ DIAGNOSTIC_SETTINGS_GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] 
         ("expression_evaluation_backend", "表达式求值后端"),
         ("central_expression_schema", "表达式规则语法"),
         ("xlsx_render_mode", "XLSX 渲染模式"), ("central_rule_engine", "规则引擎"),
+        ("central_data_reader", "大集中导数读取方式"),
+        ("central_comparison_writer", "S3-F01 比较结果写入方式"),
         ("central_current_csv", "本期数据"), ("central_previous_csv", "上期数据"),
         ("central_output_dir", "执行比较输出目录"), ("central_output_auto", "执行比较输出自动"),
         ("central_cross_current_csv", "数值核对本期数据"),
@@ -381,6 +392,16 @@ class WebApi(S5WebApiMixin):
             "conditionalFormatRuleReader": self.settings.conditional_format_rule_reader,
             "formulaRegionWriter": self.settings.formula_region_writer,
             "externalSheetWriter": self.settings.external_sheet_writer,
+            "periodExternalReader": (
+                self.settings.period_external_reader
+                if self.settings.period_external_reader in PERIOD_EXTERNAL_READERS
+                else "AUTO"
+            ),
+            "centralDataReader": (
+                self.settings.central_data_reader
+                if self.settings.central_data_reader in CENTRAL_DATA_READERS
+                else "AUTO"
+            ),
             "conditionalFormatNativeAvailable": pipeline_kind("自动") == "com",
             "uiTheme": (
                 self.settings.ui_theme
@@ -405,6 +426,20 @@ class WebApi(S5WebApiMixin):
             ),
             "engines": available_engines(),
             "summaryReadEngines": available_summary_readers(),
+            "summarySourceReader": (
+                self.settings.summary_source_reader
+                if self.settings.summary_source_reader in SUMMARY_SOURCE_READERS else "AUTO"
+            ),
+            "summaryResultWriter": (
+                self.settings.summary_result_writer
+                if self.settings.summary_result_writer in SUMMARY_RESULT_WRITERS else "AUTO"
+            ),
+            "summaryRustWriterAvailable": s1_summary_writer_available(),
+            "auditResultWriter": (
+                self.settings.audit_result_writer
+                if self.settings.audit_result_writer in AUDIT_RESULT_WRITERS else "AUTO"
+            ),
+            "auditRustWriterAvailable": s1_summary_writer_available(),
             "engineHint": engine_hint(),
             "sourceFiles": [],
             "selectedFiles": [],
@@ -421,12 +456,28 @@ class WebApi(S5WebApiMixin):
                 bundled_external_reference,
                 disabled=self.settings.period_central_file_default_disabled,
             ),
+            "periodExternalReader": (
+                self.settings.period_external_reader
+                if self.settings.period_external_reader in PERIOD_EXTERNAL_READERS
+                else "AUTO"
+            ),
             "pcConfig": self.settings.period_config_file or str(release_config_dir(project_root) / CONFIG_WORKBOOK_NAME),
             "pcOutput": self.settings.period_output_dir,
             "pcOutputAuto": self.settings.period_output_auto,
             # 大集中统计系统：一册通用配置 + 三册功能配置。
             "centralCur": self.settings.central_current_csv,
             "centralPre": self.settings.central_previous_csv,
+            "centralDataReader": (
+                self.settings.central_data_reader
+                if self.settings.central_data_reader in CENTRAL_DATA_READERS
+                else "AUTO"
+            ),
+            "centralComparisonWriter": (
+                self.settings.central_comparison_writer
+                if self.settings.central_comparison_writer in CENTRAL_COMPARISON_WRITERS
+                else "AUTO"
+            ),
+            "centralRustWriterAvailable": s3_comparison_writer_available(),
             "centralOutput": (str(Path(self.settings.central_current_csv).parent / "执行结果")
                               if self.settings.central_output_auto and self.settings.central_current_csv
                               else self.settings.central_output_dir),
@@ -2358,6 +2409,8 @@ class WebApi(S5WebApiMixin):
                     expression_mode=expression_mode,
                     expression_backend=expression_backend,
                     expression_schema=str(self.state.get("centralExpressionSchema") or "LEGACY_8"),
+                    xlsx_reader=str(self.state.get("centralDataReader") or "AUTO"),
+                    xlsx_writer=str(self.state.get("centralComparisonWriter") or "AUTO"),
                 )
             finally:
                 if office_adapter is not None:
@@ -2410,6 +2463,7 @@ class WebApi(S5WebApiMixin):
                 current_csv=current_csv, previous_csv=previous_csv,
                 output_path=output_path, config_path=self._central_config_paths("cross"),
                 on_step=self._log_detail, write_flow_logs=bool(self.state["exportRunLogs"]),
+                xlsx_reader=str(self.state.get("centralDataReader") or "AUTO"),
             )
             self.state["status"] = f"本期数值核对完成：{len(result.rows)} 行"
             self._log(f"本期数值核对完成：{result.output_path}")
@@ -2809,6 +2863,7 @@ class WebApi(S5WebApiMixin):
                 current_dir=current_dir, previous_dir=previous_dir, central_path=central_path,
                 output_dir=output_dir,
                 config_path=config_path,
+                external_reader=str(self.state.get("periodExternalReader") or "AUTO"),
                 on_progress=report_progress,
             )
             self.state["periodSummary"] = {
@@ -2816,21 +2871,18 @@ class WebApi(S5WebApiMixin):
                 "indicators": result.summary.indicators, "abnormal": result.summary.abnormal_findings,
                 "byType": result.summary.by_type, "result": str(result.paths.result),
             }
-            external_warning_count = sum(
-                1 for finding in getattr(result, "findings", ())
-                if getattr(finding, "rule_type", "") == "外部数据导入"
-            )
+            external_warning_count = len(getattr(result, "external_warnings", ()))
             # 已有配对不变时复用清单；只为此前读取失败的空清单重试元数据扫描。
             if not self.state.get("periodPairs"):
                 self._update_period_progress({"stage": "pairs", "label": "刷新对比对象", "percent": 99})
                 self._refresh_period_pairs()
             complete_message = "已生成三张分类审核表"
             if external_warning_count:
-                complete_message += f"；外部数据提示 {external_warning_count} 条，详情见结果文件“校验规则”工作表"
+                complete_message += f"；大集中数据发现 {external_warning_count} 条非阻断提示，请查看运行记录核实"
             self._update_period_progress({"stage": "complete", "label": "审核完成", "percent": 100, "message": complete_message}, status="completed")
             self.state["status"] = f"跨期比较完成：异常 {result.summary.abnormal_findings} 条"
             if external_warning_count:
-                self.state["status"] += f"；外部数据提示 {external_warning_count} 条，详见“校验规则”"
+                self.state["status"] += f"；大集中数据有 {external_warning_count} 条非阻断提示，请核查运行记录"
             by_type = "、".join(f"{name} {count} 条" for name, count in result.summary.by_type.items()) or "无异常分类"
             total_findings = getattr(result.summary, "total_findings", None)
             if total_findings is None:
@@ -2839,7 +2891,7 @@ class WebApi(S5WebApiMixin):
                 f"S2F1审核完成：机构 {result.summary.institutions} 家，表单 {result.summary.forms} 张，"
                 f"指标 {result.summary.indicators} 项，审核结果 {total_findings} 条，"
                 f"异常 {result.summary.abnormal_findings} 条（{by_type}）；结果文件：{result.paths.result}"
-                + (f"；外部数据提示 {external_warning_count} 条，详情见“校验规则”工作表" if external_warning_count else "")
+                + (f"；大集中数据发现 {external_warning_count} 条非阻断提示，请查看运行记录核实" if external_warning_count else "")
             )
         except Exception as exc:
             self._update_period_progress({**self.state.get("periodProgress", {}), "message": str(exc)}, status="failed")
@@ -3023,6 +3075,52 @@ class WebApi(S5WebApiMixin):
                 self._log("外部文件添加方式只能选择：" + "、".join(EXTERNAL_SHEET_WRITERS))
             else:
                 self.state["externalSheetWriter"] = candidate
+                self._save_settings()
+        if "periodExternalReader" in values:
+            candidate = str(values["periodExternalReader"]).strip().upper()
+            if candidate not in PERIOD_EXTERNAL_READERS:
+                self._log("S2 大集中数据读取方式只能选择：" + "、".join(PERIOD_EXTERNAL_READERS))
+            else:
+                self.state["periodExternalReader"] = candidate
+                self._save_settings()
+        if "centralDataReader" in values:
+            candidate = str(values["centralDataReader"]).strip().upper()
+            if candidate not in CENTRAL_DATA_READERS:
+                self._log("S3 大集中导数 XLSX 读取方式只能选择：" + "、".join(CENTRAL_DATA_READERS))
+            else:
+                self.state["centralDataReader"] = candidate
+                self._save_settings()
+        if "centralComparisonWriter" in values:
+            candidate = str(values["centralComparisonWriter"]).strip().upper()
+            if candidate not in CENTRAL_COMPARISON_WRITERS:
+                self._log("S3-F01 比较结果写入方式只能选择：" + "、".join(CENTRAL_COMPARISON_WRITERS))
+            else:
+                self.state["centralComparisonWriter"] = candidate
+                self._save_settings()
+        if "summarySourceReader" in values:
+            candidate = str(values["summarySourceReader"]).strip().upper()
+            if candidate not in SUMMARY_SOURCE_READERS:
+                self._log("S1-F02 汇总源数据读取器只能选择：" + "、".join(SUMMARY_SOURCE_READERS))
+            else:
+                self.state["summarySourceReader"] = candidate
+                self._save_settings()
+        if "summaryResultWriter" in values:
+            candidate = str(values["summaryResultWriter"]).strip().upper()
+            if candidate not in SUMMARY_RESULT_WRITERS:
+                self._log("S1-F02 汇总结果写入方式只能选择：" + "、".join(SUMMARY_RESULT_WRITERS))
+            elif candidate == "RUST_XLSXWRITER" and not s1_summary_writer_available():
+                self._log("当前程序未附带本平台的 S1-F02 Rust 写入器；请选自动或 OpenPyXL")
+            else:
+                self.state["summaryResultWriter"] = candidate
+                self._save_settings()
+        if "auditResultWriter" in values:
+            candidate = str(values["auditResultWriter"]).strip().upper()
+            if candidate not in AUDIT_RESULT_WRITERS:
+                self._log("S1-F01 审核结果写入方式只能选择：" + "、".join(AUDIT_RESULT_WRITERS))
+            elif candidate == "RUST_XLSXWRITER" and not s1_summary_writer_available():
+                self._log("当前程序未附带本平台的 S1 Rust 写入器；请选自动或 OpenPyXL")
+            else:
+                self.state["auditResultWriter"] = candidate
                 self._save_settings()
         if "calculationEngine" in values:
             candidate = str(values["calculationEngine"]).strip()
@@ -3234,6 +3332,9 @@ class WebApi(S5WebApiMixin):
                 config_path=self.history_path,
                 engine_preference=str(self.state["calculationEngine"]),
                 summary_read_engine=str(self.state["summaryReadEngine"]),
+                summary_source_reader=str(self.state.get("summarySourceReader") or "AUTO"),
+                summary_result_writer=str(self.state.get("summaryResultWriter") or "AUTO"),
+                audit_result_writer=str(self.state.get("auditResultWriter") or "AUTO"),
                 conditional_format_evaluator=str(self.state.get("conditionalFormatEvaluator") or "COM_DISPLAY"),
                 conditional_format_rule_reader=str(self.state.get("conditionalFormatRuleReader") or "DIRECT_OOXML"),
                 formula_region_writer=str(self.state.get("formulaRegionWriter") or "COM_RANGE"),
@@ -3394,8 +3495,38 @@ class WebApi(S5WebApiMixin):
             if self.state.get("externalSheetWriter") in EXTERNAL_SHEET_WRITERS
             else "DIRECT_OOXML"
         )
+        self.settings.period_external_reader = (
+            str(self.state.get("periodExternalReader") or "AUTO").strip().upper()
+            if str(self.state.get("periodExternalReader") or "AUTO").strip().upper()
+            in PERIOD_EXTERNAL_READERS else "AUTO"
+        )
+        self.settings.central_data_reader = (
+            str(self.state.get("centralDataReader") or "AUTO").strip().upper()
+            if str(self.state.get("centralDataReader") or "AUTO").strip().upper()
+            in CENTRAL_DATA_READERS else "AUTO"
+        )
+        self.settings.central_comparison_writer = (
+            str(self.state.get("centralComparisonWriter") or "AUTO").strip().upper()
+            if str(self.state.get("centralComparisonWriter") or "AUTO").strip().upper()
+            in CENTRAL_COMPARISON_WRITERS else "AUTO"
+        )
         self.settings.calculation_engine = str(self.state["calculationEngine"])
         self.settings.summary_read_engine = str(self.state["summaryReadEngine"])
+        self.settings.summary_source_reader = (
+            str(self.state.get("summarySourceReader") or "AUTO").strip().upper()
+            if str(self.state.get("summarySourceReader") or "AUTO").strip().upper()
+            in SUMMARY_SOURCE_READERS else "AUTO"
+        )
+        self.settings.summary_result_writer = (
+            str(self.state.get("summaryResultWriter") or "AUTO").strip().upper()
+            if str(self.state.get("summaryResultWriter") or "AUTO").strip().upper()
+            in SUMMARY_RESULT_WRITERS else "AUTO"
+        )
+        self.settings.audit_result_writer = (
+            str(self.state.get("auditResultWriter") or "AUTO").strip().upper()
+            if str(self.state.get("auditResultWriter") or "AUTO").strip().upper()
+            in AUDIT_RESULT_WRITERS else "AUTO"
+        )
         self.settings.period_current_dir = str(self.state.get("pcCurDir") or "")
         self.settings.period_previous_dir = str(self.state.get("pcPreDir") or "")
         self.settings.period_central_file = str(self.state.get("pcCentral") or "")

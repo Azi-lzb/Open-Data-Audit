@@ -1,0 +1,50 @@
+【时间与执行者】
+时间：2026-10-22 15:39:09（Asia/Shanghai）
+执行者：Codex
+修改前 commit：cac9e1068367bdc46f27685e043aff0cfcd2294c
+修改后 commit：cac9e1068367bdc46f27685e043aff0cfcd2294c（未提交）
+WIP：开始前 AGENTS.md、rules/11_版本管理与组件编号.md、日志/更新日志.txt 已有修改，另有 .zcode/、external/、pytest 临时目录及 20261022_093831 修改记录。保留原有内容，仅最小合并本次规范。
+
+【用户要求与目标】
+S1 也纳入 Rust 优化评估，S4 目前只有 UI 暂不纳入；重写实施目标，并在 AGENTS 与对应 rules 中记录 Rust 优先的技术规范。读取/计算/写入分别对拍和计时，每完成一个系统运行全项目回归。高级设置提供自动路由和支持范围内的手动工具选择。
+
+【修改文件】
+修改：AGENTS.md
+修改：rules/01_项目范围与目录.md
+修改：rules/02_核心架构与跨平台.md
+修改：rules/03_Excel与OOXML边界.md
+修改：rules/07_测试与发布.md
+修改：rules/11_版本管理与组件编号.md
+修改：日志/开发日志.txt
+新增：rules/12_Rust优化与引擎路由.md
+新增：本记录
+删除：无
+
+【规范变化】
+1. 将旧“原生 Python 优先”改为：性能敏感解析、批量计算和读写优先评估 Rust，正确性、端到端性能和目标平台支持决定默认；Python 可继续承担编排和桥接，所有业务在 core 内。
+2. 读取值、OOXML 结构、规则计算、新建结果、已有文件编辑、公式重算按能力分别路由，不建立不分操作的全局工具优先链；保留已验收的手动选择，记录实际后端、版本和回退原因。
+3. 默认实施顺序 S5、S2、S3、S1；S4 排除。读取/计算/写入和完整流程分别测量，写入使用同一份预生成结果，计入数据转换开销，并公平比较 ZIP 压缩条件及输出大小。
+4. 每个系统先系统组与真实样本差分，后全项目回归；跨平台和真实 Office 验收缺项必须注明，不能用 mock 冒充。
+5. 简单结果表格式可从简，但业务字段、文本代码、精度和现有业务用途不能丢失；修改原模板、名称、公式、宏及关系另做保真验证。
+6. Rust 工具后端允许在统一业务契约下注册，不等同复制系统；禁止重复业务流程、配置规则和两个平台的业务实现。
+
+【S1 实现核对与公式边界】
+已只读核对 core/src/base_audit/workflow/adapters/audit_handlers.py 的 handle_formula_copy、excel_com.py 的 apply_rules/calculate_workbook，以及 formula_region_writer.py。
+现有实现已提供 COM_RANGE 与 DIRECT_OOXML 写入后端，并执行逐副本打开、计算、保存、关闭；已有暂停计算等优化。不能将这些既有能力宣称为本轮新优化。
+写入含 INDIRECT/INDEX 的公式文本与执行该公式是两项能力。INDIRECT 是易失函数，INDEX 通常不是。Rust 公式引擎的候选验证必须覆盖完整传递依赖、动态地址、名称作用域、跨表/外部引用、错误传播和再次修改输入后的缓存刷新；未验收依赖继续交给现有 Office 路径，不能以旧缓存、0 或空白冒充本轮结果。
+参考：https://learn.microsoft.com/en-us/office/vba/excel/concepts/excel-performance/excel-improving-calculation-performance
+
+【配置与 VBA 影响】
+本轮未改业务代码、配置工作簿、原始文件、业务公式或现有 VBA 迁移结果；未安装 Rust 依赖，未创建业务实现，未变更 UI 或高级设置实际控件。
+未改用户版日志；现有用户版日志范围 WIP 保留。
+
+【实际验证】
+git diff --check：通过。
+Markdown 静态校验：7 份入口/规则文件的空字符、尾随空白、完整规则路径、四个系统范围、既有日志治理 WIP 保留校验通过；新增规则 48 行。
+未运行：pytest、Office 真机重算、Rust 公式兼容验证、读取/写入性能基准、平台构建。原因：本轮仅研究与治理文档修改，实际迁移尚未开始，按 rules/07 不要求文档修改运行 pytest。
+
+【组件版本】
+不升级：仅治理/文档变更，产品版本、S1/S2/S3/S5 功能版本、所有配置版本均未改动；VERSION_MANIFEST 和组件 CHANGELOG 不变。
+
+【回滚提示】
+移除本次新增 rule12 与 AGENTS 引用，按本次 diff 恢复有关技术选型/验证条款及开发日志新增段落；不要整份恢复 AGENTS.md、rules/11 或用户版日志，以免覆盖开始前已有 WIP。无业务数据回滚事项。

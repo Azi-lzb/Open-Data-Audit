@@ -1,6 +1,96 @@
 # S1-F01 汇总核查表校验
 
-当前版本：v2.5.0
+当前版本：v2.6.3
+
+## v2.6.3 — 2026-10-28
+
+变更类型：Bugfix / PATCH
+
+前版本：v2.6.2；新版本：v2.6.3。
+
+- 修复 UOS/native 管线无法添加外部文件导致整条 S1-F01 审核链被中止的问题：外部表含合并单元格、公式、数据验证或图片时，`DirectOoxmlExternalSheetWriter.prepare()` 抛出的 `UnsupportedExternalSheetOperation` 原先在 `handle_external_copy` 中没有捕获，异常冒泡直接终止 DAG。
+- 外部文件添加改为三级降级：Direct OOXML 快路径不可用时自动改用 openpyxl 添加（保留合并单元格、公式、样式），快路径 `write()` 失败时对该文件单独改用 openpyxl 重试；两者都失败时仅把该文件记为失败、审核副本保留、节点状态降级为 PARTIAL，链路继续。
+- Windows/COM 适配器同步修正：原先 prepare 失败会在每个文件上重新抛出同一异常，导致按“跳过”策略时所有文件都被跳过；现在改为整批降级到 openpyxl，保留原有“停止/跳过”策略只处理真正写入失败。
+- 外部文件失败原因写入文件级 `stage_errors` 与节点部分失败记录，不再静默吞掉；外部表缺失可能使引用它的公式显示 `#REF!`，因此必须可见。
+- 外部文件添加方式默认值不变，仍为 `DIRECT_OOXML`；纯数据外部表继续走快路径。
+- 修复 `native/openpyxl_workbook._copy_sheet` 跨簿复制样式越界：原先直接搬 `_style` 索引，目标工作簿未登记对应字体/对齐，带样式的真实外部表复制后读回报 `IndexError: list index out of range`。现改为按原型逐项登记样式并按来源去重缓存，同时补齐条件格式与数据验证复制。
+- 用 `config-real/外部文件-大集中相关数据.xlsx`（参照表 211 行、机构参照表 221 行、含 VLOOKUP 公式）实测：UOS 与 Windows 两条降级路径均成功添加工作表，公式与样式保留，审核副本可正常打开。
+
+影响文件：`core/src/base_audit/workflow/adapters/native_audit_handlers.py`、`core/src/base_audit/workflow/adapters/audit_handlers.py`、`core/src/base_audit/native/openpyxl_workbook.py`、`core/tests/test_external_copy_fallback.py`、`core/tests/conftest.py`。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。
+
+测试：新增定向 `test_external_copy_fallback.py`：4 passed（纯数据走快路径、复杂外部表降级 openpyxl 并保留合并与公式、纯数据表与公式表混合计划整批降级后两表都在、双写入器失败时 PARTIAL 且副本保留）；相关回归 `test_external_sheet_writer.py`、`test_external.py`、`test_native_uos.py`、`core/tests/workflow/`：84 passed；S1 回归：524 passed / 13 skipped / 698 deselected / 3 subtests passed。
+
+GPT修改记录：`GPT修改记录/20261028_113754_S1-F01外部文件添加降级与链路续跑.txt`。
+
+Git提交：未提交。
+
+## v2.6.2 — 2026-10-27 17:38
+
+变更类型：Bugfix / PATCH
+
+前版本：v2.6.1；新版本：v2.6.2。
+
+- S1-F01 自动模板识别与待处理文件匹配排除源文件中 `veryHidden` 工作表，避免模板未配置的内部隐藏表拉低匹配率。
+- Excel 普通隐藏工作表仍参与匹配；手动选择模板后的结构校验仍逐项检查模板要求的工作表和结构区域。
+- 自动计算引擎遇到 Excel 无法打开的工作簿时，在当前会话没有打开其他工作簿的情况下自动改用 WPS 重试；用户明确选择 Excel 时仍按所选引擎执行。
+- S1-F02 的工作表提示未调整。
+
+影响文件：`core/src/base_audit/discovery.py`、`core/src/base_audit/excel_com.py`、`core/src/base_audit/workflow/runner.py`、相关 S1 测试。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。
+
+测试：定向 `test_discovery.py`、`test_preflight_xlsx.py`、`test_native_uos.py`：69 passed；S1 回归：518 passed / 13 skipped / 1 failed / 696 deselected / 3 subtests passed。唯一失败是既有 `test_version_manifest.py` 对 S5-F01 仍断言 v3.0.0，而当前清单为 v3.0.1，与本次 S1 改动无关。对 7 份真实审核副本的临时拷贝实测 Excel 打开失败后自动切换 WPS；7 份均打开、重算并保存成功，原始文件未改动。
+
+GPT修改记录：`GPT修改记录/20261027_173844_S1-F01模板匹配与WPS打开兼容.txt`。
+
+Git提交：未提交。
+
+## v2.6.1 — 2026-10-22 19:54
+
+变更类型：Bugfix / PATCH
+
+前版本：v2.6.0；新版本：v2.6.1。
+
+- Linux 原生审核流程将公式写入后的 LibreOffice 重算改为每批最多 8 份副本共用一次引擎启动；批次输出全部生成后才回写，降低重复启动开销并避免失败时只覆盖该批部分文件。
+- 公式写入与 LibreOffice 批次重算分别记录耗时，重算日志显示工作簿数量和批次数；Windows Excel/WPS COM 路径、审核公式及结果口径不变。
+
+影响文件：`core/src/base_audit/engines/libreoffice.py`、`core/src/base_audit/workflow/adapters/native_audit_handlers.py`、S1 native workflow 测试、`core/tests/TEST_GROUPS.md`。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。
+
+性能与兼容性验证：WSL Ubuntu AMD64 / LibreOffice 24.2.7.2，3 份合成审核副本（每份 1,000 行、2,000 个 INDEX/MATCH 与 INDIRECT 公式），五轮逐文件重算中位数 8.79 秒，批量重算 3.68 秒（约 2.39 倍）；公式缓存相同，并在修改数据值和动态引用后重新计算为新结果。另以 10 份中文文件名副本验证生产批量大小 8，实际分成 8+2 两批，10 份缓存均正确。
+
+测试：Windows core 全量 1,207 passed / 13 skipped / 0 failed / 8 warnings / 5 subtests；WSL Ubuntu AMD64 core 全量 1,199 passed / 21 skipped / 0 failed / 8 warnings / 5 subtests；S1 定向新增批量成功/失败保护用例通过。8 条 warning 为测试环境未安装 `python-calamine` 时既有的自动回退提示。未在 Windows Excel/WPS COM 环境或 UOS 真机进行手工重算验收。
+
+GPT修改记录：`GPT修改记录/20261022_195422_S1-F01_批量LibreOffice重算优化.txt`。
+
+Git提交：未提交。
+
+## v2.6.0 — 2026-10-22 18:39
+
+## v2.6.0 — 2026-10-22 18:39
+
+变更类型：Feature / MINOR
+
+前版本：v2.5.0；新版本：v2.6.0。
+
+- 新建审核结果工作簿支持独立 AUTO / Rust xlsxwriter / OpenPyXL 写入方式；自动优先可用的 Rust writer，失败时安全回退，手动选择失败时明确报错。
+- 保留审核副本外部文件链接、目标工作表和单元格定位、可见单元格文字、表头样式、筛选、冻结及列宽；不涉及公式复制或 Office 重算。
+- 设置中心独立保存 S1-F01 写入方式，不与 S1-F02 汇总结果写入方式共用设置。
+
+影响文件：`core/src/base_audit/native/result_writer.py`、`core/src/base_audit/native/s1_summary_writer.py`、S1 workflow 结果输出节点、设置中心、`core/rust/s1_summary_writer/` 与相关测试。
+
+配置影响：用户设置 JSON 增加 `audit_result_writer`；现有配置工作簿及 S1-CFG-01 v2.0.0 不变。
+
+性能基准：Windows 合成结果表含逐行审核副本链接，1,000 条问题 Rust/OpenPyXL 中位数 0.419/1.532 秒（3.66 倍），3,000 条为 1.228/7.980 秒（6.50 倍）；对拍表格值、文件链接及目标单元格定位。
+
+测试：S1 系统回归与 Windows/WSL core 全量回归结果见本轮 GPT 修改记录。
+
+GPT修改记录：`GPT修改记录/20261022_182600_S1读写引擎路由与Rust结果写入.txt`。
+
+Git提交：未提交。
 
 ## v2.5.0 — 2026-10-22 00:27
 

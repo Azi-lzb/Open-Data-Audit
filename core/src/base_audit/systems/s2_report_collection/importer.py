@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from typing import Any, Callable, Tuple, Union
 
@@ -284,9 +286,17 @@ ExternalValueKey = Union[Tuple[str, str], Tuple[str, str, str]]
 class ExternalValues(dict):
     """保持原字典接口，并记录格式、行标签、指标列与可继续处理的数据提示。"""
 
-    def __init__(self, *, time_series: bool = False) -> None:
+    def __init__(
+        self, *, time_series: bool = False, reader_engine: str = "",
+        reader_version: str = "", reader_fallback_reason: str = "",
+        reader_elapsed_seconds: float = 0.0,
+    ) -> None:
         super().__init__()
         self.time_series = time_series
+        self.reader_engine = reader_engine
+        self.reader_version = reader_version
+        self.reader_fallback_reason = reader_fallback_reason
+        self.reader_elapsed_seconds = reader_elapsed_seconds
         self.available_dates: set[str] = set()
         self.date_labels: set[tuple[str, str]] = set()
         self.row_labels: set[str] = set()
@@ -345,7 +355,12 @@ _EXTERNAL_METADATA_HEADERS = {
 
 
 def _external_headers(row: list[Any]) -> list[str]:
-    return [str(value if value is not None else "").strip().lstrip("\ufeff").strip() for value in row]
+    headers = [
+        str(value if value is not None else "").strip().lstrip("\ufeff").strip()
+        for value in row
+    ]
+    # Excel 导出中的 null/NULL 是空表头占位，不是可供外部规则匹配的指标名。
+    return ["" if title.casefold() == "null" else title for title in headers]
 
 
 def _has_external_value(value: Any) -> bool:
@@ -374,7 +389,7 @@ def _read_time_series_external(
     date_col, label_col = headers.index("数据日期"), headers.index("行名称")
     indicators: dict[str, int] = {}
     for col, title in enumerate(headers):
-        if not title or title.casefold() == "null" or title in _EXTERNAL_METADATA_HEADERS:
+        if not title or title in _EXTERNAL_METADATA_HEADERS:
             continue
         if title in indicators:
             raise ImportErrorV2(f"集中系统数据第{header_row + 1}行：时序格式的指标列“{title}”重复，无法确定取数列")
@@ -469,6 +484,44 @@ def _open_external(path: Path):
     return list(book.sheetnames), rows, book.close
 
 
+def _open_external_calamine(path: Path):
+    """Calamine 的 Rust 原生读取路径；保留工作表名与原始行号。"""
+    if _calamine_load is None:
+        raise ImportErrorV2("未安装 python-calamine")
+    book = _calamine_load(path)
+    names = list(book.sheet_names)
+    matrices: dict[str, list[list[Any]]] = {}
+    for name in names:
+        sheet = book.get_sheet_by_name(name)
+        matrix = sheet.to_python()
+        # Calamine 会裁去首个非空单元格之前的空行；补回行位，保证数据行号、
+        # 表头定位和 SourceRef 与 OpenPyXL 读取一致。列位置由 to_python 保留。
+        start = sheet.start
+        leading_rows = start[0] if isinstance(start, tuple) else 0
+        matrices[name] = (
+            [[None] for _ in range(leading_rows)]
+            + [[_normalize_fast_value(value, xls=False) for value in row] for row in matrix]
+        )
+
+    def rows(name: str):
+        return [list(row) for row in matrices[name]]
+
+    # 当前 python-calamine 的工作簿对象没有需要用户关闭的文件句柄；保留对象
+    # 到本次导入结束，避免不同后端版本在惰性读取时提前释放底层资源。
+    def close():
+        _ = book
+
+    return names, rows, close
+
+
+def _external_reader_version(engine: str) -> str:
+    package = "python-calamine" if engine == "Calamine" else "openpyxl"
+    try:
+        return package_version(package)
+    except PackageNotFoundError:
+        return "未知"
+
+
 def _read_external_org_map(sheet_name: str, rows: list[list[Any]]) -> dict[str, str]:
     if not rows:
         return {}
@@ -495,11 +548,43 @@ def _read_external_org_map(sheet_name: str, rows: list[list[Any]]) -> dict[str, 
     return org_map
 
 
-def import_external_workbook(path: Path) -> tuple[ExternalValues, dict[str, str]]:
-    """读取 .xlsx 中的普通报表或时序布局；时序数值按完整日期匹配。"""
+def import_external_workbook(
+    path: Path, *, reader_engine: str = "AUTO",
+) -> tuple[ExternalValues, dict[str, str]]:
+    """读取 .xlsx 中的普通报表或时序布局；时序数值按完整日期匹配。
+
+    AUTO 优先用 Calamine；引擎缺失或读文件失败时明确回退 OpenPyXL。手动选定
+    的引擎严格执行，不在失败时静默切换。
+    """
     if not path.is_file():
         raise ImportErrorV2(f"大集中文件不存在：{path}")
-    sheets, read_rows, close = _open_external(path)
+    if path.suffix.casefold() != ".xlsx":
+        raise ImportErrorV2(
+            f"大集中数据仅支持 .xlsx 工作簿：{path.name}"
+            "（.xls/.csv 会丢失「机构参照表/参照表」机构映射，不支持）"
+        )
+    mode = str(reader_engine or "AUTO").strip().upper()
+    if mode not in {"AUTO", "CALAMINE", "OPENPYXL"}:
+        raise ImportErrorV2(f"未知的大集中数据读取方式：{reader_engine}")
+    started = time.perf_counter()
+    fallback_reason = ""
+    if mode == "OPENPYXL":
+        sheets, read_rows, close = _open_external(path)
+        actual_engine = "OpenPyXL"
+    else:
+        try:
+            sheets, read_rows, close = _open_external_calamine(path)
+            actual_engine = "Calamine"
+        except Exception as exc:  # noqa: BLE001 - AUTO 可按兼容路径重试
+            if mode == "CALAMINE":
+                raise ImportErrorV2(
+                    f"已指定 Calamine 读取大集中数据，但读取失败：{exc}"
+                ) from exc
+            fallback_reason = f"Calamine 读取失败，自动回退 OpenPyXL：{exc}"
+            if _calamine_load is None:
+                fallback_reason = "未安装 python-calamine，自动回退 OpenPyXL"
+            sheets, read_rows, close = _open_external(path)
+            actual_engine = "OpenPyXL"
     try:
         if "集中系统数据" not in sheets:
             raise ImportErrorV2("大集中文件缺少“集中系统数据”工作表")
@@ -541,6 +626,10 @@ def import_external_workbook(path: Path) -> tuple[ExternalValues, dict[str, str]
             if reference_sheet is not None
             else {}
         )
+        values.reader_engine = actual_engine
+        values.reader_version = _external_reader_version(actual_engine)
+        values.reader_fallback_reason = fallback_reason
+        values.reader_elapsed_seconds = time.perf_counter() - started
         return values, org_map
     finally:
         close()
@@ -549,14 +638,15 @@ def import_external_workbook(path: Path) -> tuple[ExternalValues, dict[str, str]
 def _read_plain_external(path: Path, matrix: list[list[Any]], header_row: int) -> ExternalValues:
     """保留原普通格式的取数和缺少机构行标签列时的零值兜底。"""
     header = matrix[header_row]
+    headers = _external_headers(header)
     label_col = next((
-        c for c, title in enumerate(_external_headers(header)[:4])
+        c for c, title in enumerate(headers[:4])
         if title in {"行名称", "报表项目"}
     ), None)
     if label_col is None:
         label_col = next((
             c for c in range(min(4, len(header)))
-            if not str(header[c] or "").strip()
+            if not headers[c]
             and any(
                 isinstance(r[c] if c < len(r) else None, str) and str(r[c]).strip()
                 for r in matrix[header_row + 1:header_row + 5]
@@ -575,11 +665,11 @@ def _read_plain_external(path: Path, matrix: list[list[Any]], header_row: int) -
         )
     else:
         indicators = [
-            (col, str(title or "").strip())
-            for col, title in enumerate(header)
-            if str(title or "").strip()
+            (col, title)
+            for col, title in enumerate(headers)
+            if title
             and col != label_col
-            and str(title or "").strip() not in _EXTERNAL_METADATA_HEADERS
+            and title not in _EXTERNAL_METADATA_HEADERS
         ]
         for _col, title in indicators:
             values.indicator_names.add(title)

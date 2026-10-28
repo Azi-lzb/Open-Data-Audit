@@ -82,6 +82,72 @@ class CentralImporterTests(unittest.TestCase):
             self.assertEqual(data.record_date, "2026-08-31")
             self.assertEqual(len(data.records), 2)
 
+    def test_xlsx_calamine_and_openpyxl_readers_match_and_report_engine(self) -> None:
+        from base_audit.systems.s3_central_statistics.csv_importer import _calamine_load
+
+        if _calamine_load is None:
+            self.skipTest("python-calamine 未安装")
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / "两期数据.xlsx"
+            _write_xlsx(path, leading_cover_sheet=True)
+            details: list[str] = []
+            calamine = read_central_csv(path, xlsx_reader="CALAMINE", on_read=details.append)
+            openpyxl = read_central_csv(path, xlsx_reader="OPENPYXL")
+            self.assertEqual(calamine.records, openpyxl.records)
+            self.assertEqual(calamine.issues, openpyxl.issues)
+            self.assertEqual(len(details), 1)
+            self.assertIn("Calamine", details[0])
+            self.assertIn("耗时", details[0])
+
+    def test_xlsx_auto_fallback_is_reported_and_explicit_calamine_fails_loudly(self) -> None:
+        from unittest.mock import patch
+
+        from base_audit.systems.s3_central_statistics import csv_importer
+
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / "两期数据.xlsx"
+            _write_xlsx(path)
+            details: list[str] = []
+            with patch.object(csv_importer, "_calamine_load", None):
+                fallback = read_central_csv(path, on_read=details.append)
+                self.assertIn("OpenPyXL", details[0])
+                self.assertIn("自动回退原因", details[0])
+                with self.assertRaisesRegex(ValueError, "Calamine 读取失败"):
+                    read_central_csv(path, xlsx_reader="CALAMINE")
+            self.assertEqual(len(fallback.records), 2)
+
+    def test_xlsx_auto_fallbacks_after_calamine_file_error(self) -> None:
+        from unittest.mock import patch
+
+        from base_audit.systems.s3_central_statistics import csv_importer
+
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / "两期数据.xlsx"
+            _write_xlsx(path)
+            details: list[str] = []
+            with patch.object(csv_importer, "_calamine_load", side_effect=RuntimeError("fixture failure")):
+                fallback = read_central_csv(path, on_read=details.append)
+            self.assertEqual(len(fallback.records), 2)
+            self.assertIn("OpenPyXL", details[0])
+            self.assertIn("fixture failure", details[0])
+
+    def test_xlsx_date_cells_match_between_readers(self) -> None:
+        from datetime import datetime
+
+        from openpyxl import load_workbook
+
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / "日期数据.xlsx"
+            _write_xlsx(path)
+            book = load_workbook(path)
+            sheet = book.active
+            sheet["B2"] = datetime(2026, 8, 31)
+            book.save(path)
+            book.close()
+            calamine = read_central_csv(path, xlsx_reader="CALAMINE")
+            openpyxl = read_central_csv(path, xlsx_reader="OPENPYXL")
+            self.assertEqual(calamine.records, openpyxl.records)
+
     def test_exempt_indicator_skips_unit_factor(self) -> None:
         with TemporaryDirectory() as folder:
             xlsx_path = Path(folder) / "本期.xlsx"

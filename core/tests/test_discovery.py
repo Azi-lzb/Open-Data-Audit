@@ -79,6 +79,46 @@ def test_source_sheet_subset_matches_template_with_other_sheets(tmp_path):
     assert "源文件工作表全部包含于模板" in suggestion.details
 
 
+def test_f1_very_hidden_source_sheets_do_not_block_template_match(tmp_path):
+    inputs, templates = tmp_path / "inputs", tmp_path / "templates"
+    inputs.mkdir(); templates.mkdir()
+    template = templates / "综合模板.xlsx"
+    source = inputs / "源文件.xlsx"
+    template_sheets = tuple(f"报表{i}" for i in range(1, 8))
+    very_hidden_sheets = tuple(f"内部数据{i}" for i in range(1, 13))
+    make_xlsx(template, *template_sheets)
+    make_xlsx(
+        source, *template_sheets, *very_hidden_sheets,
+        very_hidden=very_hidden_sheets,
+    )
+
+    rows = classify_source_files(templates, inputs, tmp_path / "index.json")
+    suggestion = recommend_template(templates, inputs, tmp_path / "index.json")
+
+    assert rows[0]["template"] == template.name
+    assert suggestion.matched
+    assert suggestion.template_path == template
+    assert suggestion.confidence == 1.0
+    assert "忽略 veryHidden 工作表" in suggestion.details
+
+
+def test_f1_normal_hidden_source_sheets_remain_in_template_matching(tmp_path):
+    inputs, templates = tmp_path / "inputs", tmp_path / "templates"
+    inputs.mkdir(); templates.mkdir()
+    template = templates / "综合模板.xlsx"
+    source = inputs / "源文件.xlsx"
+    template_sheets = tuple(f"报表{i}" for i in range(1, 8))
+    hidden_sheets = tuple(f"可取消隐藏{i}" for i in range(1, 13))
+    make_xlsx(template, *template_sheets)
+    make_xlsx(source, *template_sheets, *hidden_sheets, hidden=hidden_sheets)
+
+    rows = classify_source_files(templates, inputs, tmp_path / "index.json")
+    suggestion = recommend_template(templates, inputs, tmp_path / "index.json")
+
+    assert rows[0]["template"] == "未识别"
+    assert not suggestion.matched
+
+
 def test_f2_extra_sheets_with_fallback_are_shown_as_fallback_candidates(tmp_path):
     template, source = tmp_path / "模板.xlsx", tmp_path / "源.xlsx"
     make_xlsx(template, "既有表", "兜底模板")
@@ -94,18 +134,47 @@ def test_f2_extra_sheets_with_fallback_are_shown_as_fallback_candidates(tmp_path
     assert hint["partial"]
 
 
+def test_f2_extra_sheet_hint_reports_hidden_and_very_hidden_counts(tmp_path):
+    template, source = tmp_path / "模板.xlsx", tmp_path / "源.xlsx"
+    make_xlsx(template, "报表甲", "报表乙")
+    make_xlsx(
+        source, "报表甲", "报表乙", "隐藏表", "深度隐藏表",
+        hidden=("隐藏表",), very_hidden=("深度隐藏表",),
+    )
+    rows = [{"path": str(source), "template": "未识别"}]
+
+    annotate_summary_matches(rows, template)
+
+    hint = rows[0]["summaryMatch"]
+    assert hint["extra"] == ["深度隐藏表", "隐藏表"]
+    assert hint["extraHiddenCount"] == 2
+    assert hint["extraVeryHiddenCount"] == 1
+
+
 WORKBOOK_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <sheets><sheet name="数据表" sheetId="1"/></sheets>
 </workbook>"""
 
 
-def make_xlsx(path: Path, *sheet_names: str) -> None:
+def make_xlsx(
+    path: Path,
+    *sheet_names: str,
+    very_hidden: tuple[str, ...] = (),
+    hidden: tuple[str, ...] = (),
+) -> None:
     names = sheet_names or ("数据表",)
-    sheets = "".join(
-        f'<sheet name="{name}" sheetId="{index}"/>'
-        for index, name in enumerate(names, start=1)
-    )
+    very_hidden_names = set(very_hidden)
+    hidden_names = set(hidden)
+    sheet_nodes = []
+    for index, name in enumerate(names, start=1):
+        state = (
+            ' state="veryHidden"' if name in very_hidden_names
+            else ' state="hidden"' if name in hidden_names
+            else ""
+        )
+        sheet_nodes.append(f'<sheet name="{name}" sheetId="{index}"{state}/>')
+    sheets = "".join(sheet_nodes)
     xml = WORKBOOK_XML.replace(
         '<sheets><sheet name="数据表" sheetId="1"/></sheets>',
         f"<sheets>{sheets}</sheets>",

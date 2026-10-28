@@ -1,0 +1,23 @@
+# Excel 与 Office 技术栈盘点文档
+
+时间：2026-10-22 19:13（Asia/Shanghai）
+范围：只读审计，不改任何业务代码；新增文档一份。
+
+## 变更内容
+
+- 新增 docs/Excel与Office技术栈盘点_2026-10-22.md：全仓 Excel/Office 相关实现的结构化盘点。
+- 内容包括：项目基础信息（入口/打包/Python 版本）、依赖清单（区分"依赖里有"与"代码里调用"）、
+  逐文件逐函数的 Excel/Office 调用盘点（COM / LibreOffice / openpyxl / 直接 OOXML /
+  python_calamine / xlrd / csv / Rust 写入器）、openpyxl 能力使用表、
+  COM/LibreOffice 调用点原文与关键路径判定、文件与模板特征、待确认问题。
+- 盘点基于 core/src、shell-flask、shell-pywebview（排除 dist 与 build-win7-venv）、tools、
+  core/rust、core/frontend、config；dist 与 core/data/git-sync-* 副本未纳入。
+
+## 版本与留痕
+
+- 纯文档新增，无代码与行为变化；组件版本、产品整包版本、CHANGELOG、用户版更新日志均不变。
+
+## 注意
+
+- 该文档第六节含本机 config-real 的规模元数据（行列数/文件大小），按仓库规则不应提交到公开仓库；
+  如需公开，可先删除第六节 config-real 相关内容。

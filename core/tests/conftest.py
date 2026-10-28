@@ -33,6 +33,7 @@ _SYSTEM_TEST_FILES = {
         "test_config_history.py",
         "test_external.py",
         "test_external_sheet_writer.py",
+        "test_external_copy_fallback.py",
         "test_feature_log.py",
         "test_formula_inspection.py",
         "test_formula_region_writer.py",
@@ -43,6 +44,7 @@ _SYSTEM_TEST_FILES = {
         "test_native_uos.py",
         "test_preflight_xlsx.py",
         "test_region_summary.py",
+        "test_s1_summary_backends.py",
         "test_result_writer.py",
         "test_summary_read_engine.py",
         "test_template.py",
@@ -65,6 +67,7 @@ _SYSTEM_TEST_FILES = {
     },
     "s3": {
         "test_central_comparison.py",
+        "test_central_comparison_writer.py",
         "test_central_config_split.py",
         "test_central_cross_period.py",
         "test_central_csv_importer.py",

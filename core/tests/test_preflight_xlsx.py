@@ -117,6 +117,31 @@ class PreflightXlsxTests(unittest.TestCase):
             self.assertEqual("B1", detail["C3"].value)
             saved.close()
 
+    def test_manual_template_structure_check_ignores_extra_very_hidden_sheets(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "机构甲.xlsx"
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = "贷款明细"
+            sheet["A1"] = "固定标题"
+            for index in range(12):
+                hidden = workbook.create_sheet(f"内部数据{index + 1}")
+                hidden.sheet_state = "veryHidden"
+            workbook.save(source)
+            workbook.close()
+
+            structure = CopyRange("贷款明细", "A1")
+            definition = TemplateDefinition(
+                [], [CopyRange("贷款明细", "A2")], False, [structure]
+            )
+            result = validate_source_xlsx(
+                source, definition, [(structure, [["固定标题"]])]
+            )
+
+        self.assertTrue(result.matched)
+        self.assertEqual(1.0, result.score)
+
     def test_summary_keeps_present_sheets_when_another_template_sheet_is_missing(self):
         with TemporaryDirectory() as folder:
             root = Path(folder)

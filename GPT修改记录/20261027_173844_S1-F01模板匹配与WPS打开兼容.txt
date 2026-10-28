@@ -1,0 +1,47 @@
+时间：2026-10-27 17:38:44
+执行者：Codex
+
+修改前提交：cac9e10
+修改后提交：cac9e10（未提交）
+WIP 状态：开始前工作区已有多处未提交修改。本次只在下列目标文件中追加或局部调整，未清理、覆盖或回滚其他 WIP。
+
+目的：修复 S1-F01 源文件包含大量无法从 Excel 工作表菜单取消隐藏的 `veryHidden` 表时，自动模板匹配率被拉低的问题；根据用户提供的运行记录修复 Excel COM 无法打开该批报表而导致 7 个文件公式重算全部跳过的问题。
+
+修改文件：
+- `core/src/base_audit/discovery.py`
+- `core/src/base_audit/excel_com.py`
+- `core/src/base_audit/workflow/runner.py`
+- `core/tests/test_discovery.py`
+- `core/tests/test_preflight_xlsx.py`
+- `core/tests/test_native_uos.py`
+- `core/tests/test_version_manifest.py`
+- `core/tests/TEST_GROUPS.md`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md`
+- `日志/更新日志.txt`
+- `日志/开发日志.txt`
+
+变化：
+- S1-F01 的自动模板推荐与待处理文件匹配读取 XLSX 工作表 `state`；仅排除源文件中 `veryHidden` 工作表。普通 `hidden` 工作表继续参与匹配。S1-F02 的工作表提示仍使用原完整工作表列表。
+- 手动选择模板后的结构校验仍依据模板定义检查工作表及结构区域；模板外的额外表不影响这些检查。
+- 用户提供的运行记录显示：7 份文件结构比对全部通过；失败发生在公式校验复制阶段，Microsoft Excel 的 `Workbooks.Open` 无法打开源文件的审核副本。复测确认 Excel COM 连原始报表也无法打开，但 WPS COM 能打开原始报表及 Direct OOXML 输出副本。
+- 当计算引擎设为“自动”，且 Excel 无法打开当前工作簿、会话没有其他打开工作簿时，自动尝试 WPS 并继续；成功时更新当前引擎并写入运行记录。明确选择 Microsoft Excel 时不切换。
+- 未修改用户真实配置、S1-CFG-01、产品版本、S2/S3/S5 业务代码或发行包。
+
+【组件版本】
+系统：S1 逐笔统计系统
+影响功能：S1-F01 汇总核查表校验 v2.6.1 → v2.6.2
+影响配置：S1-CFG-01 v2.0.0 → v2.0.0（未变）
+未修改的相关组件：S1-F02 至 F05、S2-*、S3-*、S5-*
+版本升级原因：PATCH；修复 veryHidden 工作表造成的模板匹配误差，并为 Excel 无法打开单个工作簿时增加自动恢复路径。
+
+验证：
+- `python -m pytest -q core/tests/test_discovery.py core/tests/test_preflight_xlsx.py core/tests/test_native_uos.py`：69 passed。
+- `python -m pytest -q -rs -m s1 core/tests`：518 passed / 13 skipped / 1 failed / 696 deselected / 3 subtests passed。唯一失败为既有 `test_version_manifest.py` 将 S5-F01 期望为 3.0.0，而当前 VERSION_MANIFEST.json 为 3.0.1；该断言与本次 S1 修改无关，未改 S5。
+- 本机 Excel COM 无法打开所提供的源报表；WPS COM 可以打开。使用临时副本实测自动会话从 Excel 切换到 WPS，并对 7 份审核副本完成打开、重算、保存。用户原始报表和本次已有失败批次输出未修改。
+- 未在 UOS/Linux、WPS 实际安装包或 Excel/WPS GUI 中验收；未打包、未提交。
+
+配置及 VBA 影响：无。
+
+删除清单：无。
+回滚提示：仅回退上述文件中的本次局部修改、新增测试/文档行与本记录；不要整文件恢复，因为工作区在本次任务前已有用户 WIP。

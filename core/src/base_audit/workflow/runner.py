@@ -286,6 +286,7 @@ def run_dag_audit(
     try:
         with ExcelSession(engine_preference) as excel:
             startup_complete.set()
+            excel.on_engine_fallback = log
             context.services["excel"] = excel
             log(f"已连接表格引擎：{excel.engine_name}")
             # 历史表仅为值读取，不需要 COM；ExcelSession 只服务后续的公式重算

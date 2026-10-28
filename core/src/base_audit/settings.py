@@ -33,6 +33,10 @@ EXPRESSION_EVALUATION_BACKENDS = ("PYTHON", "OFFICE")
 DEFAULT_EXPRESSION_EVALUATION_MODE = "SBE"
 DEFAULT_EXPRESSION_EVALUATION_BACKEND = "PYTHON"
 SUMMARY_READ_ENGINES = ("纯 Python", "Excel/WPS", "LibreOffice Calc")
+# S1-F02 汇总校验结果说明只在“纯 Python”管线生效；源值读取与结果写入分开选。
+SUMMARY_SOURCE_READERS = ("AUTO", "CALAMINE", "OPENPYXL")
+SUMMARY_RESULT_WRITERS = ("AUTO", "RUST_XLSXWRITER", "OPENPYXL")
+AUDIT_RESULT_WRITERS = ("AUTO", "RUST_XLSXWRITER", "OPENPYXL")
 # 设置中心「界面模式」：日间（默认，纸张背景）/ 日间纯白（纯白背景）/ 夜间，纯显示偏好。
 # 旧设置值迁移：浅色→日间，深色/纯黑→夜间（纯黑已并入夜间）。
 UI_THEMES = ("日间", "日间纯白", "夜间")
@@ -60,6 +64,13 @@ FORMULA_REGION_WRITERS = ("COM_RANGE", "DIRECT_OOXML")
 # 外部辅助表写入方式：DIRECT_OOXML 仅面向纯数值/文本工作表；当前正式外部表
 # 已完成基准验证，故默认使用它；复杂工作表仍可切回 openpyxl。
 EXTERNAL_SHEET_WRITERS = ("OPENPYXL", "DIRECT_OOXML")
+# S2 大集中外部工作簿读取器。AUTO 优先使用 Rust 实现的 python-calamine，
+# 不支持或处理失败时明确回退 OpenPyXL；手动模式必须按所选引擎执行。
+PERIOD_EXTERNAL_READERS = ("AUTO", "CALAMINE", "OPENPYXL")
+# S3 大集中导数的 XLSX 读取器；CSV 与 XLS 继续使用现有专用读取路径。
+CENTRAL_DATA_READERS = ("AUTO", "CALAMINE", "OPENPYXL")
+# S3-F01 creates a new comparison result workbook; other S3 writers are separate.
+CENTRAL_COMPARISON_WRITERS = ("AUTO", "RUST_XLSXWRITER", "OPENPYXL")
 _LEGACY_EVALUATOR_MAP = {
     "OOXML": "PYTHON", "NATIVE": "COM_DISPLAY", "DISPLAY_FORMAT_NATIVE": "COM_DISPLAY",
 }
@@ -154,6 +165,10 @@ class UserSettings:
     calculation_engine: str = "自动"
     # 只影响“汇总校验结果说明”；默认不启动 Excel/WPS/LibreOffice。
     summary_read_engine: str = "纯 Python"
+    # S1-F02 native 路径的 XLSX 源值读取器与新建结果表写入器，彼此独立。
+    summary_source_reader: str = "AUTO"
+    summary_result_writer: str = "AUTO"
+    audit_result_writer: str = "AUTO"
     favorite_input_dirs: list[FavoritePath] = field(default_factory=list)
     favorite_template_dirs: list[FavoritePath] = field(default_factory=list)
     favorite_external_files: list[FavoritePath] = field(default_factory=list)
@@ -166,6 +181,7 @@ class UserSettings:
     period_current_dir: str = ""
     period_previous_dir: str = ""
     period_central_file: str = ""
+    period_external_reader: str = "AUTO"
     period_central_file_default_disabled: bool = False
     period_output_dir: str = ""
     period_output_auto: bool = True
@@ -176,6 +192,8 @@ class UserSettings:
     # 大集中统计系统：独立保存的路径，不与另两个系统混用。
     central_current_csv: str = ""
     central_previous_csv: str = ""
+    central_data_reader: str = "AUTO"
+    central_comparison_writer: str = "AUTO"
     central_output_dir: str = ""
     central_output_auto: bool = True
     central_cross_current_csv: str = ""
@@ -365,6 +383,26 @@ class SettingsStore:
                 if str(payload.get("summary_read_engine") or "纯 Python") in SUMMARY_READ_ENGINES
                 else "纯 Python"
             ),
+            summary_source_reader=(
+                str(payload.get("summary_source_reader") or "AUTO").strip().upper()
+                if str(payload.get("summary_source_reader") or "AUTO").strip().upper()
+                in SUMMARY_SOURCE_READERS else "AUTO"
+            ),
+            summary_result_writer=(
+                str(payload.get("summary_result_writer") or "AUTO").strip().upper()
+                if str(payload.get("summary_result_writer") or "AUTO").strip().upper()
+                in SUMMARY_RESULT_WRITERS else "AUTO"
+            ),
+            audit_result_writer=(
+                str(payload.get("audit_result_writer") or "AUTO").strip().upper()
+                if str(payload.get("audit_result_writer") or "AUTO").strip().upper()
+                in AUDIT_RESULT_WRITERS else "AUTO"
+            ),
+            period_external_reader=(
+                str(payload.get("period_external_reader") or "AUTO").strip().upper()
+                if str(payload.get("period_external_reader") or "AUTO").strip().upper()
+                in PERIOD_EXTERNAL_READERS else "AUTO"
+            ),
             favorite_input_dirs=self._favorites(payload.get("favorite_input_dirs")),
             favorite_template_dirs=self._favorites(
                 payload.get("favorite_template_dirs")
@@ -386,6 +424,16 @@ class SettingsStore:
             period_config_file=str(payload.get("period_config_file") or ""),
             central_current_csv=str(payload.get("central_current_csv") or ""),
             central_previous_csv=str(payload.get("central_previous_csv") or ""),
+            central_data_reader=(
+                str(payload.get("central_data_reader") or "AUTO").strip().upper()
+                if str(payload.get("central_data_reader") or "AUTO").strip().upper()
+                in CENTRAL_DATA_READERS else "AUTO"
+            ),
+            central_comparison_writer=(
+                str(payload.get("central_comparison_writer") or "AUTO").strip().upper()
+                if str(payload.get("central_comparison_writer") or "AUTO").strip().upper()
+                in CENTRAL_COMPARISON_WRITERS else "AUTO"
+            ),
             central_output_dir=str(payload.get("central_output_dir") or ""),
             central_output_auto=bool(payload.get("central_output_auto", True)),
             central_cross_current_csv=str(payload.get("central_cross_current_csv") or ""),

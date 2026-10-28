@@ -175,6 +175,8 @@ class ExcelSession:
         self.excel = None
         self._pythoncom = None
         self.engine_name = ""
+        self.engine_fallback_events: list[str] = []
+        self.on_engine_fallback = None
         # 累计本次会话各类 COM 重操作耗时。由 service 写入运行日志，
         # 便于在真实模板上定位瓶颈，而不是凭感觉反复调整计算策略。
         self.copy_formula_seconds = 0.0
@@ -236,7 +238,7 @@ class ExcelSession:
         for progid, engine_name in candidates:
             process_started = time.monotonic()
             try:
-                self.excel = win32com.client.DispatchEx(progid)
+                self.excel = self._create_application(progid)
                 self.lifecycle_metrics["excel_process_start_time"] += time.monotonic() - process_started
                 self.engine_name = engine_name
                 break
@@ -251,20 +253,105 @@ class ExcelSession:
             ) from last_error
 
         ready_started = time.monotonic()
-        self.excel.Visible = False
-        self.excel.DisplayAlerts = False
-        self.excel.ScreenUpdating = False
-        self.excel.EnableEvents = False
-        self.excel.AskToUpdateLinks = False
-        # 某些含数据模型/OLAP 连接的 Excel 实例禁止通过 COM 修改
-        # Application.Calculation。该优化失败时必须降级，不能影响审核。
-        try:
-            self.excel.Calculation = XL_CALCULATION_MANUAL
-        except Exception:
-            pass
+        self._configure_application(self.excel)
         self.lifecycle_metrics["excel_ready_time"] = time.monotonic() - ready_started
         self._ready_at = time.monotonic()
         return self
+
+    @staticmethod
+    def _create_application(progid: str) -> Any:
+        import win32com.client
+
+        return win32com.client.DispatchEx(progid)
+
+    @staticmethod
+    def _configure_application(application: Any) -> None:
+        application.Visible = False
+        application.DisplayAlerts = False
+        application.ScreenUpdating = False
+        application.EnableEvents = False
+        application.AskToUpdateLinks = False
+        # 某些含数据模型/OLAP 连接的 Excel 实例禁止通过 COM 修改
+        # Application.Calculation。该优化失败时必须降级，不能影响审核。
+        try:
+            application.Calculation = XL_CALCULATION_MANUAL
+        except Exception:
+            pass
+
+    @staticmethod
+    def _open_on_application(application: Any, path: Path, *, read_only: bool) -> Any:
+        resolved_path = str(path.resolve())
+        try:
+            return application.Workbooks.Open(
+                resolved_path,
+                UpdateLinks=0,
+                ReadOnly=read_only,
+                IgnoreReadOnlyRecommended=True,
+                AddToMru=False,
+            )
+        except Exception as first_error:
+            # WPS 的 COM Open 参数集与 Excel 略有差异；使用双方共有的
+            # 最小参数重试，避免因不支持 AddToMru 等可选项而无法打开文件。
+            try:
+                return application.Workbooks.Open(
+                    resolved_path, UpdateLinks=0, ReadOnly=read_only
+                )
+            except Exception as second_error:
+                raise second_error from first_error
+
+    def _workbook_count(self) -> int | None:
+        try:
+            return int(self.excel.Workbooks.Count)
+        except Exception:
+            return None
+
+    def _open_with_wps_fallback(
+        self, path: Path, *, read_only: bool, excel_error: Exception
+    ) -> Any:
+        """Retry an Excel-only open failure in WPS when the user selected AUTO."""
+        errors = []
+        for progid in ("ket.Application", "KET.Application"):
+            started = time.monotonic()
+            application = None
+            try:
+                application = self._create_application(progid)
+                self._configure_application(application)
+                workbook = self._open_on_application(
+                    application, path, read_only=read_only
+                )
+            except Exception as exc:
+                errors.append(f"{progid}: {exc}")
+                if application is not None:
+                    try:
+                        application.Quit()
+                    except Exception:
+                        pass
+                continue
+
+            previous_application = self.excel
+            self.excel = application
+            self.engine_name = "WPS 表格"
+            self.lifecycle_metrics["excel_process_start_time"] += (
+                time.monotonic() - started
+            )
+            if previous_application is not None:
+                try:
+                    previous_application.Quit()
+                except Exception:
+                    pass
+            message = (
+                f"Microsoft Excel 无法打开“{path.name}”，已自动切换到 WPS 表格继续处理。"
+            )
+            self.engine_fallback_events.append(message)
+            if callable(self.on_engine_fallback):
+                self.on_engine_fallback(message)
+            return workbook
+
+        details = "；".join(errors) if errors else "未找到可用的 WPS COM 接口"
+        raise RuntimeError(
+            f"Microsoft Excel 和 WPS 表格均无法打开工作簿“{path.name}”。"
+            f"Excel 错误：{excel_error}；WPS 错误：{details}"
+        ) from excel_error
 
     def __exit__(self, exc_type, exc, tb) -> None:
         if not self._first_workbook_opened and self._ready_at is not None:
@@ -299,19 +386,23 @@ class ExcelSession:
     def open_workbook(self, path: Path, *, read_only: bool, purpose: str = "") -> Any:
         opened_at = time.monotonic()
         try:
-            workbook = self.excel.Workbooks.Open(
-                str(path.resolve()),
-                UpdateLinks=0,
-                ReadOnly=read_only,
-                IgnoreReadOnlyRecommended=True,
-                AddToMru=False,
-            )
-        except Exception:
-            # WPS 的 COM Open 参数集与 Excel 略有差异；使用双方共有的
-            # 最小参数重试，避免因不支持 AddToMru 等可选项而无法打开文件。
-            workbook = self.excel.Workbooks.Open(
-                str(path.resolve()), UpdateLinks=0, ReadOnly=read_only
-            )
+            try:
+                workbook = self._open_on_application(
+                    self.excel, path, read_only=read_only
+                )
+            except Exception as excel_error:
+                # AUTO 默认仍先使用 Excel；仅当它无法打开工作簿、会话中
+                # 没有其他打开的工作簿时，才安全切换到 WPS 重试。
+                can_fallback = (
+                    self.engine_preference == "自动"
+                    and self.engine_name == "Microsoft Excel"
+                    and self._workbook_count() == 0
+                )
+                if not can_fallback:
+                    raise
+                workbook = self._open_with_wps_fallback(
+                    path, read_only=read_only, excel_error=excel_error
+                )
         finally:
             elapsed = time.monotonic() - opened_at
             if purpose == "template":

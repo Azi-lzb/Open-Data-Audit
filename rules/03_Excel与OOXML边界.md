@@ -2,14 +2,17 @@
 
 ## 1. 决策顺序
 
-处理 Excel 文件时，默认按以下顺序选择：
+输入输出契约、操作匹配表、默认/手动选择、失败回退和主动效率检查见 [规则 13](13_表格读写技术选型与主动优化.md)。本文件的 OOXML 引用、Sheet 删除与计算硬边界继续适用；已验收的 Calamine/Direct OOXML 路径不得被通用选型的其他候选覆盖。
 
-```text
-能否用纯 Python 完成？
-├─ 固定 OOXML + 性能敏感 + 结构可控 → Direct OOXML
-├─ 通用静态 Excel 读写              → openpyxl
-└─ 需要真实工作簿计算                → Office
-```
+处理 Excel 文件时，先区分操作能力，再选择通过功能与性能验收的后端，详细迁移规范见 `rules/12_Rust优化与引擎路由.md`：
+
+- 读取值：优先评估 Rust/Calamine，按文件格式保留适用的兼容 reader；openpyxl 不支持旧 `.xls`。
+- 读取结构、修改明确 OOXML 部件：优先评估 Rust 或 Direct OOXML，证明关系和引用安全。
+- 新建简单结果工作簿：优先实测 Rust writer 与现有 Direct OOXML，openpyxl 作为适用的通用选项。
+- 编辑已有工作簿或模板：按具体操作的保真能力选择 Rust、Direct OOXML、openpyxl 或 Office；新建 writer 不能充当已有文件编辑器。
+- 已有 Calamine 读取或 Direct OOXML 写入路径不因技术栈偏好而替换；仅当端到端基准显示稳定收益，或确有兼容性需求时再迁移。Calamine 是 reader，rust_xlsxwriter 面向新建工作簿，umya 可评估已有 XLSX 的读取/编辑；按操作能力列出工具，不给每个操作塞入所有选项。
+- 真实公式重算：当前使用 Office；Rust 公式后端必须专项验证完整公式依赖后才可进入已验收范围的可选路由。
+- Rust 是实现语言，OOXML 是文件格式/访问方式，openpyxl 是库，Office 是原生应用；禁止不分操作建立固定的全局优先链。
 
 ## 2. Direct OOXML
 
@@ -60,7 +63,7 @@ openpyxl：
 ### UOS/Linux
 - LibreOffice Calc
 
-工作簿真实公式重算必须使用真实 Office。
+现行工作簿真实公式重算使用真实 Office。Rust 公式后端可开展隔离对拍试验，但未通过完整依赖与业务专项验收前，不得替代现有 Office 重算路径。
 
 如果功能需要：
 - 真实计算；
@@ -72,7 +75,7 @@ openpyxl：
 ## 5. 工作簿计算硬边界
 
 禁止：
-- Python 自制不完整公式引擎冒充 Office；
+- Python/Rust 不完整公式引擎冒充已兼容的 Office 计算；
 - openpyxl 冒充公式计算；
 - 仅依赖旧 cached value 当作本轮计算结果。
 
@@ -81,7 +84,13 @@ Office 计算流程必须：
 2. 重算；
 3. 保存；
 4. 可靠关闭；
-5. 再由 Python 提取结果。
+5. 再由 Rust/Python 静态 reader 只读提取本轮缓存；重算后若再次改写公式或丢失缓存，必须重新计算并保存。
+
+S1 的公式区域复制/写入、工作簿打开、重算、保存、缓存提取必须分别计时。优先优化写入、重复读写和调用开销，不能省略必要的重算，也不能擅自将 INDIRECT 等业务公式改成其他函数。INDIRECT 是易失函数，INDEX 通常不是；是否使用替代引擎应以完整语义对拍判断，不能仅凭函数名或实现语言。
+
+公式兼容专项至少覆盖动态跨表引用、INDEX 的值/引用语义、名称作用域、相对/绝对及共享公式、辅助单元格依赖、错误值传播、外部引用，并修改输入/动态地址后再次重算，检查缓存刷新。不支持的依赖不得按 0、空白或旧缓存继续计算。
+
+参考：[Microsoft Excel 计算性能说明](https://learn.microsoft.com/en-us/office/vba/excel/concepts/excel-performance/excel-improving-calculation-performance)。
 
 ## 6. Fast OOXML
 
@@ -155,7 +164,7 @@ localSheetId 与新顺序一致且不越界、剩余名称不指向已删除的 
 
 规则是否触发与显示颜色不是一回事。
 
-纯 Python/OOXML 可做已验证规则的静态求值；
+Rust/Python/OOXML 路径可做已验证规则的静态求值；
 真实显示效果若必须验证，则进入对应平台 Office 层。
 
 统一状态：

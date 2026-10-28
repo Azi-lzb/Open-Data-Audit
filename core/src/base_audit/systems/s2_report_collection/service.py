@@ -15,7 +15,7 @@ from .importer import import_external_workbook, import_period_directory
 from .models import AuditFinding, AuditSummary, V2RunPaths
 from .period_engine import PeriodComparisonEngine
 from .rule_engine import RuleEngine
-from .validation import validate_config_warnings, validate_external_warnings, validate_import
+from .validation import validate_config_warnings, validate_import
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,7 @@ class V2RunResult:
     findings: tuple[AuditFinding, ...]
     summary: AuditSummary
     paths: V2RunPaths
+    external_warnings: tuple[str, ...] = ()
 
 
 class PeriodAuditV2Service:
@@ -31,6 +32,7 @@ class PeriodAuditV2Service:
     def run(
         self, *, current_dir: Path, previous_dir: Path, config_path: Path,
         output_dir: Path, central_path: Path | None = None,
+        external_reader: str = "AUTO",
         on_progress: Callable[[dict[str, object]], None] | None = None,
     ) -> V2RunResult:
         def progress(stage: str, label: str, percent: float, current: int = 0, total: int = 0, message: str = "") -> None:
@@ -73,18 +75,36 @@ class PeriodAuditV2Service:
             message=f"完成：生成 {len(rule_findings)} 条校验结果，另有 {len(rule_quality)} 条规则数据提示",
         )
         external_findings: list[AuditFinding] = []
+        external_warnings: tuple[str, ...] = ()
         external_warning_count = 0
         if central_path is not None:
             progress("external_read", "读取大集中数据", 73, message=f"正在读取：{central_path.name}")
-            values, org_map = import_external_workbook(central_path)
-            external_warning_findings = validate_external_warnings(values.warnings)
-            quality.extend(external_warning_findings)
-            external_warning_count = len(external_warning_findings)
+            values, org_map = import_external_workbook(
+                central_path, reader_engine=external_reader,
+            )
+            # 外部文件取数提示属于运行诊断，不纳入审核发现或异常统计。
+            external_warnings = tuple(values.warnings)
+            external_warning_count = len(external_warnings)
+            for index, warning in enumerate(external_warnings, start=1):
+                progress(
+                    "external_read", "读取大集中数据", 76,
+                    index, external_warning_count,
+                    message=f"数据提示 {index}/{external_warning_count}：{warning}",
+                )
+            reader_label = values.reader_engine or "未知引擎"
+            if values.reader_version:
+                reader_label += f" {values.reader_version}"
+            fallback_label = (
+                f"；{values.reader_fallback_reason}"
+                if values.reader_fallback_reason else ""
+            )
             progress(
                 "external_read", "读取大集中数据", 76,
                 message=(
-                    f"完成：读取 {len(values)} 条指标数据，机构参照 {len(org_map)} 条，"
+                    f"完成：{reader_label}；读取 {len(values)} 条指标数据，机构参照 {len(org_map)} 条，"
+                    f"耗时 {values.reader_elapsed_seconds:.2f} 秒；"
                     f"外部数据提示 {external_warning_count} 条"
+                    f"{fallback_label}"
                 ),
             )
             progress(
@@ -117,9 +137,9 @@ class PeriodAuditV2Service:
         )
         complete_message = "已生成三张分类审核表"
         if external_warning_count:
-            complete_message += f"；外部数据提示 {external_warning_count} 条，详情见“校验规则”工作表"
+            complete_message += f"；大集中数据发现 {external_warning_count} 条非阻断提示，请查看运行记录核实"
         progress("complete", "审核完成", 100, message=complete_message)
-        return V2RunResult(tuple(findings), summary, paths)
+        return V2RunResult(tuple(findings), summary, paths, external_warnings)
 
     def check_config(self, config_path: Path) -> tuple[str, ...]:
         """供设置页/未来 UI 调用的只读配置检查入口。"""

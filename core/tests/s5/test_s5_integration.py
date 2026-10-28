@@ -17,6 +17,7 @@ from openpyxl.workbook.defined_name import DefinedName
 from base_audit.systems.s5_configured_statistics.contracts import S5Request
 from base_audit.systems.s5_configured_statistics.service import run_s5_f1, validate_s5_config
 from base_audit.systems.s5_configured_statistics.web_api import S5WebApiMixin
+from s1audit_configured import source_reader
 from s1audit_configured.runtime import AuditCancelled
 
 NODE = shutil.which("node")
@@ -47,7 +48,7 @@ def test_s5_maintenance_tools_are_hidden_by_default_and_toggle_with_five_nav_cli
     assert 'S5 配置维护功能' not in action_card_markup
     assert '连续点击左侧 S5 导航 5 次显示或隐藏' not in action_card_markup
     assert 'F1 按 S5 审核规则执行，结果与运行总账保存到独立输出目录。' not in action_card_markup
-    assert '<div class="s5-result" id="s5-result" role="status" hidden></div>' in action_card_markup
+    assert 'id="s5-result"' not in action_card_markup
 
     start = html.index("let s5EggClickTimes=[];")
     end = html.index("function s5FormValues()", start)
@@ -116,6 +117,23 @@ def test_s5_path_labels_reuse_the_shared_clickable_path_style():
     assert "renderS5PathName('s5-vext-external-path',form.external_path)" in html
 
 
+def test_s5_f1_does_not_render_duplicate_completion_card():
+    root = Path(__file__).resolve().parents[3]
+    html = (root / "core/frontend/web/index.html").read_text(encoding="utf-8")
+    start = html.index("function renderS5(s){")
+    end = html.index("function s5ProgressState(", start)
+    renderer = html[start:end]
+    assert 'id="s5-result"' not in html
+    assert "task.finding_counts" not in renderer
+    assert "打开审核结果" not in renderer
+    assert "打开输出目录" not in renderer
+    assert "report.message" not in renderer
+    assert "report.configuration_errors" not in renderer
+    web_api = (root / "core/src/base_audit/systems/s5_configured_statistics/web_api.py").read_text(encoding="utf-8")
+    assert 'if phase == "timing":' in web_api
+    assert "耗时明细" in web_api
+
+
 def test_s5_file_status_labels_do_not_treat_template_only_sheets_as_warnings():
     root = Path(__file__).resolve().parents[3]
     html = (root / "core/frontend/web/index.html").read_text(encoding="utf-8")
@@ -132,7 +150,21 @@ def test_s5_configuration_check_has_progress_dialog_and_report_action():
     assert 'id="s5-config-check-fill"' in html
     assert "bridge.api.get_s5_config_check()" in html
     assert 'id="s5-config-check-open-report"' in html
-    assert '默认是源数据目录下的“执行结果”' in html
+    assert '打开检查报告' in html
+
+
+def test_s5_configuration_check_dialog_keeps_only_compact_status_and_report_link():
+    root = Path(__file__).resolve().parents[3]
+    html = (root / "core/frontend/web/index.html").read_text(encoding="utf-8")
+    start = html.index("function renderS5ConfigCheckTask(")
+    end = html.index("function closeS5ConfigCheck(", start)
+    renderer = html[start:end]
+    assert "发现 '+issueCount+' 项配置问题，详细内容请打开检查报告查看。" in renderer
+    assert "有 '+warningCount+' 条提示，详细内容请打开检查报告查看。" in renderer
+    assert "report.business_checks" not in renderer
+    assert "report.configuration_errors" in renderer  # 只读取问题数量，不展开明细
+    assert "Object.entries(report.checks||{})" not in renderer
+    assert "open.onclick=()=>openPath(task.report_path)" in renderer
 
 
 def test_s5_configuration_report_uses_output_dir_and_preserves_pinned_path(tmp_path):
@@ -200,27 +232,36 @@ def hash_files(data):
             for p in [data["config_path"], data["template_path"], *data["files"]]}
 
 
-def test_complete_f1_explicit_template_source_without_names_final_cf_and_read_only(request_data, tmp_path):
+def test_complete_f1_explicit_template_source_without_names_final_cf_and_read_only(request_data, tmp_path, monkeypatch):
     before = hash_files(request_data)
     events = []
+    monkeypatch.setattr(source_reader, "_new_file_digest",
+                        lambda: pytest.fail("S5-F1 不应计算输入文件内容哈希"))
     result = run_s5_f1(S5Request.from_dict(request_data), data_dir=tmp_path / "可写用户数据", on_progress=events.append)
     assert result["task_state"] == "succeeded"
-    assert Path(result["result_path"]).parent.parent == Path(request_data["output_dir"]).resolve()
-    assert Path(result["result_path"]).parent.name.startswith("batch_")
+    output_root = Path(request_data["output_dir"]).resolve()
+    result_path = Path(result["result_path"]).resolve()
+    assert result_path.parent == output_root
+    assert result_path.name.startswith("汇总核查表校验_")
+    assert "ledger_path" not in result
+    assert result["input_integrity"] == "NOT_CHECKED"
+    assert sorted(path.name for path in output_root.iterdir()) == [result_path.name]
+    assert result_path.suffix == ".xlsx"
     assert result["finding_counts"]["rule_triggered"] == 1
     assert result["finding_counts"]["conditional_triggered"] == 1
-    book = load_workbook(result["result_path"], read_only=True)
+    book = load_workbook(result_path, read_only=False)
     assert book["审核结果"].max_row == 2
     assert book["条件格式触发"].max_row == 2
+    assert Path(book["审核结果"]["F2"].hyperlink.target.split("#", 1)[0]).name == Path(request_data["files"][0]).name
     book.close()
-    institution = result["institutions"][0]
-    single = load_workbook(institution["result_path"], read_only=True)
-    assert single["条件格式触发"].max_row == 2
-    single.close()
-    ledger = json.loads(Path(result["ledger_path"]).read_text(encoding="utf-8"))
-    assert str(Path(request_data["template_path"])) in ledger["input_hashes"]
-    assert ledger["input_integrity"] == "UNCHANGED"
-    assert {event["phase"] for event in events} >= {"identity", "audit", "export"}
+    assert "result_path" not in result["institutions"][0]
+    assert {event["phase"] for event in events} >= {"identity", "audit", "export", "timing"}
+    assert {
+        "configuration_load_seconds", "institution_reference_load_seconds",
+        "file_recognition_seconds", "rule_audit_seconds", "formula_scan_seconds",
+        "conditional_format_scan_seconds", "result_export_seconds", "total_seconds",
+    } <= set(result["stage_timings"])
+    assert all(value >= 0 for value in result["stage_timings"].values())
     assert before == hash_files(request_data)
 
 
@@ -534,28 +575,27 @@ def test_external_layout_anomalies_warn_and_continue_for_both_layouts(
     assert any("已按 0 参与审核" in item for item in result["warnings"])
     assert any("未参与时序匹配" in item for item in result["warnings"]) is time_series
 
-    for output_path in (result["result_path"], result["institutions"][0]["result_path"]):
-        output = load_workbook(output_path, read_only=True, data_only=True)
-        try:
-            quality = output["数据质量提示"]
-            quality_rows = list(quality.iter_rows(min_row=2, values_only=True))
-            messages = [str(row[5]) for row in quality_rows]
-            assert any("已按 0 参与审核" in message for message in messages)
-            assert any("行名称为空" in message for message in messages)
-            metadata_only_row = "第4行" if time_series else "第3行"
-            fully_empty_row = "第5行" if time_series else "第4行"
-            assert not any(
-                str(row[4]) == metadata_only_row and "行名称及指标数据均为空" in str(row[5])
-                for row in quality_rows
-            )
-            assert any(
-                str(row[4]) == fully_empty_row and "行名称及指标数据均为空" in str(row[5])
-                for row in quality_rows
-            )
-            if time_series:
-                assert any("本行未参与时序匹配" in message for message in messages)
-        finally:
-            output.close()
+    output = load_workbook(result["result_path"], read_only=True, data_only=True)
+    try:
+        quality = output["数据质量提示"]
+        quality_rows = list(quality.iter_rows(min_row=2, values_only=True))
+        messages = [str(row[5]) for row in quality_rows]
+        assert any("已按 0 参与审核" in message for message in messages)
+        assert any("行名称为空" in message for message in messages)
+        metadata_only_row = "第4行" if time_series else "第3行"
+        fully_empty_row = "第5行" if time_series else "第4行"
+        assert not any(
+            str(row[4]) == metadata_only_row and "行名称及指标数据均为空" in str(row[5])
+            for row in quality_rows
+        )
+        assert any(
+            str(row[4]) == fully_empty_row and "行名称及指标数据均为空" in str(row[5])
+            for row in quality_rows
+        )
+        if time_series:
+            assert any("本行未参与时序匹配" in message for message in messages)
+    finally:
+        output.close()
 
 
 def test_time_series_missing_current_date_only_fails_affected_rule_and_continues_batch(request_data, tmp_path):

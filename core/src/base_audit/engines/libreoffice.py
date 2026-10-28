@@ -16,6 +16,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import Iterable
 from urllib.parse import quote
 
 
@@ -57,6 +58,14 @@ class LibreOfficeCalculationResult:
     workbook_path: Path
     engine_display: str
     elapsed_seconds: float
+
+
+@dataclass(frozen=True)
+class LibreOfficeBatchCalculationResult:
+    workbook_paths: tuple[Path, ...]
+    engine_display: str
+    elapsed_seconds: float
+    batch_count: int
 
 
 def _executable(path: Path) -> Path | None:
@@ -327,16 +336,65 @@ class LibreOfficeCalculator:
         return text.splitlines()[0].strip() if completed.returncode == 0 and text else "版本未识别"
 
     def recalculate(self, workbook_path: Path) -> LibreOfficeCalculationResult:
+        """Recalculate one workbook through the same isolated batch path."""
+        batch = self.recalculate_many((workbook_path,), batch_size=1)
+        return LibreOfficeCalculationResult(
+            batch.workbook_paths[0], batch.engine_display, batch.elapsed_seconds,
+        )
+
+    def recalculate_many(
+        self,
+        workbook_paths: Iterable[Path],
+        *,
+        batch_size: int = 8,
+    ) -> LibreOfficeBatchCalculationResult:
+        """Recalculate XLSX files in bounded LibreOffice invocations.
+
+        LibreOffice startup has a material fixed cost. A private profile and
+        temporary staging area are shared by each bounded chunk, then every
+        generated workbook is copied back only after that chunk succeeds.
+        ``batch_size`` bounds temporary disk use for large audit runs.
+        """
         engine = self.require_available()
-        workbook_path = workbook_path.resolve()
-        if not workbook_path.is_file():
-            raise FileNotFoundError("待计算工作簿不存在：{}".format(workbook_path))
-        if workbook_path.suffix.casefold() != ".xlsx":
-            raise ValueError("LibreOffice 计算引擎当前仅支持 .xlsx 审核副本")
+        paths = tuple(Path(path).resolve() for path in workbook_paths)
+        if not paths:
+            raise ValueError("至少需要一个待计算工作簿")
+        if len(set(paths)) != len(paths):
+            raise ValueError("批量计算列表中存在重复工作簿路径")
+        for workbook_path in paths:
+            if not workbook_path.is_file():
+                raise FileNotFoundError("待计算工作簿不存在：{}".format(workbook_path))
+            if workbook_path.suffix.casefold() != ".xlsx":
+                raise ValueError("LibreOffice 计算引擎当前仅支持 .xlsx 审核副本")
+        try:
+            chunk_size = int(batch_size)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("LibreOffice 批量大小必须是正整数") from exc
+        if chunk_size < 1:
+            raise ValueError("LibreOffice 批量大小必须是正整数")
 
         started = time.monotonic()
+        batch_count = 0
+        for offset in range(0, len(paths), chunk_size):
+            chunk = paths[offset:offset + chunk_size]
+            self._recalculate_chunk(engine, chunk, batch_index=batch_count + 1)
+            batch_count += 1
+        return LibreOfficeBatchCalculationResult(
+            workbook_paths=paths,
+            engine_display=engine.display,
+            elapsed_seconds=time.monotonic() - started,
+            batch_count=batch_count,
+        )
+
+    def _recalculate_chunk(
+        self,
+        engine: CalcEngine,
+        workbook_paths: tuple[Path, ...],
+        *,
+        batch_index: int,
+    ) -> None:
         # 应用商店的玲珑版 LibreOffice 通常无法读取 /tmp 中的宿主文件。
-        # 将临时副本放到用户 HOME 的缓存目录，且采用 ASCII 文件名和 file URI，
+        # 将临时副本放到用户 HOME 的缓存目录，采用 ASCII 文件名和 file URI，
         # 同时规避中文路径/文件名在 soffice CLI 中被错误解析为 source 的问题。
         namespace_cache_root = Path(os.environ.get("XDG_CACHE_HOME", "")).expanduser() if os.environ.get("XDG_CACHE_HOME") else Path.home() / ".cache"
         if not namespace_cache_root.is_absolute():
@@ -371,8 +429,11 @@ class LibreOfficeCalculator:
             source_dir.mkdir()
             output_dir.mkdir()
             profile_dir.mkdir()
-            staged = source_dir / "audit_input.xlsx"
-            shutil.copy2(workbook_path, staged)
+            staged_paths = []
+            for index, workbook_path in enumerate(workbook_paths, start=1):
+                staged = source_dir / "audit_{:05d}.xlsx".format(index)
+                shutil.copy2(workbook_path, staged)
+                staged_paths.append(staged)
             if engine.kare_upper_root is not None:
                 def _kare_namespace_path(host_path: Path) -> PurePosixPath:
                     try:
@@ -384,35 +445,62 @@ class LibreOfficeCalculator:
                     return PurePosixPath("/") / PurePosixPath(relative.as_posix())
 
                 guest_profile = _kare_namespace_path(profile_dir)
-                guest_source = _kare_namespace_path(staged)
                 guest_output = str(_kare_namespace_path(output_dir))
                 profile_uri = "file://" + quote(guest_profile.as_posix(), safe="/")
-                source_uri = "file://" + quote(guest_source.as_posix(), safe="/")
+                source_uris = [
+                    "file://" + quote(_kare_namespace_path(staged).as_posix(), safe="/")
+                    for staged in staged_paths
+                ]
             else:
                 guest_output = str(output_dir)
                 profile_uri = profile_dir.as_uri()
-                source_uri = staged.as_uri()
+                source_uris = [staged.as_uri() for staged in staged_paths]
             command = [
                 *engine.command_prefix, "--headless", "--nologo", "--nodefault", "--nolockcheck",
                 "--nofirststartwizard", "-env:UserInstallation=" + profile_uri,
-                "--convert-to", "xlsx:Calc MS Excel 2007 XML", "--outdir", guest_output, source_uri,
+                "--convert-to", "xlsx:Calc MS Excel 2007 XML", "--outdir", guest_output, *source_uris,
             ]
             try:
                 completed = subprocess.run(
                     command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                    timeout=self.timeout_seconds, check=False, env=_system_command_env(),
+                    # Preserve the old per-file timeout budget when one process
+                    # handles several files.
+                    timeout=self.timeout_seconds * len(workbook_paths),
+                    check=False, env=_system_command_env(),
                 )
             except subprocess.TimeoutExpired as exc:
-                raise TimeoutError("LibreOffice 公式计算超过 {} 秒：{}".format(self.timeout_seconds, workbook_path.name)) from exc
-            generated = output_dir / staged.name
-            if completed.returncode != 0 or not generated.is_file():
+                names = "、".join(path.name for path in workbook_paths[:5])
+                if len(workbook_paths) > 5:
+                    names += "等 {} 份工作簿".format(len(workbook_paths))
+                raise TimeoutError(
+                    "LibreOffice 公式计算批次 {} 超时（预算 {} 秒）：{}".format(
+                        batch_index, self.timeout_seconds * len(workbook_paths), names,
+                    )
+                ) from exc
+            generated_paths = [output_dir / staged.name for staged in staged_paths]
+            missing = [
+                workbook_paths[index].name
+                for index, generated in enumerate(generated_paths)
+                if not generated.is_file()
+            ]
+            if completed.returncode != 0 or missing:
                 details = "\n".join(part for part in (completed.stderr, completed.stdout) if part).strip()
                 hint = ""
                 if "source could not be loaded" in details.casefold():
                     hint = "；已改用用户缓存目录暂存输入文件。若仍失败，请确认当前 LibreOffice/玲珑应用可访问 {}".format(cache_root)
+                if len(workbook_paths) == 1:
+                    name_details = "“{}”".format(workbook_paths[0].name)
+                else:
+                    name_details = "{} 份工作簿（{}）".format(
+                        len(workbook_paths), "、".join(missing[:5]) or "批次输出未验证",
+                    )
                 raise LibreOfficeUnavailableError(
-                    "LibreOffice 未能计算“{}”（{}）：{}{}".format(workbook_path.name, engine.display, (details or "无输出")[:800], hint)
+                    "LibreOffice 未能计算{}（{}）：{}{}".format(
+                        name_details, engine.display, (details or "无输出")[:800], hint,
+                    )
                 )
-            shutil.copy2(generated, workbook_path)
-            _restore_recalc_flags(workbook_path)
-        return LibreOfficeCalculationResult(workbook_path, engine.display, time.monotonic() - started)
+            # Only publish this chunk after every output was produced. This
+            # prevents a failed LO command from leaving a half-written chunk.
+            for workbook_path, generated in zip(workbook_paths, generated_paths):
+                shutil.copy2(generated, workbook_path)
+                _restore_recalc_flags(workbook_path)

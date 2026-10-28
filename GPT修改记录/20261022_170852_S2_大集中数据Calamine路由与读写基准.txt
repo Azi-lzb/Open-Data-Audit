@@ -1,0 +1,36 @@
+【组件版本】
+S2-F01：v10.7.0 → v10.8.0；S2-CFG-01：不变；整包版本：不变。
+
+【需求与范围】
+用户明确指出 S5 近期已有优化，先以基准决定是否替换现有写入；读取方面不为扩充 OpenPyXL 而扩充，优先把已有 OpenPyXL 读取路径评估为 Calamine。写入需独立比较 Direct OOXML、rust_xlsxwriter 与 umya，并以跨平台端到端结果决定是否接入。
+
+本记录完成 S2 阶段：S2-F01 的大集中外部数据工作簿此前由 OpenPyXL 读取。本轮加入 Calamine 路由，保留既有 OpenPyXL 作为兼容实现；未新增另一套业务读取路径。没有更改 S1、S3、S5 的产品实现、配置数据或输出契约。
+
+【实现】
+1. 高级设置提供“自动 / Calamine / OpenPyXL”。自动为默认值，优先 Calamine；仅自动模式会在 Calamine 缺失或读取失败时回退 OpenPyXL。用户显式指定 Calamine 或 OpenPyXL 时，读取失败明确报错，不切换引擎。
+2. 运行状态及进度日志记下实际引擎、引擎版本、读取耗时，以及自动回退原因。S2 既有普通报表与时序布局判断、单元格值处理、规则计算和三表输出不变。
+3. 修改 `core/src/base_audit/settings.py`、`core/src/base_audit/systems/s2_report_collection/importer.py`、`core/src/base_audit/systems/s2_report_collection/service.py`、`core/src/base_audit/web_app.py`、`core/frontend/web/index.html`。对应测试涉及 `core/tests/test_fast_reader.py`、`core/tests/test_period_v2.py`、`core/tests/test_web_app.py`，并将 `core/tests/test_version_manifest.py` 的 S2-F01 预期版本更新为 v10.8.0。
+4. 版本记录同步至 `版本管理/VERSION_MANIFEST.json` 与 `版本管理/S2_报表采集系统/功能/S2-F01_执行报表规则/CHANGELOG.md`。用户更新日志仅记录用户可用的读取方式变化；技术细节在本文件和开发日志。
+
+【读取基准】
+- Windows Python 3.12 环境；同一业务导入路径分别显式调用两个 reader，并对比归一化后的业务值。
+- 本机真实忽略配置 `config-real/外部文件-大集中相关数据.xlsx`：55.8 KB，1,488 个值，188 条机构映射。OpenPyXL 中位数 0.467010 秒，Calamine 中位数 0.399495 秒；业务值完全一致。文件较小，绝对耗时差约 0.068 秒。
+- 合成时序工作簿：10,000 行 × 12 个指标，共 120,000 个指标值，1,068,359 字节。OpenPyXL 3.473607 秒，Calamine 1.116689 秒，约 3.1 倍；业务值完全一致。
+- 配置工作簿的 OpenPyXL/Calamine 读取约 0.095834/0.030659 秒，差约 0.065 秒。由于总耗时很低且不处于已证实的主热点，暂不为配置读取增加路由。
+
+【写入基准】
+- S2 当前 Direct OOXML 与 OpenPyXL 回退：同一组三张结果表，比较输出耗时。200/1,000/5,000 行时，Direct OOXML 分别 0.016871/0.073910/0.366437 秒，OpenPyXL 分别 0.098566/0.310323/1.516328 秒。保留既有 Direct OOXML 主路径有明显收益。
+- Ubuntu 24.04 x86_64 上，将 Rust XLSX writer 的进程启动、JSON 传参、写入、文件落盘均计入端到端时间，并与 Direct OOXML 在同等 ZIP 压缩等级下比较。200 行 Direct/Rust 为 0.016981/0.044927 秒；1,000 行为 0.068371/0.080922 秒；5,000 行为 0.297722/0.233313 秒；10,000 行为 0.632759/0.473443 秒。Rust 原型只在较大的 5,000/10,000 行场景分别快约 0.064/0.159 秒，小中型场景更慢。
+- Rust 写入原型与 Direct OOXML 的工作簿值、工作表顺序、冻结窗格、筛选范围一致；数字序列化差异做了 OpenPyXL 读回规范化。该原型没有证明全部样式、列宽及其他 Excel 包部件的逐项等价。umya 不属于 S2 当前纯新建三表的主要候选（其方向是已有 XLSX 修改），S5 已完成的原型也没有表现出稳定端到端胜出。
+- 结论：不把 Rust writer 接入 S2、不新增写入选择项；避免为单个较大输出场景节省不到 0.2 秒而增加 Python/Rust 子进程、构建、打包与跨平台维护成本。继续使用 Direct OOXML，OpenPyXL 仅作现有兼容回退。
+
+【验证】
+- `python -m pytest -q core/tests/test_version_manifest.py`：8 passed。
+- Windows 全量 `core/tests`：1,196 passed、7 skipped、8 warnings、5 subtests，204.92 秒。
+- WSL Ubuntu AMD64 全量 `core/tests`：1,182 passed、21 skipped、8 warnings、5 subtests，104.93 秒。
+- 详细报告：`test-output/full-test-reports/FullTest_windows-amd64_20261022_170301.txt`、`test-output/full-test-reports/FullTest_linux-amd64_20261022_170637.txt`。Linux 跳过项包含 Windows/COM/Node.js 分支；Windows 跳过项包含 Linux/Office 等分支。
+- 未对实际用户业务批次做前后完整结果对拍，未运行打包后启动验收或目标 UOS/Kylin 实机验收；基准是单机合成/本机配置，不代表所有机器的实际时延。
+
+【仓库状态】
+- 只改上述 S2 产品代码、相关测试、S2-F01 版本/CHANGELOG 和日志记录。
+- 不提交、不推送、不合并。既有 desktop 工作区中与本轮无关的 WIP 均保留。

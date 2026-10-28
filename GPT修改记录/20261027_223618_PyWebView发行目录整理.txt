@@ -1,0 +1,37 @@
+时间：2026-10-27 22:36:18
+执行者：Codex
+修改前 commit：cac9e10
+修改后 commit：cac9e10（未提交）
+WIP：项目已有未提交改动，shell-pywebview/build_exe.py 修改前已有打包隔离与归档检查等改动；本轮只在现有基础上增量调整，未重置其他 WIP。
+
+【目的】
+将 PyWebView 完整版和 S1/S2 版的输出整理成 Flask 截图所示的每次构建独立时间目录，方便识别与分发。
+
+【修改文件】
+- shell-pywebview/build_exe.py：默认在 dist 下创建 windows-YYYYMMDD_HHMMSS 或 windows-YYYYMMDD_HHMMSS_S1-S2；同秒冲突时追加序号；构建中保留 BUILD_INCOMPLETE.txt，成功完成后移除；保留 PYWEBVIEW_DIST_DIR 自定义路径。
+- shell-pywebview/打包pywebview.bat：更新输出布局说明。
+- shell-pywebview/打包pywebview_S1-S2专用.bat：移除写死的 dist/S1-S2 输出，改用构建器默认独立目录。
+- 日志/开发日志.txt 和本修改记录。
+
+【构建产物与现有文件整理】
+- 实际执行完整版 BAT，生成 shell-pywebview/dist/windows-20261027_221833。
+- 实际执行 S1/S2 BAT，生成 shell-pywebview/dist/windows-20261027_222032_S1-S2。
+- 将原先平铺在 dist 的完整包整体移入 windows-20261027_214656，将原 S1-S2 目录整体改名为 windows-20261027_214746_S1-S2；迁移前后两个原 EXE 的 SHA-256 一致。原有 core/data 和配置随目录保留。
+- 本机配置来源 config-real，构建只复制到发行目录；未改配置源及 VBA 数据。
+
+【组件版本】
+纯打包流程调整，不升级产品、功能或配置组件版本；产品版本保持 V26.1.7.13。
+
+【验证】
+- 实际运行两个 BAT 均完成，生成不同目录，均未留下 BUILD_INCOMPLETE.txt。
+- 检查两个新包的 EXE、core、config、profile；python312.dll 可解压、base_library.zip 的 CRC 正常，webview 和 EdgeChromium 模块存在；S1/S2 包排除了 S3/S5 对应配置。
+- 临时目录模拟同秒两次构建，目录按 -2 避免覆盖；模拟成功和失败分别检查成功移除/失败保留 BUILD_INCOMPLETE.txt：通过。
+- python -m pytest -q core/tests/test_distribution_profile.py：25 passed。
+- py_compile 与 git diff --check：通过。
+- 未打开 GUI 做人工操作验收，未运行全量 pytest。
+
+【删除清单】
+无。既有产物已移动到上述独立文件夹，未删除；新构建的临时 PyInstaller 工作目录正常清理。
+
+【回滚提示】
+按本次增量撤回目录分配、标记处理以及两个 BAT 的相应行；build_exe.py 还有先前 WIP，勿整文件重置。需要恢复旧平铺布局时，将 windows-20261027_214656 内文件移回 dist 根目录，并将 windows-20261027_214746_S1-S2 改回 S1-S2，先确认目标名称没有其他数据。

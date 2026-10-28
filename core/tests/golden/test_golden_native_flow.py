@@ -40,19 +40,20 @@ def native_env(tmp_path: Path):
 def test_dag_native_flow_golden_contract(native_env):
     tmp_path, src, template, config, hashes = native_env
     from base_audit import engines
-    from base_audit.engines.libreoffice import LibreOfficeCalculationResult
     from base_audit.service import AuditService
     from base_audit.workflow.runner import run_dag_flow
 
-    def fake_recalculate(self, workbook_path):
-        return LibreOfficeCalculationResult(
-            workbook_path=workbook_path, engine_display="LibreOffice Calc (mock)", elapsed_seconds=0.0,
+    def fake_recalculate_many(self, workbook_paths, *, batch_size=8):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            workbook_paths=tuple(workbook_paths), engine_display="LibreOffice Calc (mock)",
+            elapsed_seconds=0.0, batch_count=1,
         )
 
     output_dir = tmp_path / "输出"
     service = AuditService(config_path=config)
     with patch.object(sys, "platform", "linux"), patch.object(
-        engines.libreoffice.LibreOfficeCalculator, "recalculate", fake_recalculate
+        engines.libreoffice.LibreOfficeCalculator, "recalculate_many", fake_recalculate_many
     ), patch.object(
         engines.libreoffice.LibreOfficeCalculator, "require_available", lambda self: None
     ), patch.object(
@@ -121,21 +122,22 @@ def test_s1_business_outputs_are_identical_when_run_log_export_changes(native_en
 
     tmp_path, src, template, _config, hashes = native_env
     from base_audit import engines
-    from base_audit.engines.libreoffice import LibreOfficeCalculationResult
     from base_audit.service import AuditService
     from base_audit.workflow.runner import run_dag_flow
 
     configs = [gf.make_config(tmp_path / "cfg_simple"), gf.make_config(tmp_path / "cfg_log")]
     output_dirs = [tmp_path / "out_simple", tmp_path / "out_log"]
 
-    def fake_recalculate(self, workbook_path):
-        return LibreOfficeCalculationResult(
-            workbook_path=workbook_path, engine_display="LibreOffice Calc (mock)", elapsed_seconds=0.0,
+    def fake_recalculate_many(self, workbook_paths, *, batch_size=8):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            workbook_paths=tuple(workbook_paths), engine_display="LibreOffice Calc (mock)",
+            elapsed_seconds=0.0, batch_count=1,
         )
 
     results = []
     with patch.object(sys, "platform", "linux"), patch.object(
-        engines.libreoffice.LibreOfficeCalculator, "recalculate", fake_recalculate
+        engines.libreoffice.LibreOfficeCalculator, "recalculate_many", fake_recalculate_many
     ), patch.object(
         engines.libreoffice.LibreOfficeCalculator, "require_available", lambda self: None
     ), patch.object(

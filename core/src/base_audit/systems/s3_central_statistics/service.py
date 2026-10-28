@@ -19,14 +19,20 @@ from .csv_importer import read_central_csv
 from .models import CentralDataset, CheckResult, ComparisonResult
 
 
-def _load_dataset(paths: Iterable[str | Path], *, exempt: set[str], factor: float) -> CentralDataset:
+def _load_dataset(
+    paths: Iterable[str | Path], *, exempt: set[str], factor: float,
+    xlsx_reader: str = "AUTO", on_read: Callable[[str], None] | None = None,
+) -> CentralDataset:
     """读取一期（可多个 CSV，追加合并；VBA 多文件语义）。"""
     combined = CentralDataset()
     for item in paths:
         part = str(item).strip()
         if not part:
             continue
-        dataset = read_central_csv(Path(part), unit_factor=factor, exempt_indicators=exempt)
+        dataset = read_central_csv(
+            Path(part), unit_factor=factor, exempt_indicators=exempt,
+            xlsx_reader=xlsx_reader, on_read=on_read,
+        )
         combined.records.extend(dataset.records)
         combined.issues.extend(dataset.issues)
     dates = {record.record_date for record in combined.records if record.record_date}
@@ -52,6 +58,8 @@ def run_comparison(
     expression_mode: str | None = None,
     expression_backend: str | None = None,
     expression_schema: str | None = None,
+    xlsx_reader: str = "AUTO",
+    xlsx_writer: str = "AUTO",
 ) -> ComparisonResult:
     """执行比较：两期导数（CSV/XLSX）→ 比较结果.xlsx。
 
@@ -87,10 +95,16 @@ def run_comparison(
     exempt = config.exempt_indicators()
 
     say("读取本期数据")
-    current = _load_dataset(current_list, exempt=exempt, factor=factor)
+    current = _load_dataset(
+        current_list, exempt=exempt, factor=factor, xlsx_reader=xlsx_reader,
+        on_read=say,
+    )
     say(f"本期 {len(current.records)} 行")
     say("读取上期数据")
-    previous = _load_dataset(previous_list, exempt=exempt, factor=factor)
+    previous = _load_dataset(
+        previous_list, exempt=exempt, factor=factor, xlsx_reader=xlsx_reader,
+        on_read=say,
+    )
     say(f"上期 {len(previous.records)} 行")
 
     say("两期配对与环比计算")
@@ -190,7 +204,14 @@ def run_comparison(
 
     output_path = Path(output_path)
     say("写出比较结果")
-    write_comparison_workbook(rows, output_path, target_unit=target_unit, sheet_date=current.record_date)
+    write_comparison_workbook(
+        rows,
+        output_path,
+        target_unit=target_unit,
+        sheet_date=current.record_date,
+        writer=xlsx_writer,
+        on_engine=lambda message: say("比较结果写入：" + message),
+    )
 
     # ---- 运行日志：配置载入统计 + 数据读取 + 配对 + 规则命中 + 数据异常 ----
     def _is_disabled(rule_row) -> bool:
@@ -301,6 +322,7 @@ def run_cross_period_check(
     target_unit: str = "亿元",
     on_step: Callable[[str], None] | None = None,
     write_flow_logs: bool = True,
+    xlsx_reader: str = "AUTO",
 ) -> CheckResult:
     """跨期/数值核对：两期导数（CSV/XLSX）→ 结果工作簿（上期可空，含 {} 的规则自动跳过）。"""
     from .comparison_engine import get_unit_factor
@@ -319,11 +341,17 @@ def run_cross_period_check(
     factor = get_unit_factor(source_unit) / get_unit_factor(target_unit)
     exempt = config.exempt_indicators()
 
-    current = _load_dataset(current_list, exempt=exempt, factor=factor)
+    current = _load_dataset(
+        current_list, exempt=exempt, factor=factor, xlsx_reader=xlsx_reader,
+        on_read=say,
+    )
     say(f"本期 {len(current.records)} 行")
     previous = None
     if previous_list and str(previous_list[0]).strip():
-        previous = _load_dataset(previous_list, exempt=exempt, factor=factor)
+        previous = _load_dataset(
+            previous_list, exempt=exempt, factor=factor, xlsx_reader=xlsx_reader,
+            on_read=say,
+        )
         say(f"上期 {len(previous.records)} 行")
     else:
         say("未选择上期数据文件：含 {...} 引用的规则将跳过")

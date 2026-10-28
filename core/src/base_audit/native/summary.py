@@ -27,6 +27,8 @@ from ..name_config import (
 from ..template import normalize_template_name
 from ..summary_fallback import split_summary_fallback_ranges
 from .openpyxl_workbook import named_ranges, named_single_cells_with_prefix
+from .s1_summary_writer import write_summary_payload
+from .summary_source_reader import open_summary_source
 
 
 def _bounds(address: str) -> tuple[int, int, int, int]:
@@ -51,6 +53,17 @@ def _sheet_name(base: str, used: set[str]) -> str:
         number += 1
     used.add(result.casefold())
     return result
+
+
+def _column_widths(headers, rows) -> list[float]:
+    columns = max([len(headers), *(len(row) for row in rows)], default=0)
+    widths = []
+    for column in range(columns):
+        values = [headers[column] if column < len(headers) else ""]
+        values.extend(row[column] if column < len(row) else "" for row in rows)
+        max_length = max((len(str(value or "")) for value in values), default=0)
+        widths.append(float(min(40, max(12, max_length + 2))))
+    return widths
 
 
 def _history_context(
@@ -240,6 +253,8 @@ def run_region_summaries(
     on_result: Callable[[list[tuple[str, int]], dict[str, int]], None] | None = None,
     output_name: str = "区域汇总",
     history_config_path: Path | None = None,
+    source_reader: str = "AUTO",
+    result_writer: str = "AUTO",
 ) -> Path:
     """运行配置的原生行汇总并返回输出工作簿路径。"""
     say = on_step or (lambda _text: None)
@@ -257,6 +272,14 @@ def run_region_summaries(
         raise FileNotFoundError("没有可汇总的源工作簿")
     template = load_workbook(template_path, read_only=True, data_only=False, keep_links=False)
     try:
+        source_engines: set[str] = set()
+
+        def record_source_engine(value: str) -> None:
+            source_engines.add(value)
+
+        def report_source_fallback(reason: str) -> None:
+            say("汇总源数据读取回退：" + reason)
+
         global_fields = named_single_cells_with_prefix(template, "全局单元格区域.")
         local_fields = named_single_cells_with_prefix(template, "单元格区域.")
         groups: dict[str, dict[str, object]] = {}
@@ -293,8 +316,11 @@ def run_region_summaries(
                 for file_path in files:
                     if file_path.suffix.casefold() == ".xls":
                         continue
-                    book = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
-                    try:
+                    with open_summary_source(
+                        file_path, engine=source_reader,
+                        on_engine=record_source_engine,
+                        on_fallback=report_source_fallback,
+                    ) as book:
                         if data_range.sheet_name not in book.sheetnames:
                             say(
                                 "跳过源文件 {} 的工作表 {}：源文件缺少该工作表。".format(
@@ -330,8 +356,6 @@ def run_region_summaries(
                                 else:
                                     group["rows"].append(base_row)
                                 feature_counts[feature.name] += 1
-                    finally:
-                        book.close()
             if fallback is not None:
                 fallback_headers, fallback_left, fallback_right = _read_header(
                     template, fallback.data_range, [fallback.header_range],
@@ -348,10 +372,11 @@ def run_region_summaries(
                 for file_path in files:
                     if file_path.suffix.casefold() == ".xls":
                         continue
-                    book = load_workbook(
-                        file_path, read_only=True, data_only=True, keep_links=False
-                    )
-                    try:
+                    with open_summary_source(
+                        file_path, engine=source_reader,
+                        on_engine=record_source_engine,
+                        on_fallback=report_source_fallback,
+                    ) as book:
                         source_only = [
                             name for name in book.sheetnames
                             if name.casefold() not in configured_names
@@ -437,38 +462,61 @@ def run_region_summaries(
                                 else:
                                     group["rows"].append(base_row)
                                 feature_counts[feature.name] += 1
-                    finally:
-                        book.close()
             say("完成：{}".format(feature.name))
     finally:
         template.close()
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / "{}_{}.xlsx".format(output_name, datetime.now().strftime("%Y%m%d_%H%M%S"))
-    output, used_names = Workbook(), set()
     output_rows: list[tuple[str, int]] = []
-    try:
-        first = True
-        for group in groups.values():
-            sheet = output.active if first else output.create_sheet()
-            first = False
-            sheet.title = _sheet_name(str(group["title"]), used_names)
-            sheet.append(group["headers"])
-            for row in group["rows"]:
-                sheet.append(row)
-            output_rows.append((sheet.title, len(group["rows"])))
-            sheet.freeze_panes = "A2"
-            sheet.auto_filter.ref = sheet.dimensions
-            for column in sheet.columns:
-                letter = column[0].column_letter
-                sheet.column_dimensions[letter].width = min(40, max(12, max(len(str(cell.value or "")) for cell in column) + 2))
-        if first:
-            output.active.title = "汇总"
-            output_rows.append(("汇总", 0))
-        output.save(path)
-    finally:
-        output.close()
+    tables = []
+    used_names: set[str] = set()
+    for group in groups.values():
+        name = _sheet_name(str(group["title"]), used_names)
+        headers, rows = group["headers"], group["rows"]
+        output_rows.append((name, len(rows)))
+        tables.append({
+            "name": name, "headers": headers, "rows": rows,
+            "widths": _column_widths(headers, rows),
+            "freeze_top_rows": 1, "auto_filter": bool(headers),
+        })
+    if not tables:
+        output_rows.append(("汇总", 0))
+        tables.append({
+            "name": "汇总", "headers": [], "rows": [], "widths": [],
+            "freeze_top_rows": 0, "auto_filter": False,
+        })
+
+    def write_openpyxl() -> Path:
+        output, used_names = Workbook(), set()
+        try:
+            for index, table in enumerate(tables):
+                sheet = output.active if index == 0 else output.create_sheet()
+                sheet.title = table["name"]
+                headers, rows = table["headers"], table["rows"]
+                if headers:
+                    sheet.append(headers)
+                    for row in rows:
+                        sheet.append(row)
+                    sheet.freeze_panes = "A2"
+                    sheet.auto_filter.ref = sheet.dimensions
+                    for column, width in enumerate(table["widths"], start=1):
+                        sheet.column_dimensions[
+                            sheet.cell(1, column).column_letter
+                        ].width = width
+            output.save(path)
+        finally:
+            output.close()
+        return path
+
+    path = write_summary_payload(
+        {"sheets": tables}, path, mode=result_writer,
+        openpyxl_writer=write_openpyxl,
+        on_engine=lambda message: say("汇总结果写入：" + message),
+    )
     for sheet_name, row_count in output_rows:
         say(f"输出工作表：{sheet_name}，数据 {row_count} 行")
+    if source_engines:
+        say("汇总源数据读取实际引擎=" + "、".join(sorted(source_engines)))
     if on_result is not None:
         on_result(output_rows, feature_counts)
     return path
@@ -522,7 +570,7 @@ def merge_by_first_filename_part(
 def merge_workbook_tables(
     *, input_dir: Path, output_dir: Path, recursive: bool = True,
     output_name: str = "汇总表合并", selected_files: Iterable[Path] | None = None,
-    on_step=None,
+    on_step=None, source_reader: str = "AUTO", result_writer: str = "AUTO",
 ) -> Path:
     """`汇总_汇总表合并`：仅首行表头完全一致的工作表合并为一张表。"""
     say = on_step or (lambda _text: None)
@@ -533,11 +581,14 @@ def merge_workbook_tables(
     if not files:
         raise FileNotFoundError("没有可合并的源工作簿")
     groups: dict[tuple[str, ...], dict[str, object]] = {}
+    source_engines: set[str] = set()
     for path in files:
         if path.suffix.casefold() == ".xls":
             continue  # 旧版 .xls 由 Windows 版处理；原生管线聚焦 .xlsx
-        book = load_workbook(path, read_only=True, data_only=True, keep_links=False)
-        try:
+        with open_summary_source(
+            path, engine=source_reader, on_engine=source_engines.add,
+            on_fallback=lambda reason: say("汇总源数据读取回退：" + reason),
+        ) as book:
             for sheet in book.worksheets:
                 rows = sheet.iter_rows(values_only=True)
                 header = tuple(next(rows, ()))
@@ -550,26 +601,45 @@ def merge_workbook_tables(
                 for row in rows:
                     if any(value not in (None, "") for value in row):
                         group["rows"].append([path.name, sheet.title, *row])
-        finally:
-            book.close()
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / "{}_{}.xlsx".format(output_name, datetime.now().strftime("%Y%m%d_%H%M%S"))
-    output, used = Workbook(), set()
-    try:
-        first = True
-        for group in groups.values():
-            sheet = output.active if first else output.create_sheet()
-            first = False
-            sheet.title = _sheet_name("_".join(group["sheets"][:2]) or "汇总", used)
-            sheet.append(group["headers"])
-            for row in group["rows"]:
-                sheet.append(row)
-            sheet.freeze_panes = "A2"
-            sheet.auto_filter.ref = sheet.dimensions
-        if first:
-            output.active.title = "汇总"
-        output.save(path)
-        say("汇总表合并完成：按表头分为 {} 张表".format(len(groups)))
-    finally:
-        output.close()
+    tables = []
+    used: set[str] = set()
+    for group in groups.values():
+        tables.append({
+            "name": _sheet_name("_".join(group["sheets"][:2]) or "汇总", used),
+            "headers": group["headers"], "rows": group["rows"], "widths": [],
+            "freeze_top_rows": 1, "auto_filter": True,
+        })
+    if not tables:
+        tables.append({
+            "name": "汇总", "headers": [], "rows": [], "widths": [],
+            "freeze_top_rows": 0, "auto_filter": False,
+        })
+
+    def write_openpyxl() -> Path:
+        output = Workbook()
+        try:
+            for index, table in enumerate(tables):
+                sheet = output.active if index == 0 else output.create_sheet()
+                sheet.title = table["name"]
+                if table["headers"]:
+                    sheet.append(table["headers"])
+                    for row in table["rows"]:
+                        sheet.append(row)
+                    sheet.freeze_panes = "A2"
+                    sheet.auto_filter.ref = sheet.dimensions
+            output.save(path)
+        finally:
+            output.close()
+        return path
+
+    path = write_summary_payload(
+        {"sheets": tables}, path, mode=result_writer,
+        openpyxl_writer=write_openpyxl,
+        on_engine=lambda message: say("汇总结果写入：" + message),
+    )
+    say("汇总表合并完成：按表头分为 {} 张表".format(len(groups)))
+    if source_engines:
+        say("汇总源数据读取实际引擎=" + "、".join(sorted(source_engines)))
     return path

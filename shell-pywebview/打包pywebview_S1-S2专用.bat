@@ -1,8 +1,7 @@
 @echo off
-rem Build the S1/S2 pywebview release into a separate backup folder.
+rem Build the S1/S2 pywebview release into a timestamped folder.
 setlocal EnableExtensions
 cd /d "%~dp0"
-set "PYWEBVIEW_DIST_DIR=%~dp0dist\S1-S2"
 
 if not exist "%~dp0..\core\src\base_audit" (
     echo [ERROR] Repo-root core not found: %~dp0..\core\src\base_audit

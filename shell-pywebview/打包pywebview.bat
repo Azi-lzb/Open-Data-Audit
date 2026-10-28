@@ -1,7 +1,7 @@
 @echo off
 rem ============================================================
 rem Build the unified pywebview shell EXE (modern Windows, WebView2).
-rem Output: dist\<exe>.exe + dist\core\
+rem Output: dist\windows-TIMESTAMP\ with EXE, core\ and config\
 rem
 rem Shares the repo-root core\: the ONLY business core for every shell and
 rem build script. A stale per-shell copy would silently ship old code

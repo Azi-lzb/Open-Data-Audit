@@ -41,6 +41,43 @@ except Exception:  # Missing module or a binary-loader failure must both fall ba
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
 _POOL = ContextVar("audit3_source_readers", default=None)
+_FILE_HASHING_ENABLED = ContextVar("audit3_file_hashing_enabled", default=True)
+
+
+@contextmanager
+def file_hashing(enabled: bool):
+    """Temporarily enable or disable content hashing of workbook files."""
+    token = _FILE_HASHING_ENABLED.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _FILE_HASHING_ENABLED.reset(token)
+
+
+def file_hashing_enabled() -> bool:
+    return _FILE_HASHING_ENABLED.get()
+
+
+def payload_sha256(payload: bytes) -> str:
+    if not file_hashing_enabled():
+        return ""
+    digest = _new_file_digest()
+    digest.update(payload)
+    return digest.hexdigest()
+
+
+def file_sha256(path) -> str:
+    if not file_hashing_enabled():
+        return ""
+    digest = _new_file_digest()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _new_file_digest():
+    return hashlib.sha256()
 
 
 def _cast_numeric(raw):
@@ -138,7 +175,7 @@ class SourceReader:
         started = perf_counter()
         self.path = Path(path).resolve()
         self.payload = self.path.read_bytes()
-        self.sha256 = hashlib.sha256(self.payload).hexdigest()
+        self.sha256 = payload_sha256(self.payload)
         self.pooled = False
         self._books = {}
         self.metadata = {}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from functools import lru_cache
 from typing import Any, Callable, Mapping
 
 from .errors import ConfigurationError, DSLParseError, EvaluationError
@@ -322,6 +323,11 @@ class Parser:
 def parse_expression(text: str) -> Node:
     if not text or not text.strip():
         raise DSLParseError("表达式不能为空")
+    return _parse_expression_cached(text)
+
+
+@lru_cache(maxsize=8192)
+def _parse_expression_cached(text: str) -> Node:
     node = Parser(text).parse_expression()
     validate_node(node)
     return node
@@ -330,7 +336,14 @@ def parse_expression(text: str) -> Node:
 def parse_dictionary(text: str | None) -> dict[str, Node]:
     if text is None or not str(text).strip():
         return {}
-    return Parser(str(text)).parse_dictionary()
+    return dict(_parse_dictionary_items(str(text)))
+
+
+@lru_cache(maxsize=4096)
+def _parse_dictionary_items(text: str) -> tuple[tuple[str, Node], ...]:
+    # Keep cached AST values immutable. Callers receive a fresh dict so one
+    # consumer cannot mutate the parsed dictionary seen by another rule.
+    return tuple(Parser(text).parse_dictionary().items())
 
 
 def validate_call(call: Call) -> None:
@@ -410,28 +423,52 @@ def calls_in(node: Node) -> tuple[Call, ...]:
 
 
 def validate_dictionary_dependencies(dictionary: Mapping[str, Node]) -> None:
-    dependencies = {name: variables_in(node) for name, node in dictionary.items()}
+    items = tuple(dictionary.items())
+    try:
+        error = _cached_dictionary_dependency_error(items)
+    except TypeError:
+        # Parsed DSL nodes are hashable, but retain compatibility for callers
+        # that construct custom Node values containing unhashable literals.
+        error = _dictionary_dependency_error(items)
+    if error:
+        raise ConfigurationError(error)
+
+
+@lru_cache(maxsize=4096)
+def _cached_dictionary_dependency_error(items: tuple[tuple[str, Node], ...]) -> str | None:
+    return _dictionary_dependency_error(items)
+
+
+def _dictionary_dependency_error(items: tuple[tuple[str, Node], ...]) -> str | None:
+    dictionary = dict(items)
+    dependencies = {name: variables_in(node) for name, node in items}
     for name, names in dependencies.items():
         undefined = names - dictionary.keys()
         if undefined:
-            raise ConfigurationError(f"变量 {name} 引用了未定义变量：{', '.join(sorted(undefined))}")
+            return f"变量 {name} 引用了未定义变量：{', '.join(sorted(undefined))}"
     visiting: list[str] = []
     visited: set[str] = set()
 
-    def visit(name: str) -> None:
+    def visit(name: str) -> str | None:
         if name in visiting:
             cycle = visiting[visiting.index(name):] + [name]
-            raise ConfigurationError("取值字典存在循环引用：" + " → ".join(cycle))
+            return "取值字典存在循环引用：" + " → ".join(cycle)
         if name in visited:
-            return
+            return None
         visiting.append(name)
         for dependency in dependencies[name]:
-            visit(dependency)
+            error = visit(dependency)
+            if error:
+                return error
         visiting.pop()
         visited.add(name)
+        return None
 
     for name in dependencies:
-        visit(name)
+        error = visit(name)
+        if error:
+            return error
+    return None
 
 
 def static_kind(node: Node) -> str | None:

@@ -11,7 +11,7 @@ from __future__ import annotations
 from copy import copy
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Dict, Iterable
 
 from openpyxl import load_workbook
 from openpyxl.utils.cell import coordinate_to_tuple, range_boundaries
@@ -361,29 +361,61 @@ def copy_formula_ranges_from_template(template: Any, audit_path: Path, definitio
         audit.close()
 
 
-def _copy_sheet(source: Any, target_book: Any, target_name: str) -> None:
-    """Cross-workbook sheet copy retaining values, basic styles, merges and hidden state."""
+def _copy_sheet(source: Any, target_book: Any, target_name: str,
+                style_cache: Dict[tuple, Any] | None = None) -> None:
+    """跨簿复制工作表：值/公式/样式/批注/超链接/合并/行列/条件格式/数据验证。
+
+    跨簿样式编号不同，必须按原型逐项登记到目标工作簿；直接搬 ``_style`` 会让
+    目标簿引用不存在的字体/对齐索引，保存后读回报 ``IndexError``。
+    """
+    from openpyxl.cell.cell import Cell, MergedCell
+
     target = target_book.create_sheet(target_name)
     target.sheet_state = source.sheet_state
     target.freeze_panes = source.freeze_panes
+    target.sheet_view.showGridLines = source.sheet_view.showGridLines
+    target.sheet_properties.tabColor = source.sheet_properties.tabColor
+    cache = {} if style_cache is None else style_cache
     for row in source.iter_rows():
         for cell in row:
-            destination = target[cell.coordinate]
-            destination.value = cell.value
+            if isinstance(cell, MergedCell):
+                continue
+            destination = target.cell(cell.row, cell.column, cell.value)
             if cell.has_style:
-                destination._style = copy(cell._style)
+                key = (id(source.parent), tuple(cell._style))
+                target_style = cache.get(key)
+                if target_style is None:
+                    prototype = Cell(target, row=1, column=1)
+                    prototype.font = copy(cell.font)
+                    prototype.fill = copy(cell.fill)
+                    prototype.border = copy(cell.border)
+                    prototype.alignment = copy(cell.alignment)
+                    prototype.number_format = cell.number_format
+                    prototype.protection = copy(cell.protection)
+                    target_style = copy(prototype._style)
+                    cache[key] = target_style
+                destination._style = copy(target_style)
             if cell.comment:
                 destination.comment = copy(cell.comment)
             if cell.hyperlink:
                 destination._hyperlink = copy(cell.hyperlink)
     for key, dimension in source.row_dimensions.items():
-        target.row_dimensions[key].height = dimension.height
-        target.row_dimensions[key].hidden = dimension.hidden
+        item = target.row_dimensions[key]
+        item.height = dimension.height
+        item.hidden = dimension.hidden
+        item.outline_level = dimension.outline_level
     for key, dimension in source.column_dimensions.items():
-        target.column_dimensions[key].width = dimension.width
-        target.column_dimensions[key].hidden = dimension.hidden
+        item = target.column_dimensions[key]
+        item.width = dimension.width
+        item.hidden = dimension.hidden
+        item.outline_level = dimension.outline_level
     for merged in source.merged_cells.ranges:
         target.merge_cells(str(merged))
+    for rng in source.conditional_formatting:
+        for rule in rng.rules:
+            target.conditional_formatting.add(str(rng.sqref), copy(rule))
+    for validation in source.data_validations.dataValidation:
+        target.add_data_validation(copy(validation))
 
 
 def add_external_sheets(audit_path: Path, external_path: Path, sheet_names: Iterable[str]) -> None:
@@ -398,8 +430,9 @@ def add_external_sheets(audit_path: Path, external_path: Path, sheet_names: Iter
             raise TemplateError("外部文件缺少工作表：" + "、".join(missing))
         if conflicts:
             raise TemplateError("外部文件工作表与报送文件重名，不能覆盖原表：" + "、".join(conflicts))
+        style_cache: Dict[tuple, Any] = {}
         for name in names:
-            _copy_sheet(external[name], audit, name)
+            _copy_sheet(external[name], audit, name, style_cache)
         audit.save(audit_path)
     finally:
         audit.close()

@@ -236,6 +236,38 @@ DEB_CONFLICTS=$(profile_field debConflicts) || exit $?
 PRODUCT_SCOPE=$(profile_field productScope) || exit $?
 printf '[交付范围] %s；开放系统：%s。\n' "$PROFILE_NAME" "$PROFILE_ENABLED_SYSTEMS"
 
+# 新建结果表可选使用 Rust sidecar；只为交付范围内的系统生成，且限 Linux AMD64。
+RUST_S1_WRITER_BIN=
+case "$PROFILE_ENABLED_SYSTEMS" in
+    *S1*)
+        if [ "$ARCH" = amd64 ]; then
+            RUST_S1_WRITER_BIN=$("$BUILD_PY" "$ROOT/core/rust/s1_summary_writer/build_writer.py" linux-amd64) || true
+            if [ -n "$RUST_S1_WRITER_BIN" ] && [ -f "$RUST_S1_WRITER_BIN" ]; then
+                echo "[S1] 汇总结果写入器：$RUST_S1_WRITER_BIN"
+            else
+                RUST_S1_WRITER_BIN=
+                echo '[提示] 本包未附带 S1-F02 Rust 写入器；自动模式会使用 OpenPyXL。'
+            fi
+        fi
+        ;;
+esac
+
+# S3-F01 的新建比较结果表也可选使用 Rust sidecar；full AMD64 包优先复用 Docker 外层预构建的 musl binary，或在本机有工具链时构建。
+RUST_S3_WRITER_BIN=
+case "$PROFILE_ENABLED_SYSTEMS" in
+    *S3*)
+        if [ "$ARCH" = amd64 ]; then
+            RUST_S3_WRITER_BIN=$("$BUILD_PY" "$ROOT/core/rust/s3_comparison_writer/build_writer.py" linux-amd64) || true
+            if [ -n "$RUST_S3_WRITER_BIN" ] && [ -f "$RUST_S3_WRITER_BIN" ]; then
+                echo "[S3] 比较结果写入器：$RUST_S3_WRITER_BIN"
+            else
+                RUST_S3_WRITER_BIN=
+                echo '[提示] 本包未附带 S3 Rust 写入器；自动模式会使用 OpenPyXL。'
+            fi
+        fi
+        ;;
+esac
+
 # 产品版本与程序名称都从共享身份模块读取；DEB 的日期版本仍只作构建批次元数据。
 IDENTITY_PYTHONPATH=$ROOT/core/src${PYTHONPATH:+:$PYTHONPATH}
 APP_VERSION=$(PYTHONPATH="$IDENTITY_PYTHONPATH" "$BUILD_PY" -m base_audit.app_identity --version) || {
@@ -305,6 +337,12 @@ set -- --noconfirm --clean --onedir --name "$LINUX_NAME" \
     --distpath "$PYI_DIST" \
     --workpath "$BUILD_STAGE/work" \
     --specpath "$BUILD_STAGE/spec"
+if [ -n "$RUST_S3_WRITER_BIN" ]; then
+    set -- "$@" --add-binary "$RUST_S3_WRITER_BIN:native"
+fi
+if [ -n "$RUST_S1_WRITER_BIN" ]; then
+    set -- "$@" --add-binary "$RUST_S1_WRITER_BIN:native"
+fi
 if "$BUILD_PY" -c 'import tkinter' >/dev/null 2>&1; then
     set -- "$@" --hidden-import tkinter --hidden-import tkinter.filedialog
     TK_STATUS='随包（含 Tcl/Tk）'

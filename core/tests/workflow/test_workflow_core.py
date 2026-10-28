@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -608,9 +609,16 @@ def test_native_dag_runs_nodes_without_service_run_flow(tmp_path, monkeypatch):
     service = AuditService(config_path=config, engine_preference="自动")
     # 此处只替换计算器进程；其余所有节点、端口和文件版本真实运行。
     recalculated = []
+    def fake_recalculate_many(_self, paths, *, batch_size=8):
+        recalculated.extend(Path(path) for path in paths)
+        return SimpleNamespace(
+            workbook_paths=tuple(recalculated), engine_display="LibreOffice Calc (mock)",
+            elapsed_seconds=0.0, batch_count=1,
+        )
+
     monkeypatch.setattr(
-        "base_audit.workflow.adapters.native_audit_handlers.LibreOfficeCalculator.recalculate",
-        lambda _self, path: recalculated.append(Path(path)),
+        "base_audit.workflow.adapters.native_audit_handlers.LibreOfficeCalculator.recalculate_many",
+        fake_recalculate_many,
     )
     service.run_flow = lambda **_kwargs: (_ for _ in ()).throw(AssertionError("不得调用旧 run_flow"))
     # 引擎预检与被测调度逻辑无关：打桩保持本测试"不启动 soffice"的契约。

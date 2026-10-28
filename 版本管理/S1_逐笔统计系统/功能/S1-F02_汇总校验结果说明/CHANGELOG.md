@@ -1,6 +1,49 @@
 # S1-F02 汇总校验结果说明
 
-当前版本：v1.2.2
+当前版本：v1.3.1
+
+## v1.3.1 — 2026-10-27 20:51
+
+变更类型：Bugfix / PATCH
+
+前版本：v1.3.0；新版本：v1.3.1。
+
+- 待处理文件说明将“新增工作表”改为“模板外工作表”，避免把源文件已有但未纳入模板的表误称为本次新增；统一使用“所选模板、同名工作表、模板外工作表”表述。
+- 界面不再显示 F1/F2 标签或兜底模板提示；模板外工作表只作为匹配提示，匹配情况以同名工作表为准。
+- 提示区分普通隐藏与 `veryHidden` 工作表，并在悬浮详情说明普通取消隐藏列表为何看不到 `veryHidden` 表及其显示方法。
+- 仅调整 F2 预览信息；F1 自动模板识别、文件选择、结构检查和汇总逻辑不变。
+
+影响文件：`core/src/base_audit/discovery.py`、`core/frontend/web/index.html`、相关 S1 测试。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。
+
+测试：`test_discovery.py`、`test_web_app.py`、版本清单测试及 S1 回归结果见本轮 GPT 修改记录。
+
+GPT修改记录：`GPT修改记录/20261027_205145_S1-F02模板外隐藏工作表提示.txt`。
+
+Git提交：未提交。
+
+## v1.3.0 — 2026-10-22 18:39
+
+变更类型：Feature / MINOR
+
+前版本：v1.2.2；新版本：v1.3.0。
+
+- 纯 Python 汇总管线的源数据值读取新增 AUTO / Calamine / OpenPyXL 路由；AUTO 优先 Calamine，兼容性失败时说明原因并回退，手动模式严格执行。
+- 新建汇总结果工作簿增加独立 AUTO / Rust xlsxwriter / OpenPyXL 路由；现有模板命名区域读取、结构检查和 Office 公式缓存刷新链路不变。
+- 源数据位置、日期、文字、布尔值、空值、工作表及汇总结果与 OpenPyXL 对拍一致；运行记录显示实际引擎、耗时和自动回退原因。
+
+影响文件：`core/src/base_audit/native/summary.py`、`summary_source_reader.py`、`s1_summary_writer.py`、S1-F02 设置与测试，以及 `core/rust/s1_summary_writer/`。
+
+配置影响：用户设置 JSON 增加 `summary_source_reader` 和 `summary_result_writer`；业务配置工作簿与 S1-CFG-01 v2.0.0 不变。
+
+性能基准：Windows 合成源数据为 3 个工作簿、9,000 行、12 列，Calamine/OpenPyXL 读取中位数 0.1661/1.1905 秒（7.17 倍）。结果表写入 1,000/5,000/20,000 行时，Rust/OpenPyXL 分别为 0.0444/0.1917、0.1439/0.8677、0.5256/3.5827 秒；每个规模均逐格对拍。
+
+测试：S1 系统回归与 Windows/WSL core 全量回归结果见本轮 GPT 修改记录。
+
+GPT修改记录：`GPT修改记录/20261022_182600_S1读写引擎路由与Rust结果写入.txt`。
+
+Git提交：未提交。
 
 ## v1.2.2 — 2026-10-21 23:54
 
