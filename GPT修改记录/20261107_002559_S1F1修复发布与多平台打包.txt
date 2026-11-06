@@ -1,7 +1,7 @@
 时间：2026-11-07 00:25（Asia/Shanghai）
 执行者：Codex
 修改前 commit：81505fb（desktop）
-修改后 commit：未提交
+修改后 commit：c350567（S1-F01 修复、版本调整与发行构建代码）
 工作区状态：承接上一轮 S1-F01 条件格式提取与外部表复制修复 WIP；真实输入、模板、外部文件及本地测试夹具未修改。
 
 目的：按用户要求沿用从 Rust-Audit 项目复制的真实 S1 测试夹具，构建 V26.2.2.5 完整版发行产物，并推送当前 desktop 分支。测试夹具位于本机 `test-data/S1F1_external_fallback_20261106/`，已通过 `.git/info/exclude` 排除，不进入公开仓库或发行包。
