@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 import re
 from shutil import copy2
@@ -24,6 +24,8 @@ _REQUIRED_HEADERS = (
 )
 _SELECTED_VALUES = {"是", "y", "yes", "true", "1", "√", "✓"}
 _ORG_REFERENCE_SHEET = "机构地区参照"
+_MATCH_ABS_TOLERANCE = Decimal("1e-12")
+_MATCH_REL_TOLERANCE = Decimal("1e-12")
 
 
 @dataclass(frozen=True)
@@ -248,20 +250,22 @@ def _explanation_header_index(sheet) -> tuple[int, dict[str, int]]:
         }
         if all(name in headers for name in ("机构代码", "机构名称", "指标代码", "指标名称")):
             value_header = next((name for name in headers if name == "数据值" or name.startswith("本期金额")), None)
-            previous_header = next((name for name in headers if name == "上期值" or name.startswith("上期金额")), None)
             change_header = next((name for name in headers if name.startswith("增减额")), None)
-            if value_header and previous_header and change_header and "变动原因" in headers:
-                return row_number, {
+            if value_header and change_header and "变动原因" in headers:
+                columns = {
                     "机构代码": headers["机构代码"],
                     "机构名称": headers["机构名称"],
                     **({"地区代码": headers["地区代码"]} if "地区代码" in headers else {}),
                     "指标代码": headers["指标代码"],
                     "指标名称": headers["指标名称"],
                     "数据值": headers[value_header],
-                    "上期值": headers[previous_header],
                     "增减额": headers[change_header],
                     "变动原因": headers["变动原因"],
                 }
+                previous_header = next((name for name in headers if name == "上期值" or name.startswith("上期金额")), None)
+                if previous_header:
+                    columns["上期值"] = headers[previous_header]
+                return row_number, columns
     raise ValueError("说明文件缺少机构代码、机构名称、指标代码、指标名称、数据值、增减额或变动原因列")
 
 
@@ -280,44 +284,64 @@ def _code_value(value: object) -> str:
     return text.upper()
 
 
-def _amount_value(value: object) -> str:
-    """金额按两位小数四舍五入，复刻 VBA Format(Val(value), "0.00") 匹配口径。"""
-    if value is None:
-        return ""
-    if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
-        number = Decimal(str(value))
-    else:
-        text = str(value).strip()
-        try:
-            number = Decimal(text)
-        except InvalidOperation:
-            return text
+def _amount_decimal(value: object) -> Decimal | None:
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
     try:
-        quantized = number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        number = Decimal(text.replace(",", ""))
+        return number if number.is_finite() else None
     except InvalidOperation:
-        return str(number)
-    return f"#{quantized:f}"
+        return None
+
+
+def _amounts_match(left: object, right: object) -> bool:
+    """Compare Excel numeric values with 1e-12 absolute and relative tolerance."""
+    left_text = "" if left is None else str(left).strip()
+    right_text = "" if right is None else str(right).strip()
+    if not left_text or not right_text:
+        return not left_text and not right_text
+
+    left_number = _amount_decimal(left)
+    right_number = _amount_decimal(right)
+    if left_number is not None and right_number is not None:
+        tolerance = max(
+            _MATCH_ABS_TOLERANCE,
+            _MATCH_REL_TOLERANCE * max(abs(left_number), abs(right_number)),
+        )
+        return abs(left_number - right_number) <= tolerance
+    return left_text.casefold() == right_text.casefold()
 
 
 def _identity(row: tuple[object, ...], columns: dict[str, int]) -> tuple[str, ...]:
-    """按 VBA 说明接收键匹配：机构代码+指标代码+本期值+上期值。
-
-    日报额外使用地区代码消歧。代码忽略大小写与空格，金额按显示精度两位小数比较。
-
-    机构/指标名称不参与匹配：机构常改写名称（加层级前缀、括号注记）或
-    复制他行忘改机构名，代码与本期/上期值足以定位；同标识出现多行时按冲突处理。
-    """
+    """Return the stable feedback key; institution name is part of identity."""
     org = _code_value(row[columns["机构代码"] - 1]) if len(row) >= columns["机构代码"] else ""
     org = org.replace(" ", "").replace("　", "")
+    name = _institution_name_value(_row_value(row, columns, "机构名称"))
     indicator = _code_value(row[columns["指标代码"] - 1]) if len(row) >= columns["指标代码"] else ""
     indicator = indicator.replace(" ", "").replace("　", "")
-    current = _amount_value(row[columns["数据值"] - 1]) if len(row) >= columns["数据值"] else ""
-    previous = _amount_value(row[columns["上期值"] - 1]) if len(row) >= columns["上期值"] else ""
     if "地区代码" in columns:
         region = _code_value(row[columns["地区代码"] - 1]) if len(row) >= columns["地区代码"] else ""
         region = region.replace(" ", "").replace("　", "")
-        return org, region, indicator, current, previous
-    return org, indicator, current, previous
+        return org, name, indicator, region
+    return org, name, indicator
+
+
+def _identity_without_name(key: tuple[str, ...]) -> tuple[str, ...]:
+    """Diagnostic index used only to report a name mismatch, never to match rows."""
+    return (key[0], key[2], *key[3:])
+
+
+def _institution_name_value(value: object) -> str:
+    """Normalize institution names by removing whitespace and case-folding only."""
+    return "".join(str(value or "").split()).casefold()
+
+
+def _row_value(row: tuple[object, ...], columns: dict[str, int], name: str) -> object:
+    position = columns[name] - 1
+    return row[position] if len(row) > position else None
 
 
 def _merged_identity_values(sheet, columns: dict[str, int]) -> dict[tuple[int, int], object]:
@@ -358,12 +382,7 @@ def _last_explanation_row(sheet, header_row: int, columns: dict[str, int]) -> in
 
 
 def import_explanation_feedback(target_path: Path, feedback_paths: list[Path]) -> ExplanationImportResult:
-    """按 VBA 接收规则回写反馈；日报格式将地区代码加入匹配键。
-
-    代码统一大写、金额按 2 位小数舍入后比较，名称不参与（机构常改写或
-    填错名称，实测详见 _identity）。同一标识出现不同反馈时不写入，避免
-    批量导入悄悄覆盖人工内容。写入前在同目录创建带时间戳的完整备份。
-    """
+    """回写机构反馈：名称参与身份键，数值按容差匹配，日报增加地区代码。"""
     target_path = Path(target_path)
     if not feedback_paths:
         raise ValueError("请至少选择一个机构反馈说明文件")
@@ -375,16 +394,17 @@ def import_explanation_feedback(target_path: Path, feedback_paths: list[Path]) -
         target_last_row = _last_explanation_row(target_sheet, target_header_row, target_columns)
         target_last_column = max(target_columns.values())
         targets: dict[tuple[str, ...], list[tuple[int, tuple[object, ...]]]] = {}
+        targets_without_name: dict[tuple[str, ...], list[tuple[int, tuple[object, ...]]]] = {}
         for row_number in range(target_header_row + 1, target_last_row + 1):
             row = _row_with_merged_identity(
                 target_sheet, row_number, target_last_column, target_merged_values
             )
             key = _identity(row, target_columns)
-            if key[1 if "地区代码" not in target_columns else 2]:
+            if len(key) >= 3 and key[0] and key[1] and key[2]:
                 targets.setdefault(key, []).append((row_number, row))
+                targets_without_name.setdefault(_identity_without_name(key), []).append((row_number, row))
 
-        # key → {反馈原因 → 来源文件名集合}。保留来源才能在冲突时给用户可核查的明细。
-        feedback: dict[tuple[str, ...], dict[str, set[str]]] = {}
+        feedback_rows: list[tuple[tuple[str, ...], tuple[object, ...], dict[str, int], str, str, str]] = []
         for feedback_path in feedback_paths:
             source = load_workbook(feedback_path, data_only=True)
             try:
@@ -396,48 +416,149 @@ def import_explanation_feedback(target_path: Path, feedback_paths: list[Path]) -
                 for row_number in range(header_row + 1, last_row + 1):
                     row = _row_with_merged_identity(sheet, row_number, last_column, merged_values)
                     key = _identity(row, columns)
-                    reason = str(row[columns["变动原因"] - 1] or "").strip() if len(row) >= columns["变动原因"] else ""
-                    if key[1 if "地区代码" not in columns else 2] and reason:
-                        feedback.setdefault(key, {}).setdefault(reason, set()).add(feedback_path.name)
+                    reason = str(_row_value(row, columns, "变动原因") or "").strip()
+                    if len(key) >= 3 and key[0] and key[1] and key[2] and reason:
+                        feedback_rows.append((
+                            key,
+                            row,
+                            columns,
+                            str(_row_value(row, columns, "机构名称") or ""),
+                            reason,
+                            feedback_path.name,
+                        ))
             finally:
                 source.close()
 
         imported = unmatched = conflicts = 0
         conflict_rows: list[tuple[object, ...]] = []
+        conflict_signatures: set[tuple[object, ...]] = set()
+        blocked_targets: set[int] = set()
+        matched_targets: dict[int, dict[str, object]] = {}
 
         def target_field(row: tuple[object, ...], name: str) -> object:
-            position = target_columns[name] - 1
-            return row[position] if len(row) > position else ""
+            return _row_value(row, target_columns, name)
 
-        for key, reason_sources in feedback.items():
-            target_rows = targets.get(key)
-            if not target_rows:
-                unmatched += 1
-                continue
-            if len(reason_sources) != 1 or len(target_rows) != 1:
-                conflicts += 1
-                reasons_text = "\n".join(
-                    f"{reason}（来源：{'、'.join(sorted(sources))}）"
-                    for reason, sources in sorted(reason_sources.items())
+        def add_conflict(
+            candidates: list[tuple[int, tuple[object, ...]]],
+            feedback_name: str,
+            reason_sources: dict[str, set[str]],
+            cause: str,
+        ) -> None:
+            nonlocal conflicts
+            if not candidates:
+                return
+            candidate_numbers = tuple(sorted(number for number, _row in candidates))
+            signature = (candidate_numbers, _institution_name_value(feedback_name), tuple(sorted(reason_sources)), cause)
+            blocked_targets.update(candidate_numbers)
+            if signature in conflict_signatures:
+                return
+            conflict_signatures.add(signature)
+            conflicts += 1
+            reasons_text = "\n".join(
+                f"{reason}（来源：{'、'.join(sorted(sources))}）"
+                for reason, sources in sorted(reason_sources.items())
+            )
+            sample_number, sample_row = candidates[0]
+            conflict_rows.append((
+                "冲突",
+                str(target_field(sample_row, "机构代码") or ""),
+                str(target_field(sample_row, "机构名称") or ""),
+                str(target_field(sample_row, "指标代码") or ""),
+                str(target_field(sample_row, "指标名称") or ""),
+                str(target_field(sample_row, "数据值")) if target_field(sample_row, "数据值") is not None else "",
+                str(target_field(sample_row, "增减额")) if target_field(sample_row, "增减额") is not None else "",
+                "、".join(str(number) for number in candidate_numbers),
+                reasons_text,
+                f"{cause}；反馈机构名称：{feedback_name or '（空）'}",
+            ))
+
+        for key, feedback_row, feedback_columns, feedback_name, reason, source_name in feedback_rows:
+            identity_candidates = targets.get(key, [])
+            target_rows = [
+                (row_number, row)
+                for row_number, row in identity_candidates
+                if _amounts_match(
+                    _row_value(row, target_columns, "数据值"),
+                    _row_value(feedback_row, feedback_columns, "数据值"),
                 )
-                indicator_key = key[2] if "地区代码" in target_columns else key[1]
-                causes = []
-                if len(target_rows) != 1:
-                    causes.append(f"目标说明文件存在 {len(target_rows)} 行相同标识")
-                if len(reason_sources) != 1:
-                    causes.append("多个反馈文件给出不同变动原因")
-                sample_number, sample_row = target_rows[0]
-                conflict_rows.append((
-                    "冲突",
-                    key[0], str(target_field(sample_row, "机构名称")),
-                    indicator_key, str(target_field(sample_row, "指标名称")),
-                    str(target_field(sample_row, "数据值")) if target_field(sample_row, "数据值") is not None else "",
-                    str(target_field(sample_row, "增减额")) if target_field(sample_row, "增减额") is not None else "",
-                    "、".join(str(number) for number, _row in target_rows),
-                    reasons_text, "；".join(causes),
-                ))
+                and _amounts_match(
+                    _row_value(row, target_columns, "增减额"),
+                    _row_value(feedback_row, feedback_columns, "增减额"),
+                )
+            ]
+            if not target_rows:
+                # Exact identity includes institution name. If the same code,
+                # indicator, optional region and numeric values exist under a
+                # different name, report the mismatch instead of silently
+                # treating it as an ordinary unmatched feedback row.
+                diagnostic_candidates = targets_without_name.get(_identity_without_name(key), [])
+                diagnostic_rows = [
+                    (row_number, row)
+                    for row_number, row in diagnostic_candidates
+                    if _amounts_match(
+                        _row_value(row, target_columns, "数据值"),
+                        _row_value(feedback_row, feedback_columns, "数据值"),
+                    )
+                    and _amounts_match(
+                        _row_value(row, target_columns, "增减额"),
+                        _row_value(feedback_row, feedback_columns, "增减额"),
+                    )
+                ]
+                if diagnostic_rows:
+                    add_conflict(
+                        diagnostic_rows,
+                        feedback_name,
+                        {reason: {source_name}},
+                        "机构名称与目标说明文件不一致",
+                    )
+                else:
+                    unmatched += 1
                 continue
-            target_sheet.cell(target_rows[0][0], target_columns["变动原因"]).value = next(iter(reason_sources))
+
+            if len(target_rows) > 1:
+                add_conflict(
+                    target_rows,
+                    feedback_name,
+                    {reason: {source_name}},
+                    f"完整匹配键命中 {len(target_rows)} 个目标行",
+                )
+                continue
+            target_row_number, target_row = target_rows[0]
+
+            entry = matched_targets.setdefault(
+                target_row_number,
+                {"row": target_row, "reasons": {}, "names": set()},
+            )
+            reason_map = entry["reasons"]
+            assert isinstance(reason_map, dict)
+            sources = reason_map.setdefault(reason, set())
+            assert isinstance(sources, set)
+            sources.add(source_name)
+            names = entry["names"]
+            assert isinstance(names, set)
+            names.add(feedback_name)
+
+        for target_row_number, entry in matched_targets.items():
+            if target_row_number in blocked_targets:
+                continue
+            target_row = entry["row"]
+            reasons = entry["reasons"]
+            names = entry["names"]
+            assert isinstance(target_row, tuple) and isinstance(reasons, dict) and isinstance(names, set)
+            if len(reasons) != 1:
+                reason_sources = {
+                    str(reason): set(sources)
+                    for reason, sources in reasons.items()
+                    if isinstance(sources, set)
+                }
+                add_conflict(
+                    [(target_row_number, target_row)],
+                    "、".join(sorted(names)),
+                    reason_sources,
+                    "多个反馈文件给出不同变动原因",
+                )
+                continue
+            target_sheet.cell(target_row_number, target_columns["变动原因"]).value = next(iter(reasons))
             imported += 1
 
         backup_path = target_path.with_name(

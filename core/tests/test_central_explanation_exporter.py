@@ -81,7 +81,7 @@ class ExplanationExporterTests(unittest.TestCase):
             self.assertEqual(names, {"7020": "示例乙银行", "6k0i": "示例甲银行"})
             result.close()
 
-    def test_imports_feedback_by_four_business_identity_columns(self):
+    def test_imports_feedback_by_org_indicator_current_and_change_with_name_check(self):
         with tempfile.TemporaryDirectory() as folder:
             target_path = Path(folder) / "指标说明.xlsx"
             feedback_path = Path(folder) / "机构反馈.xlsx"
@@ -92,7 +92,11 @@ class ExplanationExporterTests(unittest.TestCase):
                 sheet.merge_cells("A1:H1")
                 sheet["A1"] = "xx说明"
                 sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
-                sheet.append(("6k0i", "测试机构", "A001", "指标一", 2.0, 1.0, 1.0, reason))
+                previous = 1.0 if path == target_path else 999.0
+                current = 2.0 if path == target_path else 2.0000000000005
+                change = 1.0 if path == target_path else 1.0000000000005
+                name = "测试机构" if path == target_path else "测 试机构"
+                sheet.append(("6k0i", name, "A001", "指标一", current, previous, change, reason))
                 book.save(path)
                 book.close()
 
@@ -262,8 +266,8 @@ class ExplanationExporterTests(unittest.TestCase):
             self.assertEqual(sheet["H4"].value, "指标二原因")
             target.close()
 
-    def test_import_tolerates_case_name_and_rounding_differences(self):
-        """大小写、机构/指标名称差异及 VBA 两位金额匹配规则均可回写。"""
+    def test_import_matches_change_with_excel_tolerance_and_ignores_previous_value(self):
+        """机构代码大小写与名称空白规范化，金额按 1e-12 相对/绝对容差。"""
         with tempfile.TemporaryDirectory() as folder:
             target_path = Path(folder) / "指标说明.xlsx"
             feedback_path = Path(folder) / "机构反馈.xlsx"
@@ -271,18 +275,17 @@ class ExplanationExporterTests(unittest.TestCase):
             sheet = book.active
             sheet.title = "说明文件"
             sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
-            sheet.append(("6k0u", "龙门农村商业银行（广东省）", "12A18", "指标甲", 0.418462, 1.0, -0.0002, "待机构填写"))
-            sheet.append((7020, "村镇银行（惠州市）", "12A22", "指标乙", 1.0, 0.5, 0.5, "待机构填写"))
+            sheet.append(("6k0u", "龙门农村商业银行（广东省）", "12A18", "指标甲", 100.0, 50.0, 50.0, "待机构填写"))
+            sheet.append((7020, "村镇银行（惠州市）", "12A22", "指标乙", 0.0, -1.0, 0.0, "待机构填写"))
             book.save(target_path)
             book.close()
             book = Workbook()
             sheet = book.active
             sheet.title = "说明文件"
             sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
-            # 大写代码、改写名称与 VBA 两位小数的金额格式都应命中目标行。
-            # VBA 键使用本期和上期金额，增减额不参与匹配。
-            sheet.append(("6K0u", "写错也不影响", "12a18", "前缀_指标甲", "0.4185", "1.0", "99.00", "誊抄舍入原因"))
-            sheet.append(("7020", "村镇银行（惠州市）", "12A22", "指标乙", 1.0, 0.5, "99.00", "数字代码原因"))
+            # 前一行金额刻意不同以验证上期值不参与；本期值和增减额仅有 1e-12 量级差异。
+            sheet.append(("6K0u", "龙门 农村商业银行（广东省）", "12a18", "前缀_指标甲", "100.00000000005", "999", "50.000000000002", "精度容差原因"))
+            sheet.append(("7020", "村镇银行（惠州市）", "12A22", "指标乙", 0.0, 888, "0.0000000000009", "绝对容差原因"))
             book.save(feedback_path)
             book.close()
 
@@ -290,6 +293,141 @@ class ExplanationExporterTests(unittest.TestCase):
             self.assertEqual((result.imported, result.unmatched, result.conflicts), (2, 0, 0))
             target = load_workbook(target_path, data_only=True)
             # 本表头在第 1 行，数据从第 2 行起。
-            self.assertEqual(target["说明文件"].cell(2, 8).value, "誊抄舍入原因")
-            self.assertEqual(target["说明文件"].cell(3, 8).value, "数字代码原因")
+            self.assertEqual(target["说明文件"].cell(2, 8).value, "精度容差原因")
+            self.assertEqual(target["说明文件"].cell(3, 8).value, "绝对容差原因")
+            target.close()
+
+    def test_institution_name_mismatch_blocks_feedback_and_reports_conflict(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target_path = Path(folder) / "指标说明.xlsx"
+            feedback_path = Path(folder) / "机构反馈.xlsx"
+            for path, name, reason in (
+                (target_path, "惠州农商银行", "待机构填写"),
+                (feedback_path, "龙门农商银行", "反馈原因"),
+            ):
+                book = Workbook()
+                sheet = book.active
+                sheet.title = "说明文件"
+                sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
+                sheet.append(("6k0i", name, "A001", "指标一", 10.0, 8.0, 2.0, reason))
+                book.save(path)
+                book.close()
+
+            result = import_explanation_feedback(target_path, [feedback_path])
+            self.assertEqual((result.imported, result.unmatched, result.conflicts), (0, 0, 1))
+            self.assertIsNotNone(result.conflict_report_path)
+            report = load_workbook(result.conflict_report_path, data_only=True)
+            row = list(report["冲突明细"].iter_rows(min_row=2, values_only=True))[0]
+            self.assertIn("机构名称与目标说明文件不一致", row[-1])
+            self.assertIn("龙门农商银行", row[-1])
+            report.close()
+            target = load_workbook(target_path, data_only=True)
+            self.assertEqual(target["说明文件"]["H2"].value, "待机构填写")
+            target.close()
+
+    def test_institution_name_in_key_disambiguates_fuzzy_numeric_candidates(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target_path = Path(folder) / "指标说明.xlsx"
+            feedback_path = Path(folder) / "机构反馈.xlsx"
+            book = Workbook()
+            sheet = book.active
+            sheet.title = "说明文件"
+            sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
+            sheet.append(("6k0i", "候选甲", "A001", "指标一", 100.0, 90.0, 10.0, "待填写甲"))
+            sheet.append(("6k0i", "候选乙", "A001", "指标一", 100.00000000005, 90.0, 10.0, "待填写乙"))
+            book.save(target_path)
+            book.close()
+            book = Workbook()
+            sheet = book.active
+            sheet.title = "说明文件"
+            sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
+            sheet.append(("6k0i", "候选乙", "A001", "指标一", 100.000000000025, 1.0, 10.0, "应回写到乙"))
+            book.save(feedback_path)
+            book.close()
+
+            result = import_explanation_feedback(target_path, [feedback_path])
+            self.assertEqual((result.imported, result.unmatched, result.conflicts), (1, 0, 0))
+            target = load_workbook(target_path, data_only=True)
+            self.assertEqual(target["说明文件"]["H2"].value, "待填写甲")
+            self.assertEqual(target["说明文件"]["H3"].value, "应回写到乙")
+            target.close()
+
+    def test_village_banks_sharing_code_7020_match_by_institution_name(self):
+        """同一机构代码下多个村镇银行名称不同，反馈必须只回写到名称相同的机构。"""
+        with tempfile.TemporaryDirectory() as folder:
+            target_path = Path(folder) / "指标说明.xlsx"
+            feedback_path = Path(folder) / "机构反馈.xlsx"
+            book = Workbook()
+            sheet = book.active
+            sheet.title = "说明文件"
+            sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
+            sheet.append(("7020", "甲村镇银行", "A001", "指标一", 100.0, 90.0, 10.0, "甲待填写"))
+            sheet.append(("7020", "乙村镇银行", "A001", "指标一", 100.0, 90.0, 10.0, "乙待填写"))
+            book.save(target_path)
+            book.close()
+
+            book = Workbook()
+            sheet = book.active
+            sheet.title = "说明文件"
+            sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
+            sheet.append(("7020", "乙村镇银行", "A001", "指标一", 100.0, 80.0, 10.0, "乙银行反馈原因"))
+            book.save(feedback_path)
+            book.close()
+
+            result = import_explanation_feedback(target_path, [feedback_path])
+            self.assertEqual((result.imported, result.unmatched, result.conflicts), (1, 0, 0))
+            target = load_workbook(target_path, data_only=True)
+            self.assertEqual(target["说明文件"]["H2"].value, "甲待填写")
+            self.assertEqual(target["说明文件"]["H3"].value, "乙银行反馈原因")
+            target.close()
+
+    def test_duplicate_feedback_candidates_are_reported_as_ambiguous(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target_path = Path(folder) / "指标说明.xlsx"
+            feedback_path = Path(folder) / "机构反馈.xlsx"
+            for path, reason in ((target_path, "待填写"), (feedback_path, "不应静默回写")):
+                book = Workbook()
+                sheet = book.active
+                sheet.title = "说明文件"
+                sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
+                sheet.append(("6k0i", "测试机构", "A001", "指标一", 20.0, 10.0, 10.0, reason))
+                if path == target_path:
+                    sheet.append(("6k0i", "测试机构", "A001", "指标一", 20.0, 10.0, 10.0, "仍待填写"))
+                book.save(path)
+                book.close()
+
+            result = import_explanation_feedback(target_path, [feedback_path])
+            self.assertEqual((result.imported, result.unmatched, result.conflicts), (0, 0, 1))
+            report = load_workbook(result.conflict_report_path, data_only=True)
+            row = list(report["冲突明细"].iter_rows(min_row=2, values_only=True))[0]
+            self.assertIn("2 个目标", row[-1])
+            self.assertEqual(row[7], "2、3")
+            report.close()
+            target = load_workbook(target_path, data_only=True)
+            self.assertEqual((target["说明文件"]["H2"].value, target["说明文件"]["H3"].value), ("待填写", "仍待填写"))
+            target.close()
+
+    def test_feedback_without_previous_value_column_uses_current_and_change(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target_path = Path(folder) / "指标说明.xlsx"
+            feedback_path = Path(folder) / "机构反馈.xlsx"
+            book = Workbook()
+            sheet = book.active
+            sheet.title = "说明文件"
+            sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
+            sheet.append(("6k0i", "测试机构", "A001", "指标一", 12.0, 10.0, 2.0, "待填写"))
+            book.save(target_path)
+            book.close()
+            book = Workbook()
+            sheet = book.active
+            sheet.title = "说明文件"
+            sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "增减额(亿元)", "变动原因"))
+            sheet.append(("6k0i", "测试机构", "A001", "指标一", 12.0, 2.0, "本期净增加"))
+            book.save(feedback_path)
+            book.close()
+
+            result = import_explanation_feedback(target_path, [feedback_path])
+            self.assertEqual((result.imported, result.unmatched, result.conflicts), (1, 0, 0))
+            target = load_workbook(target_path, data_only=True)
+            self.assertEqual(target["说明文件"]["H2"].value, "本期净增加")
             target.close()

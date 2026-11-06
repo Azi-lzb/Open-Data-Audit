@@ -2,7 +2,7 @@
   "product": {
     "id": "V3",
     "name": "审核工具",
-    "version": "26.2.2.3",
+    "version": "26.2.2.4",
     "version_scheme": "YY.MAJOR.MINOR.PATCH（年份.大版本.中版本.小版本）",
     "changelog": "版本管理/产品发布/CHANGELOG.md",
     "description": "V3 是产品身份/项目代号；整包发布版本使用年份.大版本.中版本.小版本，业务功能和配置组件版本独立。"
@@ -95,12 +95,12 @@
     },
     "S3-F03": {
       "name": "机构说明到说明文件",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "system": "S3",
       "implementation": "core/src/base_audit/systems/s3_central_statistics/explanation_exporter.py",
       "description": "大集中统计系统：批量导入机构反馈说明文件并回写变动原因。",
       "changelog": "版本管理/S3_大集中统计系统/功能/S3-F03_机构说明到说明文件/CHANGELOG.md",
-      "version_note": "v2.0.0：MAJOR——反馈匹配键对齐 VBA 为机构代码、指标代码、本期值、上期值（金额按两位小数）；日报额外加入地区代码；支持纵向合并机构单元格的逐行匹配。"
+      "version_note": "v3.0.0：MAJOR——反馈匹配键为机构代码、机构名称、指标代码、本期值、增减额；日报额外加入地区代码。机构名称仅去空白并忽略大小写，同码多名机构分别匹配；金额按绝对/相对 1e-12 容差匹配，上期值不参与匹配，名称错配与重复完整键报告冲突。"
     },
     "S3-F04": {
       "name": "本期数值核对",

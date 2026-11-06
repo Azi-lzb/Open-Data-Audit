@@ -161,7 +161,7 @@ Windows 双语 PE 产品属性、关于五连击密码显示入口及脚本语�
 
 | 核对点 | pytest 用例 |
 |---|---|
-| 按四字段业务身份匹配反馈 | `test_central_explanation_exporter.py::ExplanationExporterTests::test_imports_feedback_by_four_business_identity_columns` |
+| 按机构代码、机构名称、指标代码、本期值、增减额及日报地区代码匹配；名称不一致冲突、1e-12 容差和重复目标冲突 | `test_central_explanation_exporter.py::ExplanationExporterTests::test_imports_feedback_by_org_indicator_current_and_change_with_name_check`、`::test_import_matches_change_with_excel_tolerance_and_ignores_previous_value`、`::test_institution_name_mismatch_blocks_feedback_and_reports_conflict`、`::test_institution_name_in_key_disambiguates_fuzzy_numeric_candidates`、`::test_village_banks_sharing_code_7020_match_by_institution_name`、`::test_duplicate_feedback_candidates_are_reported_as_ambiguous`、`::test_feedback_without_previous_value_column_uses_current_and_change` |
 | 同名指标按代码区分、冲突报告保留来源与原因 | `test_central_explanation_exporter.py::ExplanationExporterTests::test_keeps_same_named_indicators_separate_by_indicator_code`、`::test_writes_conflict_report_with_feedback_source_and_reason` |
 
 ### S3-F04 本期数值核对
