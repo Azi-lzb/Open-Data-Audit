@@ -27,6 +27,17 @@ from typing import Any, Iterable
 from .models import CopyRange
 
 _NUMERIC_TEXT_RE = re.compile(r"[-+]?\d+(?:\.\d+)?")
+_EXCEL_ERROR_TEXTS = frozenset({
+    "#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!",
+    "#N/A", "#GETTING_DATA", "#SPILL!", "#CALC!", "#FIELD!",
+})
+
+
+def is_excel_error_value(value: Any) -> bool:
+    """Whether a decoded cell value is an Excel error rather than a label."""
+    if isinstance(value, str):
+        return value.strip().upper() in _EXCEL_ERROR_TEXTS
+    return "errorwrapper" in type(value).__name__.casefold()
 
 
 class IndicatorResolver:
@@ -111,8 +122,13 @@ class IndicatorResolver:
         """读一格的指标文本；合并格取锚点，数值与数字串不算指标。"""
         anchor_row, anchor_col = anchors.get((row, col), (row, col))
         try:
-            value = ws.cell(row=anchor_row, column=anchor_col).value
+            cell = ws.cell(row=anchor_row, column=anchor_col)
+            if getattr(cell, "data_type", "") == "e":
+                return ""
+            value = cell.value
         except Exception:
+            return ""
+        if is_excel_error_value(value):
             return ""
         if value is None or (
             isinstance(value, (int, float, date, datetime, datetime_time))

@@ -1,5 +1,24 @@
 # 审核工具产品发布版本
 
+## V26.2.2.5 — 2026-11-07
+
+变更类型：PATCH（S1-F01 外部表添加时保留合并区域内的原始数据）
+
+前版本：V26.2.2.4；新版本：V26.2.2.5。
+
+- S1-F01 的 Direct OOXML 外部表写入支持复制公式文本、公式属性和缓存值；仍需 openpyxl 兜底时，恢复目标工作簿合并区域内部实际存在的单元格值，避免源数据丢失。
+- 不修改原审核公式或写死计算结果；真实源文件、模板和外部测试文件保持只读。
+
+验证：S1 定向测试 17 passed；S1 系统回归 561 passed / 7 skipped；129 份真实样本在 Direct OOXML 与 OPENPYXL 两条路径均全部完成，3,694 条审核结果逐条一致。广东博罗个人贷款样例 B8/C8 原始 XML 值保留，模板 N8/O8 公式不变，重算值为 19057.46 / 37883.29。全量对拍报告：`test-output/s1f1_external_fallback_parity_20261106_232344/comparison_report.md`。
+
+发行产物（内部版，使用 `config-real` 中的真实配置，并附带 21 份 `模板文件_命名区域` 模板）：
+- Linux AMD64 DEB：`Audit-Tools_V26.2.2.5_2026.11.06.162034_debian-10_py3.12.14_glibc2.25_amd64.deb`
+- Linux AMD64 便携包：`Audit-Tools_V26.2.2.5_2026.11.06.162034_debian-10_py3.12.14_glibc2.25_amd64.tar.gz`
+- Windows Flask（现代版与 Win7 兼容版）：`shell-flask/dist/Windows-Flask_V26.2.2.5/`
+- Windows PyWebView：`shell-pywebview/dist/windows-20261107_001612/`
+
+验证：Linux DEB 与 tar.gz 在 glibc 2.28 Docker 构建环境均通过启动冒烟（HTTP 200、页面标题与静态图标正常、停止后端口释放）；冻结程序最低 glibc 要求为 2.25。Windows Flask 两个 EXE 的 PyInstaller 归档检查通过；PyWebView EXE 归档自检通过。Windows 两个发行目录的 7 个正式配置文件哈希与 `config-real` 一致，命名区域模板均为 21/21；退休的 S5 配置未进入发行目录。Linux 输出目录仅生成 DEB 和 tar.gz，不附带 SHA-256 或 build-info sidecar。
+
 ## V26.2.2.4 — 2026-11-06
 
 变更类型：PATCH（S3-F03 反馈回写匹配键与容差调整）

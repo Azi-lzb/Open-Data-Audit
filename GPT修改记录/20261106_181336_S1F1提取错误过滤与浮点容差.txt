@@ -1,0 +1,40 @@
+时间：2026-11-06 18:13:36（Asia/Shanghai）
+执行者：Codex
+修改前 commit：81505fb S3-F03反馈匹配纳入机构名称
+修改后 commit：未提交
+WIP：修改前工作区有既存未跟踪项 `.zcode/`、`core/tests/.pytest-tmp-v3/`、`docs/Excel与Office技术栈盘点_2026-10-22.md`、`external/`；均未改动。
+
+目的：修正 S1-F01 Python 提取中 Excel 错误缓存混入条件格式指标文本、native 公式缓存矩阵越界风险，并按用户要求用绝对 1e-10 容差过滤“差值为”浮点残值。
+
+修改文件：
+- `core/src/base_audit/template.py`：新增严格限定结果形状的 `1e-10` 浮点残值识别函数，使用 Decimal 比较。
+- `core/src/base_audit/indicator_resolver.py`：识别 Excel 错误值并跳过，不作为指标标签。
+- `core/src/base_audit/excel_com.py`：COM 与 openpyxl 条件格式指标提取均过滤 Excel 错误值；公式结果提取应用残值容差。
+- `core/src/base_audit/native/openpyxl_workbook.py`：公式结果提取应用残值容差；缓存矩阵坐标越界时回读对应单元格，失败则明确报错。
+- `版本管理/VERSION_MANIFEST.json`：S1-F01 v2.6.3 → v2.6.4；产品版本不变。
+- `版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md`：记录 S1-F01 PATCH。
+- `日志/更新日志.txt`：增加 S1 功能修改摘要。
+
+【组件版本】
+- S1-F01：v2.6.3 → v2.6.4（PATCH，提取缺陷修复）。
+- S1-CFG-01：v2.0.0，不变。
+- 产品版本：V26.2.2.4，不变；本轮未打包。
+
+逻辑影响：
+- `#DIV/0!` 等错误缓存不再污染条件格式指标字段和由其派生的身份字符串；条件触发与触发值不变。
+- 结果形如“错误|差值为数值”且绝对差值不超过 1e-10 时不再输出为异常；仅作用于该明确结果形状，不对其他小额数据或差异字段通用舍入。
+- native 大范围缓存读取遇到短矩阵时尝试单格读取，避免直接因 IndexError 结束提取。
+- 对 Rust 报告列出的 13 本副本执行当前 Python native 提取函数的只读定向复核，95/95 项均能提取；该复核在本次安全回读补丁之前完成。
+
+配置/VBA 迁移影响：无。
+
+验证：
+- `py_compile`：`template.py`、`indicator_resolver.py`、`excel_com.py`、`native/openpyxl_workbook.py` 通过。
+- `git diff --check` 通过。
+- 未运行 pytest / S1 系统回归；未对补丁后的 13 本副本重跑提取或验证 11 条容差结果。
+- 没有新增测试文件。
+
+已知限制：旧差异报告的 95 条来自旧 Python 运行；当前 native 提取函数的定向复核已找到全部结果，说明当前代码状态与报告所称旧版不同。Excel COM/WPS 与 Linux Office 真机回归未执行。
+
+删除清单：无。
+回滚提示：若需回滚，仅还原本记录列出的代码、版本清单、组件 CHANGELOG 和用户更新日志；不还原或覆盖上述既存未跟踪 WIP。

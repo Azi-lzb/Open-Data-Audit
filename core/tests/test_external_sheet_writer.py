@@ -1,13 +1,9 @@
 from pathlib import Path
 
-import pytest
 from openpyxl import Workbook, load_workbook
 from openpyxl.comments import Comment
 
-from base_audit.external_sheet_writer import (
-    DirectOoxmlExternalSheetWriter,
-    UnsupportedExternalSheetOperation,
-)
+from base_audit.external_sheet_writer import DirectOoxmlExternalSheetWriter
 
 
 def _audit(path: Path) -> None:
@@ -50,16 +46,29 @@ def test_direct_ooxml_external_writer_adds_plain_data_sheets(tmp_path: Path) -> 
         restored.close()
 
 
-def test_direct_ooxml_external_writer_rejects_formula_sheet(tmp_path: Path) -> None:
+def test_direct_ooxml_external_writer_preserves_formula_text(tmp_path: Path) -> None:
     external = tmp_path / "外部.xlsx"
     book = Workbook()
     book.active.title = "参照表"
-    book.active["A1"] = "=1+1"
+    book.active["A1"] = "机构代码"
+    book.active["D2"] = "=VLOOKUP(A2,机构参照表!A:B,2,0)"
     book.save(external)
     book.close()
+    audit = tmp_path / "审核版.xlsx"
+    _audit(audit)
 
-    with pytest.raises(UnsupportedExternalSheetOperation, match="含公式"):
-        DirectOoxmlExternalSheetWriter(external, ("参照表",)).prepare()
+    writer = DirectOoxmlExternalSheetWriter(external, ("参照表",))
+    prepared = writer.prepare()
+    written = writer.write(audit)
+
+    assert prepared.sheet_count == 1
+    assert written.sheet_count == 1
+    restored = load_workbook(audit, data_only=False)
+    try:
+        assert restored.sheetnames == ["报表", "参照表"]
+        assert restored["参照表"]["D2"].value == "=VLOOKUP(A2,机构参照表!A:B,2,0)"
+    finally:
+        restored.close()
 
 
 def test_direct_ooxml_external_writer_explicitly_reports_dropped_comments(tmp_path: Path) -> None:

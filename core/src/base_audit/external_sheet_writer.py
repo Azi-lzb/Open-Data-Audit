@@ -1,9 +1,9 @@
 """外部辅助表写入器。
 
-``DIRECT_OOXML`` 的能力边界刻意很窄：它将外部工作簿的纯数值、布尔值和
-文本单元格写成新的无样式工作表，不复制样式、批注、冻结窗格、合并、图片、
-表格或数据验证。新增文本统一使用 inlineStr，因此不需迁移 sharedStrings。
-遇到公式或会影响数据语义的对象明确失败，禁止悄悄生成不完整工作簿。
+``DIRECT_OOXML`` 将外部工作簿的值和公式写成新的无样式工作表，不复制
+样式、批注、冻结窗格、合并、图片、表格或数据验证。新增文本统一使用
+inlineStr，因此不需迁移 sharedStrings。遇到未支持或会影响数据语义的对象
+明确失败，禁止悄悄生成不完整工作簿。
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import time
 import zipfile
+from typing import Optional
 from xml.etree import ElementTree as ET
 
 
@@ -44,6 +45,9 @@ class _Cell:
     address: str
     kind: str
     value: str
+    formula: Optional[str] = None
+    formula_attributes: tuple[tuple[str, str], ...] = ()
+    has_value_element: bool = True
 
 
 @dataclass(frozen=True)
@@ -75,7 +79,7 @@ def _escape_text(value: str) -> str:
 
 
 class DirectOoxmlExternalSheetWriter:
-    """将已验证的“纯数据”外部表快速附加到审核副本。"""
+    """将已验证的外部值与公式表快速附加到审核副本。"""
 
     mode = EXTERNAL_SHEET_WRITER_DIRECT_OOXML
 
@@ -115,7 +119,7 @@ class DirectOoxmlExternalSheetWriter:
         )
         self.prepare_seconds = time.monotonic() - started
         ignored = sorted({item for sheet in self._sheets for item in sheet.ignored_features})
-        message = f"Direct OOXML 已准备 {len(self._sheets)} 张纯数据外部表"
+        message = f"Direct OOXML 已准备 {len(self._sheets)} 张外部表"
         if ignored:
             message += "；未复制：" + "、".join(ignored)
         return ExternalSheetWriteResult(
@@ -259,13 +263,20 @@ def _parse_data_sheet(name: str, raw: bytes | None, shared: list[str]) -> _Sheet
             address = cell.attrib.get("r", "")
             if not address:
                 continue
-            if cell.find(f"{{{_MAIN_NS}}}f") is not None:
-                raise UnsupportedExternalSheetOperation(
-                    f"外部工作表“{name}”含公式（{address}）；Direct OOXML 仅支持纯数据表，请切换 openpyxl"
-                )
             kind = cell.attrib.get("t", "n")
+            formula_node = cell.find(f"{{{_MAIN_NS}}}f")
+            value_node = cell.find(f"{{{_MAIN_NS}}}v")
+            if formula_node is not None:
+                cells.append(_Cell(
+                    address=address,
+                    kind=kind,
+                    value=value_node.text if value_node is not None and value_node.text is not None else "",
+                    formula=formula_node.text or "",
+                    formula_attributes=tuple(formula_node.attrib.items()),
+                    has_value_element=value_node is not None,
+                ))
+                continue
             if kind == "s":
-                value_node = cell.find(f"{{{_MAIN_NS}}}v")
                 try:
                     value = shared[int(value_node.text or "")] if value_node is not None else ""
                 except (ValueError, IndexError):
@@ -275,9 +286,8 @@ def _parse_data_sheet(name: str, raw: bytes | None, shared: list[str]) -> _Sheet
                 inline = cell.find(f"{{{_MAIN_NS}}}is")
                 cells.append(_Cell(address, "text", "".join(inline.itertext()) if inline is not None else ""))
             elif kind in {"n", "b", "e", "str", "d"}:
-                value_node = cell.find(f"{{{_MAIN_NS}}}v")
                 value = value_node.text if value_node is not None and value_node.text is not None else ""
-                cells.append(_Cell(address, kind, value))
+                cells.append(_Cell(address, kind, value, has_value_element=value_node is not None))
             else:
                 raise UnsupportedExternalSheetOperation(
                     f"外部工作表“{name}”含不支持的单元格类型 {kind}（{address}），请切换 openpyxl"
@@ -292,7 +302,17 @@ def _render_sheet(sheet: _Sheet) -> str:
     for row_number, cells in sheet.rows:
         payload = []
         for cell in cells:
-            if cell.kind == "text":
+            if cell.formula is not None:
+                cell_type = f' t="{html.escape(cell.kind, quote=True)}"' if cell.kind != "n" else ""
+                formula_attributes = "".join(
+                    f' {html.escape(key, quote=True)}="{html.escape(value, quote=True)}"'
+                    for key, value in cell.formula_attributes
+                )
+                formula_text = html.escape(cell.formula, quote=False)
+                formula_xml = f"<f{formula_attributes}>{formula_text}</f>" if formula_text else f"<f{formula_attributes}/>"
+                cached_value = f"<v>{html.escape(cell.value, quote=False)}</v>" if cell.has_value_element else ""
+                payload.append(f'<c r="{cell.address}"{cell_type}>{formula_xml}{cached_value}</c>')
+            elif cell.kind == "text":
                 payload.append(f'<c r="{cell.address}" t="inlineStr"><is>{_escape_text(cell.value)}</is></c>')
             elif cell.kind == "n":
                 payload.append(f'<c r="{cell.address}"><v>{html.escape(cell.value)}</v></c>')

@@ -42,9 +42,11 @@ from .template import (
     parse_comment_rule_id,
     parse_formula_result,
     parse_rule_rows,
+    is_negligible_zero_difference_result,
 )
 from .conditional_format import evaluate_expression_formula
 from .conditional_engine import ConditionalFormatResult
+from .indicator_resolver import is_excel_error_value
 
 
 # Legacy templates do not use one uniform flag. Keep discovery and extraction
@@ -1375,6 +1377,8 @@ class ExcelSession:
                 # Structured rules may deliberately return another non-empty flag.
                 if rule.result_mode == "keyword":
                     continue
+            if is_negligible_zero_difference_result(result_text):
+                continue
             parsed = parse_formula_result(
                 result_text,
                 default_severity=rule.severity,
@@ -1728,8 +1732,13 @@ class ExcelSession:
 
         def text_value(r: int, c: int) -> str:
             try:
-                value = sheet.cell(row=r, column=c).value
+                cell = sheet.cell(row=r, column=c)
+                if getattr(cell, "data_type", "") == "e":
+                    return ""
+                value = cell.value
             except Exception:
+                return ""
+            if is_excel_error_value(value):
                 return ""
             if value is None or (isinstance(value, (int, float)) and not isinstance(value, bool)):
                 return ""
@@ -2071,6 +2080,8 @@ class ExcelSession:
                 merged = cell.MergeArea
                 cell = merged.Cells(1, 1)
                 value = cell.Value2
+                if is_excel_error_value(value) or is_excel_error_value(cell.Text):
+                    return ""
                 if value is None or isinstance(value, (int, float)) and not isinstance(value, bool):
                     return ""
                 text = str(value).strip()

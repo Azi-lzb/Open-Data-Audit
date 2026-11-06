@@ -1,0 +1,39 @@
+时间：2026-11-07 00:25（Asia/Shanghai）
+执行者：Codex
+修改前 commit：81505fb（desktop）
+修改后 commit：未提交
+工作区状态：承接上一轮 S1-F01 条件格式提取与外部表复制修复 WIP；真实输入、模板、外部文件及本地测试夹具未修改。
+
+目的：按用户要求沿用从 Rust-Audit 项目复制的真实 S1 测试夹具，构建 V26.2.2.5 完整版发行产物，并推送当前 desktop 分支。测试夹具位于本机 `test-data/S1F1_external_fallback_20261106/`，已通过 `.git/info/exclude` 排除，不进入公开仓库或发行包。
+
+实现与版本：
+- S1-F01 修复沿用对应记录：`GPT修改记录/20261106_181336_S1F1提取错误过滤与浮点容差.txt` 与 `GPT修改记录/20261106_231326_S1F1外部表公式与合并区域数据保留.txt`。
+- 产品版本由 V26.2.2.4 升至 V26.2.2.5；S1-F01 由 v2.6.3 升至 v2.6.5；相关 S1 配置版本不变。
+- `shell-flask/Linux-2-打包DEB与TARGZ.sh` 不再在 dist 中生成 `.sha256` 与 `.deb/.tar.gz.build-info.txt` sidecar，符合交付目录仅保留 DEB 与 tar.gz 的要求。包内配置仍从真实 `config-real` 复制；命名区域模板随包提供。
+
+验证：
+- `python -m pytest -q -m s1 core/tests`：561 passed，7 skipped，597 deselected，3 subtests passed。
+- `python -m compileall -q core/src/base_audit core/tests`：通过；`git diff --check`：通过。
+- Linux 首次在 WSL Ubuntu 24.04 直接构建时因宿主 `libgcc_s.so.1` 要求 glibc 2.35 被脚本按 2.28 基线正确拒绝。改用已有 Debian/glibc 2.28 AMD64 Docker 镜像后构建成功，产物实测最低 glibc 2.25；DEB 与 tar.gz 均通过 HTTP 200、标题/图标及端口释放启动冒烟。
+- Windows Flask 现代版与 Win7 版均构建成功，Win7 使用 Python 3.8.10 32 位。两者 PyInstaller 归档检查通过。
+- PyWebView 首轮因当前 `.venv` 未安装 pywebview 导致归档缺模块；在被忽略的 `.venv` 安装 pywebview 6.2.1 后重建通过，PyInstaller 归档自检通过。未执行 Windows 图形界面人工启动。
+- Windows Flask 与 PyWebView 发行目录的 7 个正式配置文件 SHA-256 均与 `config-real` 一致，`模板文件_命名区域` 均为 21/21；S5 配置未进入发行目录。
+- 真实样本完整对拍沿用 2026-11-06 既有验证：129/129 批次完成，3,694 条结果在 Direct OOXML 与 OPENPYXL 路径逐条一致；报告：`test-output/s1f1_external_fallback_parity_20261106_232344/comparison_report.md`。
+
+发行产物：
+- Linux AMD64 DEB 与 tar.gz：`shell-flask/dist/Audit-Tools_V26.2.2.5_2026.11.06.162034_debian-10_py3.12.14_glibc2.25_amd64.*`
+- Windows Flask（现代版与 Win7 兼容版）：`shell-flask/dist/Windows-Flask_V26.2.2.5/`
+- Windows PyWebView：`shell-pywebview/dist/windows-20261107_001612/`
+- `shell-pywebview/dist/windows-20261107_001423/` 是带 `BUILD_INCOMPLETE.txt` 的失败构建目录，不可分发。
+
+改动范围：S1-F01 相关源代码、定向测试、版本清单、组件/产品 CHANGELOG、用户功能更新日志以及 Linux 打包脚本；未修改 S2/S3 业务逻辑、默认引擎路由、真实配置或测试源文件。测试夹具和所有发行产物不提交。
+
+回滚：若需回退 S1-F01 修复，应一起回退引用的两份 S1 修改记录所列代码、测试、MANIFEST 与组件 CHANGELOG；若只恢复 Linux sidecar 行为，单独恢复 `Linux-2-打包DEB与TARGZ.sh` 中原有的 SHA 与 build-info sidecar 生成语句。产品版本号不得单独回退而保留对应功能代码。
+
+【组件版本】
+系统：S1 逐笔统计系统
+影响功能：S1-F01 汇总核查表校验 v2.6.3 → v2.6.5
+影响配置：S1-CFG-01 逐笔统计系统配置 v2.0.0 → v2.0.0（未变）
+产品整包：V26.2.2.4 → V26.2.2.5（Bugfix）
+未修改的相关组件：S1-F02~F05、S2-F01、S3-F01~F05 及 S1/S2/S3 配置（除上述外全部未动）
+版本升级原因：S1-F01 错误值指标提取、极小浮点差值过滤与外部表添加时合并区域内数据保留修复。

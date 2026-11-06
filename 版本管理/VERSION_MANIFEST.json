@@ -2,7 +2,7 @@
   "product": {
     "id": "V3",
     "name": "审核工具",
-    "version": "26.2.2.4",
+    "version": "26.2.2.5",
     "version_scheme": "YY.MAJOR.MINOR.PATCH（年份.大版本.中版本.小版本）",
     "changelog": "版本管理/产品发布/CHANGELOG.md",
     "description": "V3 是产品身份/项目代号；整包发布版本使用年份.大版本.中版本.小版本，业务功能和配置组件版本独立。"
@@ -23,12 +23,12 @@
   "features": {
     "S1-F01": {
       "name": "汇总核查表校验",
-      "version": "2.6.3",
+      "version": "2.6.5",
       "system": "S1",
       "implementation": "core/src/base_audit/native/result_writer.py",
       "description": "逐笔统计系统主流程：模板体检、表结构比对、公式复制、Excel/WPS 重算、问题提取与审核副本输出（DAG 编排）。",
       "changelog": "版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md",
-      "version_note": "v2.6.3（PATCH）：S1-F01 外部文件添加在 Direct OOXML 快路径不支持复杂外部表时自动降级 openpyxl，两个写入器都失败时仅标记该文件失败并继续链路；默认写入方式与纯数据快路径不变。"
+      "version_note": "v2.6.5（PATCH）：外部表 Direct OOXML 写入保留公式；openpyxl 降级后补回目标工作簿合并区域内部原始单元格值。"
     },
     "S1-F02": {
       "name": "汇总校验结果说明",

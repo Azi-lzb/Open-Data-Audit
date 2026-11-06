@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 
 from .models import AuditRule
 
@@ -109,6 +110,37 @@ def parse_formula_result(
         detail=detail,
         check_type=check_type,
     )
+
+
+_ZERO_DIFFERENCE_RESULT_RE = re.compile(
+    r"^差值为\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?)$",
+    re.IGNORECASE,
+)
+_ZERO_DIFFERENCE_TOLERANCE = Decimal("1e-10")
+
+
+def is_negligible_zero_difference_result(value: object) -> bool:
+    """Ignore formula findings that report only floating residue within 1e-10.
+
+    S1 templates sometimes use an exact ``<>0`` test on arithmetic balances.
+    Excel may cache a binary floating residue such as ``-3.63797880709171E-12``
+    and concatenate it into ``错误|差值为...``. Keep the tolerance narrowly
+    scoped to that explicit result shape so small legitimate amounts and other
+    formula findings remain untouched.
+    """
+    parts = _text(value).replace("｜", "|").split("|")
+    if len(parts) < 2 or not any(
+        marker in parts[0] for marker in ("错误", "硬性", "错")
+    ):
+        return False
+    match = _ZERO_DIFFERENCE_RESULT_RE.fullmatch(parts[1].strip())
+    if match is None:
+        return False
+    try:
+        difference = Decimal(match.group(1))
+    except InvalidOperation:
+        return False
+    return difference.is_finite() and abs(difference) <= _ZERO_DIFFERENCE_TOLERANCE
 
 
 def parse_rule_rows(rows: Iterable[Mapping[str, object]]) -> list[AuditRule]:

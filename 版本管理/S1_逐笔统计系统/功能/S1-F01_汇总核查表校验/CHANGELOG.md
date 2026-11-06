@@ -1,6 +1,47 @@
 # S1-F01 汇总核查表校验
 
-当前版本：v2.6.3
+当前版本：v2.6.5
+
+## v2.6.5 — 2026-11-06 23:03
+
+变更类型：Bugfix / PATCH
+
+前版本：v2.6.4；新版本：v2.6.5。
+
+- Direct OOXML 外部表写入器支持保留公式文本、公式属性和缓存值；只含公式但无其他不支持对象的外部工作表不再因公式而退回 openpyxl。
+- 对仍需 openpyxl 降级的外部表，在保存后从原工作簿 OOXML 中补回合并区域非左上角且实际有值的单元格；字符串转为 inlineStr，避免恢复整张工作表 XML 或受 sharedStrings 索引影响。
+- 回归覆盖合并区域内的文本/数值/公式、工作表关系与重开；广东博罗个人贷款样例的 B8/C8 保留，Excel COM 重算 N8/O8 为 19057.46/37883.29，公式文本不变，原始输入 SHA-256 未变化。
+
+影响文件：`core/src/base_audit/external_sheet_writer.py`、`core/src/base_audit/native/openpyxl_workbook.py`、`core/tests/test_external_sheet_writer.py`、`core/tests/test_external_copy_fallback.py`、`core/tests/test_version_manifest.py`。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。
+
+测试：定向测试 9 passed；版本清单测试 8 passed；S1 系统回归 561 passed / 7 skipped / 597 deselected / 3 subtests passed。真实样例原始文件在当前 Excel COM 环境中无法直接打开，因此 COM 数值验证使用同一真实样例的既有 Python 审核副本临时副本，未写入真实输入文件；重算结果及保存缓存均为 N8=19057.46、O8=37883.29。
+
+GPT修改记录：`GPT修改记录/20261106_231326_S1F1外部表公式与合并区域数据保留.txt`。
+
+Git提交：未提交。
+
+## v2.6.4 — 2026-11-06 18:13
+
+变更类型：Bugfix / PATCH
+
+前版本：v2.6.3；新版本：v2.6.4。
+
+- 条件格式指标定位忽略 Excel 错误缓存，不再把 `#DIV/0!` 等错误文本拼入指标名和问题标识；仅修正字段文字，不改变条件格式触发和触发值。
+- 公式异常提取对“错误|差值为数值”应用绝对 `1e-10` 容差，过滤计算缓存中的极小浮点残值；其他公式结果和小额字段不套用此容差。
+- 加固 Linux/native 缓存矩阵读取：矩阵缺少目标坐标时单格回读，避免 `IndexError` 丢失该工作簿的有效发现；若单格读取也失败，明确报告工作表和单元格。
+- 定向只读复核当前 Python native 提取器对先前列出的 13 本副本可提取 95/95 条；另增加矩阵越界回读保护。
+
+影响文件：`core/src/base_audit/template.py`、`core/src/base_audit/indicator_resolver.py`、`core/src/base_audit/excel_com.py`、`core/src/base_audit/native/openpyxl_workbook.py`。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。
+
+测试：四个修改模块 `py_compile` 通过；`git diff --check` 通过。未运行 pytest；S1 完整回归未执行。
+
+GPT修改记录：`GPT修改记录/20261106_181336_S1F1提取错误过滤与浮点容差.txt`。
+
+Git提交：未提交。
 
 ## v2.6.3 — 2026-10-28
 

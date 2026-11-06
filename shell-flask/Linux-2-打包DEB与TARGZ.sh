@@ -655,9 +655,7 @@ if [ "$SKIP_DEB" -eq 0 ]; then
         echo '[错误] 当前 dpkg-deb 不支持 --root-owner-group。请在隔离构建环境中以 root 构建，或安装 fakeroot 后重试。' >&2
         exit 1
     fi
-    (cd "$DIST" && sha256sum "${DEB_OUT##*/}" > "${DEB_OUT##*/}.sha256")
     dpkg-deb --info "$DEB_OUT" >/dev/null
-    cp "$PAYLOAD/build-info.txt" "$DIST/${ARTIFACT_BASE}.deb.build-info.txt"
     FINISHED="$FINISHED
 $DEB_OUT"
 fi
@@ -669,8 +667,6 @@ if [ "$SKIP_TGZ" -eq 0 ]; then
     tar --numeric-owner --owner=0 --group=0 \
         --transform "s|^base-audit-v3|${ARTIFACT_BASE}|" \
         -C "$STAGE/opt" -czf "$TGZ_OUT" base-audit-v3
-    (cd "$DIST" && sha256sum "${TGZ_OUT##*/}" > "${TGZ_OUT##*/}.sha256")
-    cp "$PAYLOAD/build-info.txt" "$DIST/${ARTIFACT_BASE}.tar.gz.build-info.txt"
     FINISHED="$FINISHED
 $TGZ_OUT"
 fi

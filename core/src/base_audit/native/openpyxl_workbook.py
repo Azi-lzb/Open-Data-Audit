@@ -8,13 +8,17 @@ auxiliary sheets and reading LibreOffice-saved formula caches.
 
 from __future__ import annotations
 
-from copy import copy
+from copy import copy, deepcopy
 from datetime import datetime
+import posixpath
 from pathlib import Path
+import re
 from typing import Any, Dict, Iterable
+import zipfile
+from xml.etree import ElementTree as ET
 
 from openpyxl import load_workbook
-from openpyxl.utils.cell import coordinate_to_tuple, range_boundaries
+from openpyxl.utils.cell import coordinate_to_tuple, column_index_from_string, range_boundaries
 
 from ..models import AuditRule, CopyRange, Issue, TemplateDefinition
 from ..name_config import FeatureMapping, matches_named_range
@@ -26,6 +30,7 @@ from ..template import (
     parse_comment_rule_id,
     parse_formula_result,
     parse_rule_rows,
+    is_negligible_zero_difference_result,
 )
 
 
@@ -34,6 +39,10 @@ FORMULA_ERRORS = (
     "#REF!", "#VALUE!", "#N/A", "#DIV/0!", "#NAME?", "#NUM!", "#NULL!",
     "#SPILL!", "#CALC!", "#FIELD!", "#GETTING_DATA",
 )
+
+_OOXML_MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+_OOXML_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+_OOXML_PACKAGE_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 
 
 def _normalise_address(address: str) -> str:
@@ -418,25 +427,242 @@ def _copy_sheet(source: Any, target_book: Any, target_name: str,
         target.add_data_validation(copy(validation))
 
 
-def add_external_sheets(audit_path: Path, external_path: Path, sheet_names: Iterable[str]) -> None:
-    """Copy selected external sheets; conflicts are errors instead of overwrites."""
-    audit = load_workbook(audit_path, data_only=False, keep_links=False)
-    external = load_workbook(external_path, data_only=False, keep_links=False)
+def _workbook_worksheet_parts(archive: zipfile.ZipFile) -> dict[str, str]:
+    workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+    relationships = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+    by_id = {
+        item.attrib.get("Id", ""): item
+        for item in relationships.findall(f"{{{_OOXML_PACKAGE_REL_NS}}}Relationship")
+    }
+    result: dict[str, str] = {}
+    sheets = workbook.find(f"{{{_OOXML_MAIN_NS}}}sheets")
+    for sheet in sheets if sheets is not None else ():
+        relation_id = sheet.attrib.get(f"{{{_OOXML_REL_NS}}}id", "")
+        relation = by_id.get(relation_id)
+        if relation is None or relation.attrib.get("TargetMode") == "External":
+            continue
+        if not relation.attrib.get("Type", "").endswith("/worksheet"):
+            continue
+        target = relation.attrib.get("Target", "")
+        part = target.lstrip("/") if target.startswith("/") else posixpath.normpath(posixpath.join("xl", target))
+        result[sheet.attrib.get("name", "")] = part
+    return result
+
+
+def _sheet_data_fragment(raw: bytes) -> bytes | None:
+    """Return the exact worksheet ``sheetData`` XML fragment, if present."""
+    start = re.search(
+        rb"<(?P<name>(?:[A-Za-z_][\w.-]*:)?sheetData)\b[^>]*(?:/>|>)",
+        raw,
+    )
+    if start is None:
+        return None
+    if start.group(0).rstrip().endswith(b"/>"):
+        return start.group(0)
+    closing = b"</" + start.group("name") + b">"
+    end = raw.find(closing, start.end())
+    if end < 0:
+        raise TemplateError("工作表 XML 的 sheetData 未闭合")
+    return raw[start.start():end + len(closing)]
+
+
+def _has_cell_payload(cell: ET.Element) -> bool:
+    formula = cell.find(f"{{{_OOXML_MAIN_NS}}}f")
+    value = cell.find(f"{{{_OOXML_MAIN_NS}}}v")
+    inline = cell.find(f"{{{_OOXML_MAIN_NS}}}is")
+    return (
+        formula is not None
+        or (value is not None and value.text is not None)
+        or (inline is not None and "".join(inline.itertext()) != "")
+    )
+
+
+def _inline_shared_string_cell(cell: ET.Element, shared_strings: list[ET.Element]) -> ET.Element:
+    """Convert a copied shared-string cell to inline text for the new package."""
+    if cell.find(f"{{{_OOXML_MAIN_NS}}}f") is not None:
+        raise TemplateError("合并区域内部公式使用共享字符串缓存，无法安全迁移：" + cell.attrib.get("r", ""))
+    value = cell.find(f"{{{_OOXML_MAIN_NS}}}v")
     try:
-        names = tuple(sheet_names)
-        missing = [name for name in names if name not in external.sheetnames]
-        conflicts = [name for name in names if name in audit.sheetnames]
-        if missing:
-            raise TemplateError("外部文件缺少工作表：" + "、".join(missing))
-        if conflicts:
-            raise TemplateError("外部文件工作表与报送文件重名，不能覆盖原表：" + "、".join(conflicts))
-        style_cache: Dict[tuple, Any] = {}
-        for name in names:
-            _copy_sheet(external[name], audit, name, style_cache)
-        audit.save(audit_path)
+        index = int(value.text or "") if value is not None else -1
+        item = shared_strings[index]
+    except (ValueError, IndexError, TypeError):
+        raise TemplateError("合并区域内部共享字符串索引无效：" + cell.attrib.get("r", ""))
+    if value is not None:
+        cell.remove(value)
+    inline = ET.Element(f"{{{_OOXML_MAIN_NS}}}is")
+    inline.extend(deepcopy(list(item)))
+    if not list(inline):
+        ET.SubElement(inline, f"{{{_OOXML_MAIN_NS}}}t")
+    cell.attrib["t"] = "inlineStr"
+    cell.append(inline)
+    return cell
+
+
+def _restore_merged_cell_payloads(original_path: Path, generated_path: Path, output_path: Path) -> None:
+    """Restore meaningful XML cells hidden inside merged ranges.
+
+    openpyxl discards non-anchor cells inside merges. Preserve the rest of its
+    normalized worksheet package, and overlay only original merged-range cell
+    payloads that openpyxl cannot represent. Shared strings become inline
+    strings so the output continues to use openpyxl's generated string table.
+    """
+    with zipfile.ZipFile(original_path, "r") as original, zipfile.ZipFile(generated_path, "r") as generated:
+        original_sheets = _workbook_worksheet_parts(original)
+        generated_sheets = _workbook_worksheet_parts(generated)
+        generated_part_by_original_part: dict[str, str] = {}
+        for sheet_name, original_part in original_sheets.items():
+            generated_part = generated_sheets.get(sheet_name)
+            if generated_part is None:
+                raise TemplateError("openpyxl 外部表添加后，原工作表丢失：" + sheet_name)
+            generated_part_by_original_part[generated_part] = original_part
+
+        shared_strings: list[ET.Element] = []
+        if "xl/sharedStrings.xml" in original.namelist():
+            shared_root = ET.fromstring(original.read("xl/sharedStrings.xml"))
+            shared_strings = shared_root.findall(f"{{{_OOXML_MAIN_NS}}}si")
+
+        replacements: dict[str, bytes] = {}
+        for generated_part, original_part in generated_part_by_original_part.items():
+            original_raw = original.read(original_part)
+            original_root = ET.fromstring(original_raw)
+            original_data = original_root.find(f"{{{_OOXML_MAIN_NS}}}sheetData")
+            merges = original_root.find(f"{{{_OOXML_MAIN_NS}}}mergeCells")
+            if original_data is None or merges is None:
+                continue
+
+            merge_ranges = []
+            for merged in merges:
+                try:
+                    min_col, min_row, max_col, max_row = range_boundaries(merged.attrib.get("ref", ""))
+                except ValueError:
+                    continue
+                merge_ranges.append((min_col, min_row, max_col, max_row))
+            if not merge_ranges:
+                continue
+
+            row_numbers = {int(row.attrib.get("r", "0") or 0) for row in original_data}
+            merged_by_row = {
+                row_number: [
+                    (min_col, max_col, min_row, min_col)
+                    for min_col, min_row, max_col, max_row in merge_ranges
+                    if min_row <= row_number <= max_row
+                ]
+                for row_number in row_numbers
+            }
+            additions: dict[int, list[ET.Element]] = {}
+            for source_row in original_data:
+                row_number = int(source_row.attrib.get("r", "0") or 0)
+                spans = merged_by_row.get(row_number, ())
+                if not spans:
+                    continue
+                for source_cell in source_row.findall(f"{{{_OOXML_MAIN_NS}}}c"):
+                    address = source_cell.attrib.get("r", "")
+                    if not address or not _has_cell_payload(source_cell):
+                        continue
+                    cell_row, cell_column = coordinate_to_tuple(address)
+                    if not any(
+                        min_col <= cell_column <= max_col
+                        and (cell_row, cell_column) != (anchor_row, anchor_column)
+                        for min_col, max_col, anchor_row, anchor_column in spans
+                    ):
+                        continue
+                    restored = deepcopy(source_cell)
+                    # openpyxl may have renumbered styles and metadata. Cell
+                    # values/formulas are the required payload; use default
+                    # formatting for hidden non-anchor merged cells.
+                    for attribute in ("s", "cm", "vm"):
+                        restored.attrib.pop(attribute, None)
+                    if restored.attrib.get("t") == "s":
+                        restored = _inline_shared_string_cell(restored, shared_strings)
+                    additions.setdefault(cell_row, []).append(restored)
+
+            if not additions:
+                continue
+            generated_raw = generated.read(generated_part)
+            generated_root = ET.fromstring(generated_raw)
+            generated_data = generated_root.find(f"{{{_OOXML_MAIN_NS}}}sheetData")
+            if generated_data is None:
+                raise TemplateError("openpyxl 外部表添加后，原工作表数据区域丢失：" + Path(generated_part).name)
+            generated_rows = {
+                int(row.attrib.get("r", "0") or 0): row
+                for row in generated_data.findall(f"{{{_OOXML_MAIN_NS}}}row")
+            }
+            for row_number, cells in additions.items():
+                row = generated_rows.get(row_number)
+                if row is None:
+                    row = ET.Element(f"{{{_OOXML_MAIN_NS}}}row", {"r": str(row_number)})
+                    generated_data.append(row)
+                    generated_rows[row_number] = row
+                for cell in cells:
+                    address = cell.attrib.get("r", "")
+                    existing = next((item for item in row.findall(f"{{{_OOXML_MAIN_NS}}}c") if item.attrib.get("r") == address), None)
+                    if existing is not None:
+                        row.remove(existing)
+                    row.append(cell)
+                row[:] = sorted(
+                    row,
+                    key=lambda item: column_index_from_string(
+                        "".join(character for character in item.attrib.get("r", "A1") if character.isalpha()) or "A"
+                    ) if item.tag == f"{{{_OOXML_MAIN_NS}}}c" else 0,
+                )
+            generated_data[:] = sorted(
+                generated_data,
+                key=lambda item: int(item.attrib.get("r", "0") or 0),
+            )
+            ET.register_namespace("", _OOXML_MAIN_NS)
+            generated_fragment = ET.tostring(generated_data, encoding="utf-8")
+            old_fragment = _sheet_data_fragment(generated_raw)
+            if old_fragment is None:
+                raise TemplateError("无法定位 openpyxl 输出的工作表数据区域：" + Path(generated_part).name)
+            start = generated_raw.find(old_fragment)
+            replacements[generated_part] = (
+                generated_raw[:start] + generated_fragment + generated_raw[start + len(old_fragment):]
+            )
+
+        with zipfile.ZipFile(output_path, "w") as restored:
+            written_parts: set[str] = set()
+            for info in generated.infolist():
+                payload = replacements.get(info.filename)
+                if payload is None:
+                    payload = generated.read(info.filename)
+                restored.writestr(info, payload)
+                written_parts.add(info.filename)
+            for name, payload in replacements.items():
+                if name not in written_parts:
+                    restored.writestr(name, payload, compress_type=zipfile.ZIP_DEFLATED)
+
+
+def add_external_sheets(audit_path: Path, external_path: Path, sheet_names: Iterable[str]) -> None:
+    """Add external sheets while retaining values hidden inside target merges."""
+    audit_path = Path(audit_path)
+    openpyxl_temp = audit_path.with_name(audit_path.stem + ".external-openpyxl.tmp" + audit_path.suffix)
+    restored_temp = audit_path.with_name(audit_path.stem + ".external-preserved.tmp" + audit_path.suffix)
+    try:
+        audit = load_workbook(audit_path, data_only=False, keep_links=False)
+        external = None
+        try:
+            external = load_workbook(external_path, data_only=False, keep_links=False)
+            names = tuple(sheet_names)
+            missing = [name for name in names if name not in external.sheetnames]
+            conflicts = [name for name in names if name in audit.sheetnames]
+            if missing:
+                raise TemplateError("外部文件缺少工作表：" + "、".join(missing))
+            if conflicts:
+                raise TemplateError("外部文件工作表与报送文件重名，不能覆盖原表：" + "、".join(conflicts))
+            style_cache: Dict[tuple, Any] = {}
+            for name in names:
+                _copy_sheet(external[name], audit, name, style_cache)
+            audit.save(openpyxl_temp)
+        finally:
+            audit.close()
+            if external is not None:
+                external.close()
+
+        _restore_merged_cell_payloads(audit_path, openpyxl_temp, restored_temp)
+        restored_temp.replace(audit_path)
     finally:
-        audit.close()
-        external.close()
+        openpyxl_temp.unlink(missing_ok=True)
+        restored_temp.unlink(missing_ok=True)
 
 
 def extract_issues(
@@ -482,6 +708,8 @@ def extract_issues(
                 ))
                 continue
             if rule.result_mode == "error_only" or formula_result in (None, False, 0) or not str(formula_result).strip():
+                continue
+            if is_negligible_zero_difference_result(formula_result):
                 continue
             if rule.result_mode == "keyword" and not _has_result_marker(formula_result):
                 continue
@@ -544,7 +772,23 @@ def _read_issue_value_blocks(
                 )
             ]
             for address, (row, column) in positions.items():
-                values[(sheet_name, address)] = matrix[row - first_row][column - first_column]
+                row_offset, column_offset = row - first_row, column - first_column
+                try:
+                    value = matrix[row_offset][column_offset]
+                except IndexError:
+                    # A sparse or incorrect worksheet dimension can make a
+                    # streamed rectangle shorter than the requested bounds.
+                    # Retry that one formula/target cell instead of losing all
+                    # otherwise valid findings from this workbook.
+                    try:
+                        value = book[sheet_name].cell(row=row, column=column).value
+                    except Exception as exc:
+                        raise TemplateError(
+                            "读取审核副本缓存失败：{}!{}；工作表返回范围不完整".format(
+                                sheet_name, address.replace("$", "")
+                            )
+                        ) from exc
+                values[(sheet_name, address)] = value
     finally:
         book.close()
     return values

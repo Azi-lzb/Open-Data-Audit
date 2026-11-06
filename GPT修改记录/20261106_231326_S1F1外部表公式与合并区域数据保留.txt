@@ -1,0 +1,39 @@
+时间：2026-11-06 23:13:26（Asia/Shanghai）
+执行者：Codex
+修改前 commit：81505fb
+修改后 commit：未提交
+WIP：工作区存在本次任务前的 S1-F01 修改及既存未跟踪文件；保留未覆盖。未改动 Rust-Audit 和真实输入文件。
+
+目的：修复 S1-F01 添加固定外部工作表时，openpyxl 全簿保存可能丢失目标工作簿合并区域内部 OOXML 单元格值的问题，并让 Direct OOXML 写入器支持带公式的外部工作表。
+
+本次修改文件：
+- core/src/base_audit/external_sheet_writer.py：支持复制外部工作表公式文本、公式属性和缓存值；纯公式工作表不再仅因含公式回退 openpyxl。
+- core/src/base_audit/native/openpyxl_workbook.py：openpyxl 降级保存后，从原工作簿 XML 定点恢复合并区域内非左上角且真实存在值的单元格；共享字符串转为 inline string，避免整表 XML 回灌和 sharedStrings 索引错位。
+- core/tests/test_external_sheet_writer.py：验证公式文本经 Direct OOXML 写入后保留。
+- core/tests/test_external_copy_fallback.py：验证 Direct 公式路径与 openpyxl 降级路径均保留目标合并区域值、公式和工作表结构，并保持原始输入哈希不变。
+- core/tests/test_version_manifest.py：同步 S1-F01 版本期望。
+- 版本管理/VERSION_MANIFEST.json、版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md、日志/更新日志.txt：登记 S1-F01 PATCH。
+
+【组件版本】
+- S1-F01：v2.6.4 → v2.6.5（PATCH）。
+- S1-CFG-01：v2.0.0，不变。
+- S2、S3：不变；产品版本不变。
+
+逻辑影响：
+- 不修改 SUMIFS 或其他业务公式，不写死计算结果。
+- Direct OOXML 公式复制覆盖该外部工作表公式场景；仍需 openpyxl 降级时，仅恢复原工作簿合并范围中的实际内部单元格，不覆盖目标表其他由 openpyxl 生成的结构。
+- 原始业务文件只读；本次测试和复核均使用临时副本。
+
+验证：
+- 定向测试：python -m pytest -q core/tests/test_external_sheet_writer.py core/tests/test_external_copy_fallback.py，9 passed。
+- 版本清单测试：8 passed。
+- S1 系统回归：561 passed、7 skipped、597 deselected、3 subtests passed。
+- py_compile 覆盖两个实现文件及相关测试文件通过；git diff --check 通过。
+- 两个其他真实样例的 openpyxl 降级回归分别保留 26 和 306 个含值合并区域内部单元格；工作簿重开成功，原始文件哈希未变化。
+- 广东博罗个人贷款样例：临时工作簿中 B8/C8 原始 XML 值保留，N8/O8 公式文本未变，外部工作表公式保留。Excel COM 重算及保存缓存均为 N8=19057.46、O8=37883.29；原始输入 SHA-256 前后均为 081b2620ddf0d32c47877635755366fc1cf67b3d701946082145a815709cf2b6。
+- 限制：当前环境的 Excel COM 不能直接打开用户提供的原始样例，因此 COM 数值验收使用同一真实样例既有 Python 审核副本的临时副本，并按原始样例的 XML 做恢复验证；没有写入原始样例。
+
+配置/VBA 迁移影响：无。
+Git提交：未提交。
+删除清单：无。
+回滚提示：回滚本记录列明的外部表写入实现、回归测试及版本/日志登记；不要覆盖本记录之前已存在的工作区 WIP。
