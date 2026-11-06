@@ -2617,6 +2617,21 @@ function renderAdvanced(){
         :'<option value="RUST_XLSXWRITER" disabled>Rust xlsxwriter（当前程序未附带）</option>')
       +'<option value="OPENPYXL"'+(s.centralComparisonWriter==='OPENPYXL'?' selected':'')+'>OpenPyXL</option>'
       +'</select>'),
+    row('结果完成后自动打开','适用于 S3-F01 比较结果、S3-F02 说明文件和 S3-F04 数值核对结果。使用系统默认表格软件；Linux 用户可将 WPS 或 LibreOffice 设为 .xlsx 默认打开程序。',
+      '<select class="gen-select" id="setCentralAutoOpenResult" onchange="setCentralAutoOpenResult(this.value)">'
+      +'<option value="false"'+(!s.centralAutoOpenResult?' selected':'')+'>关闭</option>'
+      +'<option value="true"'+(s.centralAutoOpenResult?' selected':'')+'>自动打开</option>'
+      +'</select>'),
+    row('说明文件格式','月报保留现有列结构；日报在机构名称后增加地区代码、地区名称两列，机构代码保持原值。',
+      '<select class="gen-select" id="setCentralExplanationFormat" onchange="setCentralExplanationFormat(this.value)">'
+      +'<option value="MONTHLY"'+((s.centralExplanationFormat||'MONTHLY')==='MONTHLY'?' selected':'')+'>月报格式</option>'
+      +'<option value="DAILY"'+(s.centralExplanationFormat==='DAILY'?' selected':'')+'>日报格式</option>'
+      +'</select>'),
+    row('指标名称空白处理','默认保留原始首尾空白和缩进；选择去除后，仅在 S3-F01、S3-F02 输出时 trim 指标名称，不改源文件。',
+      '<select class="gen-select" id="setCentralTrimIndicatorNames" onchange="setCentralTrimIndicatorNames(this.value)">'
+      +'<option value="false"'+(!s.centralTrimIndicatorNames?' selected':'')+'>保留原样</option>'
+      +'<option value="true"'+(s.centralTrimIndicatorNames?' selected':'')+'>去除首尾空白</option>'
+      +'</select>'),
   ].join('');
   const rowsAuditCalc=[
     row('计算引擎','自动模式会选择当前可用的计算引擎；不可用项不可选择。指定引擎后不再自动切换。适用于逐笔统计审核公式重算、检查模板公式与汇总的 Office 刷新。',
@@ -2900,6 +2915,24 @@ async function setCentralComparisonWriter(value){
     await refresh();
     return;
   }
+  if(CFG.tab==='advanced')renderAdvanced();
+}
+async function setCentralAutoOpenResult(value){
+  if(state&&state.busy)return;
+  try{const next=await bridge.api.update({centralAutoOpenResult:value==='true'});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();return;}
+  if(CFG.tab==='advanced')renderAdvanced();
+}
+async function setCentralExplanationFormat(value){
+  if(state&&state.busy)return;
+  try{const next=await bridge.api.update({centralExplanationFormat:value});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();return;}
+  if(CFG.tab==='advanced')renderAdvanced();
+}
+async function setCentralTrimIndicatorNames(value){
+  if(state&&state.busy)return;
+  try{const next=await bridge.api.update({centralTrimIndicatorNames:value==='true'});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();return;}
   if(CFG.tab==='advanced')renderAdvanced();
 }
 async function setEngine(value){

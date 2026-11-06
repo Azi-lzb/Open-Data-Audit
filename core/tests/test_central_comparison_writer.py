@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 
 from base_audit.native.s3_comparison_writer import writer_available
 from base_audit.systems.s3_central_statistics.comparison_exporter import (
+    _comparison_output_cells,
     write_comparison_workbook,
 )
 from base_audit.systems.s3_central_statistics.models import CentralRecord, ComparisonRow
@@ -89,6 +90,20 @@ def workbook_snapshot(path: Path) -> dict:
 
 
 class S3ComparisonWriterTests(unittest.TestCase):
+    def test_numeric_output_uses_excel_precision_and_recomputes_ratio_from_written_values(self) -> None:
+        row = sample_rows()[0]
+        row.record.value = 1.2345678901234567
+        row.prev_value = 0.12345678901234567
+        row.change = 0.1111111011111111
+        row.ratio = 99.0  # The result cell is based on the values that will be written.
+
+        current, previous, change, ratio = _comparison_output_cells(row, lambda value: value)
+
+        self.assertEqual(current, float(format(row.record.value, ".15g")))
+        self.assertEqual(previous, float(format(row.prev_value, ".15g")))
+        self.assertEqual(change, float(format(row.change, ".15g")))
+        self.assertEqual(ratio, float(format(change / previous, ".15g")))
+
     def test_auto_without_sidecar_uses_openpyxl_and_reports_route(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             target = Path(folder) / "result.xlsx"

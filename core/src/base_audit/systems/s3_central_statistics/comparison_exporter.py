@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
+import re
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.utils.datetime import WINDOWS_EPOCH, to_excel
 
 from .comparison_engine import get_round_digits
 from .models import ComparisonRow
@@ -21,6 +23,69 @@ RESULT_HEADERS = (
 )
 # 人工复核专用列：与规则引擎写入的「是否说明」严格分离。
 OUTPUT_EXPLANATION_HEADER = "输出说明"
+
+
+def _date_cell(value: object) -> object:
+    """Convert an ISO report date to a native Excel date value when possible."""
+    if isinstance(value, date):
+        return value
+    text = str(value or "").strip()
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return value
+
+
+def _batch_cell(value: object) -> object:
+    """Write canonical integer batches as numbers while preserving text identifiers."""
+    if isinstance(value, bool) or isinstance(value, (int, float)):
+        return value
+    text = str(value or "").strip()
+    if re.fullmatch(r"(?:0|[1-9]\d*)", text):
+        return int(text)
+    return value
+
+
+def _indicator_name(value: object, *, trim: bool) -> object:
+    if trim and isinstance(value, str):
+        return value.strip()
+    return value
+
+
+def _ratio_cell(value: object) -> object:
+    """Canonicalize numeric percentages to Excel's 15-significant-digit precision."""
+    if isinstance(value, float):
+        return float(format(value, ".15g"))
+    return value
+
+
+def _excel_number_cell(value: object) -> object:
+    """Normalize numeric outputs to Excel's 15-significant-digit value range."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        return float(format(value, ".15g"))
+    return value
+
+
+def _comparison_output_cells(row: ComparisonRow, display) -> tuple[object, object, object, object]:
+    """Return the canonical value/previous/change/ratio cells for both writers.
+
+    Ratio is recomputed from the values that will actually be written so the
+    workbook does not retain extra binary noise that is absent from its operands.
+    This affects serialization only; rule matching still uses ``row.ratio``.
+    """
+    current = _excel_number_cell(display(row.record.value))
+    previous = _excel_number_cell(display(row.prev_value))
+    change = _excel_number_cell(display(row.change))
+    ratio = display(row.ratio)
+    if (
+        isinstance(change, (int, float)) and not isinstance(change, bool)
+        and isinstance(previous, (int, float)) and not isinstance(previous, bool)
+        and previous != 0
+    ):
+        ratio = change / previous
+    return current, previous, change, _ratio_cell(_excel_number_cell(ratio))
 
 # 经典 64 色 VBA colorindex 调色板（导出着色用，与 Excel Interior.ColorIndex 对应）。
 VBA_COLOR_PALETTE: dict[int, str] = {
@@ -62,6 +127,7 @@ def write_comparison_workbook(
     target_unit: str = "亿元",
     sheet_date: str = "",
     writer: str = "AUTO",
+    trim_indicator_names: bool = False,
     on_engine=None,
 ) -> Path:
     """写出 21 列比较结果工作簿（含警戒色与数字格式）。
@@ -87,24 +153,27 @@ def write_comparison_workbook(
     fills = []
     for index, row in enumerate(rows):
         record = row.record
+        parsed_date = _date_cell(record.record_date)
+        rust_date = to_excel(parsed_date, WINDOWS_EPOCH) if isinstance(parsed_date, date) else display(parsed_date)
+        current_value, previous_value, change_value, ratio_value = _comparison_output_cells(row, display)
         payload_rows.append([
             record.biz_class,
-            display(record.record_date),
+            rust_date,
             record.org_code,
             record.org_name,
             record.region_code,
             record.region_name,
             row.order_code_out or record.indicator,
             record.indicator,
-            row.indicator_name_out or record.indicator_name,
+            _indicator_name(row.indicator_name_out or record.indicator_name, trim=trim_indicator_names),
             record.data_attr,
             record.currency,
             record.frequency,
-            display(record.batch),
-            display(record.value),
-            display(row.prev_value),
-            display(row.change),
-            display(row.ratio),
+            display(_batch_cell(record.batch)),
+            current_value,
+            previous_value,
+            change_value,
+            ratio_value,
             row.remark,
             row.need_explain,
             row.explain_content,
@@ -123,7 +192,7 @@ def write_comparison_workbook(
     def write_openpyxl() -> Path:
         _write_comparison_workbook_openpyxl(
             rows, output_path, headers=headers, digits=digits, sheet_date=sheet_date,
-            display=display,
+            display=display, trim_indicator_names=trim_indicator_names,
         )
         return output_path
 
@@ -149,6 +218,7 @@ def _write_comparison_workbook_openpyxl(
     digits: int,
     sheet_date: str,
     display,
+    trim_indicator_names: bool,
 ) -> None:
     """OpenPyXL compatibility writer for S3-F01's new comparison workbook."""
     book = Workbook()
@@ -165,24 +235,26 @@ def _write_comparison_workbook_openpyxl(
 
     for row in rows:
         record = row.record
+        parsed_date = _date_cell(record.record_date)
+        current_value, previous_value, change_value, ratio_value = _comparison_output_cells(row, display)
         sheet.append((
             record.biz_class,
-            display(record.record_date),
+            parsed_date,
             record.org_code,
             record.org_name,
             record.region_code,
             record.region_name,
             row.order_code_out or record.indicator,
             record.indicator,
-            row.indicator_name_out or record.indicator_name,
+            _indicator_name(row.indicator_name_out or record.indicator_name, trim=trim_indicator_names),
             record.data_attr,
             record.currency,
             record.frequency,
-            display(record.batch),
-            display(record.value),
-            display(row.prev_value),
-            display(row.change),
-            display(row.ratio),
+            display(_batch_cell(record.batch)),
+            current_value,
+            previous_value,
+            change_value,
+            ratio_value,
             row.remark,
             row.need_explain,
             row.explain_content,

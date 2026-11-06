@@ -143,10 +143,12 @@ Windows 双语 PE 产品属性、关于五连击密码显示入口及脚本语�
 | 核对点 | pytest 用例 |
 |---|---|
 | 比较文件表头、行数、值、备注、说明与计算过程黄金对拍 | `test_central_comparison.py::ComparisonGoldenTests::test_headers_match_golden`、`::test_row_count_matches_golden`、`::test_values_match_golden`、`::test_explain_and_process_match_golden` |
+| VBA 警戒备注文案和 Excel 数值精度归一；环比基于写出值计算 | `test_central_config_split.py::test_alert_ranges_have_explicit_upper_bounds_and_keep_boundary_semantics`、`test_central_comparison_writer.py::S3ComparisonWriterTests::test_numeric_output_uses_excel_precision_and_recomputes_ratio_from_written_values` |
 | 12MU2 一类的实际变动值判断、金额阈值 | `test_central_indicator_rules.py::test_change_action_requires_actual_change_even_without_threshold`、`::test_change_action_uses_change_amount_not_current_balance` |
 | 结转规则与表达式只在结转日生效 | `test_rule_action_engine.py::test_real_config_all_rollover_scene_actions_are_date_gated`、`test_s3_rollover_dates.py::test_real_config_expression_groups_follow_date_gate` |
 | 命中说明含规则编号、阈值、备注；空备注不产生尾部分隔符 | `test_rule_action_engine.py::test_action_output_includes_id_action_effective_threshold_and_config_note`、`::test_action_output_omits_empty_config_note_without_trailing_separator` |
 | 五段/八段语法、配置动作检查 | `test_central_five_segment.py::TestGoldenParity::test_sbe_parity_row_by_row`、`test_s3_comparison_config_check.py::test_unsupported_enabled_action_reports_sheet_row_rule_and_original_action` |
+| LEGACY_8 与 FIVE_SEGMENT_V1 跨期核对按 VBA 机构范围门槛执行；五段式其他来源组保留空范围全局语义 | `test_complex_rule_preflight.py::test_legacy_cross_period_rule_without_vba_org_scope_is_reported_and_skipped`、`::test_legacy_cross_period_rule_respects_paired_vba_org_scope`、`::test_five_segment_cross_period_rule_without_org_scope_is_skipped`、`::test_five_segment_scope_gate_matches_only_vba_cross_period_group` |
 
 ### S3-F02 比较文件到说明文件
 

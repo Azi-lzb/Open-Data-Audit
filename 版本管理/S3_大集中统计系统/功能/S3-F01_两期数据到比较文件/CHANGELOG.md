@@ -1,6 +1,115 @@
 # S3-F01 两期数据到比较文件
 
-当前版本：v1.6.0
+当前版本：v1.7.3
+
+## v1.7.3 — 2026-11-06
+
+变更类型：Bugfix / PATCH
+
+前版本：v1.7.2
+新版本：v1.7.3
+
+修改内容：
+- 比较文件“备注”按 VBA 警戒区间文字输出，停止使用新格式自动拼接区间与备注。
+- 数据值、上期值、增减额按 Excel 15 位有效数字归一；环比以最终写出的增减额和上期值计算，减少浮点末位差异。
+
+影响文件：
+- core/src/base_audit/systems/s3_central_statistics/config.py
+- core/src/base_audit/systems/s3_central_statistics/comparison_engine.py
+- core/src/base_audit/systems/s3_central_statistics/comparison_exporter.py
+
+配置影响：无；不修改 config-real。
+
+验证：定向测试 11 passed；S3 系统回归 590 passed / 568 deselected / 5 subtests passed。2026.10 月报 VBA 对拍中 3,868 条业务键顺序一致，备注 306/306 一致；数据值 3,838/3,838、上期值 3,833/3,833、增减额 2,946/2,946 精确相等；环比 2,905/2,911 精确相等，余下 6 格最大绝对差 1.11e-16。规则命中对象保持“是否说明”30/30、“计算过程”23/23。
+
+GPT修改记录：
+- GPT修改记录/20261106_150729_S3月报浮点与备注对齐.txt
+
+Git提交：未提交。
+
+## v1.7.2 — 2026-11-06
+
+## v1.7.2 — 2026-11-06
+
+变更类型：Bugfix / PATCH
+
+前版本：v1.7.1
+新版本：v1.7.2
+
+修改内容：
+- FIVE_SEGMENT_V1 的“跨期核对”规则也按 VBA 的机构类代码非空条件筛选；LEGACY_8 兼容规则保持既有范围映射行为。
+- 五段式其他来源组的空机构范围仍表示不限制；两种语法的范围缺失数量均写入运行记录。
+
+影响文件：
+- core/src/base_audit/systems/s3_central_statistics/complex_rule_engine.py
+- core/src/base_audit/systems/s3_central_statistics/service.py
+
+配置影响：不修改 config-real；跨期核对规则需配置机构类代码范围才执行。
+
+验证：范围/表达式定向测试 40 passed；S3 系统回归 589 passed / 568 deselected / 5 subtests passed。2026.10 月报三方对拍中 VBA、LEGACY_8、FIVE_SEGMENT_V1 的 3,868 条明细里，“是否说明”30 个、“计算过程”23 个命中键集合完全一致；计算过程代入结果 23/23 一致，文本差异按用户要求允许。
+
+GPT修改记录：
+- GPT修改记录/20261106_142858_S3五段式跨期范围对齐.txt
+
+Git提交：未提交。
+
+## v1.7.1 — 2026-11-06
+
+## v1.7.1 — 2026-11-06
+
+变更类型：Bugfix / PATCH
+
+前版本：v1.7.0
+新版本：v1.7.1
+
+修改内容：
+- LEGACY_8「跨期核对」规则按 VBA 对应规则的机构类代码、地区代码范围筛选；未配置机构范围的规则不执行，并写入运行记录提示数量。
+- 通过同规则编号关联五段式规则范围；FIVE_SEGMENT_V1 原有空范围语义不变。
+
+影响文件：
+- core/src/base_audit/systems/s3_central_statistics/complex_rule_engine.py
+- core/src/base_audit/systems/s3_central_statistics/service.py
+
+配置影响：不修改 config-real；如需执行缺少机构范围的跨期规则，需先补充对应五段式规则中的机构类代码。
+
+验证：定向测试 15 passed；S3 系统回归 585 passed / 568 deselected / 5 subtests passed；2026.10 月报实数据回放的“是否说明”30 个、“计算过程”23 个命中键集合与 VBA 一致。命中文案、备注和浮点末位仍有差异，详见 `docs/Rust-Audit同步目标_S3维护更新_20261106.md`。
+
+GPT修改记录：
+- GPT修改记录/20261106_135146_S3月报VBA规则范围对齐.txt
+
+Git提交：未提交。
+
+## v1.7.0 — 2026-11-06
+
+变更类型：Feature / MINOR
+
+前版本：v1.6.0
+新版本：v1.7.0
+
+修改内容：
+- 比较结果默认保留指标名称首尾空白与缩进；高级设置可选择输出时 trim，不改写导入源文件。
+- 数据日期写为 Excel 日期，规范整数批次写为数值；比较结果排序对大小写不敏感。
+- 增加结果工作簿自动打开选项，默认关闭并使用系统文件关联程序。
+- 导出环比值统一按 15 位有效数字规范化，以减少 Rust/OpenPyXL 与 VBA 结果的末位浮点差异；样例尚有少量精确相等差异，不能视为完全对齐。
+
+影响文件：
+- core/src/base_audit/systems/s3_central_statistics/csv_importer.py
+- core/src/base_audit/systems/s3_central_statistics/comparison_engine.py
+- core/src/base_audit/systems/s3_central_statistics/comparison_exporter.py
+- core/src/base_audit/systems/s3_central_statistics/service.py
+- core/src/base_audit/web_app.py
+- core/frontend/web/index.html
+
+配置影响：仅新增用户设置；S3-CFG-00、S3-CFG-01 未修改。
+
+对拍与限制：按稳定业务键对齐的 3,868 条样例中，机构代码、数据值、上期值、增减额和数据属性一致；忽略大小写排序修正 52 条顺序差异。指标名称在 trim 后无差异。环比末位差异经 15 位有效数字候选归一后仍有 6 条不精确相等，且有 4 条原先精确相等变为差异；未确认 VBA 的完整计算顺序，需继续复核。
+
+测试：本轮未运行测试。
+
+GPT修改记录：
+- GPT修改记录/20261106_115644_S3月报日报说明与对比字段维护.txt
+
+Git提交：未提交。
 
 ## v1.6.0 — 2026-10-22
 

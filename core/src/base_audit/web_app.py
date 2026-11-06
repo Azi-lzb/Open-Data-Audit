@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import threading
 import sys
 import time
@@ -498,6 +499,9 @@ class WebApi:
                 if self.settings.central_comparison_writer in CENTRAL_COMPARISON_WRITERS
                 else "AUTO"
             ),
+            "centralAutoOpenResult": self.settings.central_auto_open_result,
+            "centralExplanationFormat": self.settings.central_explanation_format,
+            "centralTrimIndicatorNames": self.settings.central_trim_indicator_names,
             "centralRustWriterAvailable": s3_comparison_writer_available(),
             "centralOutput": (str(Path(self.settings.central_current_csv).parent / "执行结果")
                               if self.settings.central_output_auto and self.settings.central_current_csv
@@ -1550,14 +1554,21 @@ class WebApi:
 
     def open_path(self, path: str) -> dict[str, Any]:
         """Open a local directory or file with the system default application."""
-        import os
         target = Path(path)
         if not target.exists():
             self.state["status"] = "路径不存在"
             self._log(f"未找到路径：{path}")
             return self.state
         try:
-            os.startfile(target)
+            if os.name == "nt":
+                os.startfile(target)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(target)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                subprocess.Popen(
+                    ["xdg-open", str(target)], stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL, start_new_session=True,
+                )
         except Exception as exc:
             self.state["status"] = "无法打开路径"
             self._log(f"打开路径失败：{exc}")
@@ -2394,6 +2405,16 @@ class WebApi:
         value = str(self.state.get(kind_key) or "")
         return Path(value) if value else None
 
+    def _open_central_result_if_enabled(self, path: Path) -> None:
+        """Open one completed S3 workbook through the system's file association."""
+        if not self.state.get("centralAutoOpenResult", False):
+            return
+        try:
+            self.open_path(str(path))
+        except Exception as exc:
+            # Opening is optional and must not turn a successful export into a failed run.
+            self._log(f"结果已生成，但无法按设置自动打开：{path}；{exc}")
+
     @serialize_execution_start
     def start_central_comparison(self) -> bool:
         """执行比较：两期大集中导数（CSV/XLSX）→ 比较结果.xlsx。"""
@@ -2442,6 +2463,7 @@ class WebApi:
                     expression_schema=str(self.state.get("centralExpressionSchema") or "LEGACY_8"),
                     xlsx_reader=str(self.state.get("centralDataReader") or "AUTO"),
                     xlsx_writer=str(self.state.get("centralComparisonWriter") or "AUTO"),
+                    trim_indicator_names=bool(self.state.get("centralTrimIndicatorNames", False)),
                 )
             finally:
                 if office_adapter is not None:
@@ -2453,6 +2475,7 @@ class WebApi:
             self._save_settings()
             self.state["status"] = f"执行比较完成：{len(result.rows)} 行"
             self._log(f"执行比较完成：{result.output_path}")
+            self._open_central_result_if_enabled(result.output_path)
         except Exception as exc:
             self.state["status"] = "执行比较失败"
             self._log("执行比较失败：" + str(exc) + "\n" + traceback.format_exc())
@@ -2498,6 +2521,7 @@ class WebApi:
             )
             self.state["status"] = f"本期数值核对完成：{len(result.rows)} 行"
             self._log(f"本期数值核对完成：{result.output_path}")
+            self._open_central_result_if_enabled(result.output_path)
         except Exception as exc:
             self.state["status"] = "本期数值核对失败"
             self._log("本期数值核对失败：" + str(exc) + "\n" + traceback.format_exc())
@@ -2579,12 +2603,17 @@ class WebApi:
         started = time.monotonic()
         try:
             count = export_selected_explanations(
-                compare_file, output_path, config_path=self._central_config_paths("comparison")[0]
+                compare_file,
+                output_path,
+                config_path=self._central_config_paths("comparison")[0],
+                format_mode=str(self.state.get("centralExplanationFormat") or "MONTHLY"),
+                trim_indicator_names=bool(self.state.get("centralTrimIndicatorNames", False)),
             )
             self.state["centralExplainFile"] = str(output_path)
             self._save_settings()
             self.state["status"] = f"指标说明导出完成：{count} 条"
             self._log(f"指标说明导出完成：{count} 条，文件 {output_path}")
+            self._open_central_result_if_enabled(output_path)
         except Exception as exc:
             self.state["status"] = "指标说明导出失败"
             self._log("指标说明导出失败：" + str(exc) + "\n" + traceback.format_exc())
@@ -3133,6 +3162,27 @@ class WebApi:
             else:
                 self.state["centralComparisonWriter"] = candidate
                 self._save_settings()
+        if "centralAutoOpenResult" in values:
+            value = values["centralAutoOpenResult"]
+            self.state["centralAutoOpenResult"] = (
+                value if isinstance(value, bool)
+                else str(value).strip().casefold() in {"1", "true", "yes", "y", "是"}
+            )
+            self._save_settings()
+        if "centralExplanationFormat" in values:
+            candidate = str(values["centralExplanationFormat"]).strip().upper()
+            if candidate not in {"MONTHLY", "DAILY"}:
+                self._log("S3-F02 说明文件格式只能选择月报或日报")
+            else:
+                self.state["centralExplanationFormat"] = candidate
+                self._save_settings()
+        if "centralTrimIndicatorNames" in values:
+            value = values["centralTrimIndicatorNames"]
+            self.state["centralTrimIndicatorNames"] = (
+                value if isinstance(value, bool)
+                else str(value).strip().casefold() in {"1", "true", "yes", "y", "是"}
+            )
+            self._save_settings()
         if "summarySourceReader" in values:
             candidate = str(values["summarySourceReader"]).strip().upper()
             if candidate not in SUMMARY_SOURCE_READERS:
@@ -3545,6 +3595,15 @@ class WebApi:
             str(self.state.get("centralComparisonWriter") or "AUTO").strip().upper()
             if str(self.state.get("centralComparisonWriter") or "AUTO").strip().upper()
             in CENTRAL_COMPARISON_WRITERS else "AUTO"
+        )
+        self.settings.central_auto_open_result = bool(self.state.get("centralAutoOpenResult", False))
+        self.settings.central_explanation_format = (
+            str(self.state.get("centralExplanationFormat") or "MONTHLY").strip().upper()
+            if str(self.state.get("centralExplanationFormat") or "MONTHLY").strip().upper()
+            in {"MONTHLY", "DAILY"} else "MONTHLY"
+        )
+        self.settings.central_trim_indicator_names = bool(
+            self.state.get("centralTrimIndicatorNames", False)
         )
         self.settings.calculation_engine = str(self.state["calculationEngine"])
         self.settings.summary_read_engine = str(self.state["summaryReadEngine"])

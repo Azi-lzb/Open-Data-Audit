@@ -1,0 +1,60 @@
+时间：2026-11-06 11:56:44 +08:00
+执行者：Codex
+
+修改前提交：15bd244
+修改后提交：15bd244（本轮未提交）
+分支：desktop
+WIP 状态：开始前工作区已有未提交的代码修改及未跟踪项目（.zcode/、core/tests/.pytest-tmp-v3/、Excel/OOXML 技术笔记、external/）；均保留，未清理、覆盖或回滚。
+
+【目的】
+重新读取用户更新的《待维护更新.docx》，按其中四项维护需求更新 S3，并整理可供后续 Rust-Audit 同步的目标文档。
+
+【修改文件】
+- core/src/base_audit/settings.py
+- core/src/base_audit/web_app.py
+- core/frontend/web/index.html
+- core/src/base_audit/systems/s3_central_statistics/csv_importer.py
+- core/src/base_audit/systems/s3_central_statistics/comparison_engine.py
+- core/src/base_audit/systems/s3_central_statistics/comparison_exporter.py
+- core/src/base_audit/systems/s3_central_statistics/explanation_exporter.py
+- core/src/base_audit/systems/s3_central_statistics/service.py
+- core/tests/test_version_manifest.py（同步当前版本断言）
+- 版本管理/VERSION_MANIFEST.json
+- 版本管理/S3_大集中统计系统/功能/S3-F01_两期数据到比较文件/CHANGELOG.md
+- 版本管理/S3_大集中统计系统/功能/S3-F02_比较文件到说明文件/CHANGELOG.md
+- 版本管理/S3_大集中统计系统/功能/S3-F03_机构说明到说明文件/CHANGELOG.md
+- 版本管理/S3_大集中统计系统/功能/S3-F04_本期数值核对/CHANGELOG.md
+- 日志/更新日志.txt
+- 日志/开发日志.txt
+- docs/Rust-Audit同步目标_S3维护更新_20261106.md（新增）
+
+【变化】
+- 自动打开：为 S3-F01/F02/F04 增加本地设置，默认关闭；开启后使用系统默认文件关联程序。Linux 走 xdg-open，不强制 LibreOffice。S3-F05 多文件输出不自动逐个打开。
+- 说明文件格式：S3-F02 默认月报，保留 8 列；可切换日报，机构名称后加地区代码、地区名称。两种格式均保留原机构代码，不拼接地区码。S3-F03 读到地区代码列时把地区码加进反馈匹配键，并修正冲突清单按日报键取字段的偏移。
+- 指标名称：导入保留空白/缩进；S3-F01/F02 输出时默认原样保留，可选 trim。
+- 比较文件：数据日期写为 Excel 日期，规范整数批次写为数值；排序对大小写不敏感。
+- 环比写入先按 15 位有效数字规范化，以改善不同写入后端与 VBA 的末位差异；样例并未完全精确相等，具体见限制。
+
+【样例核对证据】
+- 输入：2026-07-31/大集中系统工具/2026.10月报测试文件/2026.10 比较文件.xls、2026.10 说明文件.xls；程序结果来自该目录的“执行结果”。
+- 按稳定业务键对齐 3,868 条比较结果，机构代码、数据值、上期值、增减额及数据属性一致；忽略大小写排序可解释 52 条顺序差异。
+- 指标名称 1,619 条原文不同，trim 后相同；批次和日期的单元格类型不同，已在输出逻辑修正。
+- 环比 95 条差异均为浮点末位级别，按两位小数显示相同。15 位有效数字候选修复其中 93 条，但使 4 条原先相等值变为不等，剩 6 条仍不等；没有取得 VBA 完整计算源代码，不能宣称已解决。
+- 备注有 216 条非空差异（207 条余额、9 条发生额），目前按稳定键对齐后数据属性没有错位证据；差异主要是区间文字写法。“是否说明”程序 73 行、VBA 30 行；“计算过程”程序 67 行、VBA 23 行；“说明内容”两侧均为空。这些未按猜测修改规则或真实配置。
+- 说明文件样例只有月报；日报没有可对拍样例。新日报结构需真实数据验证。
+
+【风险与限制】
+- S3-F02 统一不拼接地区码，改变了旧版村镇银行/多地区机构说明文件的机构代码语义；组件按 MAJOR 升版。旧版长机构代码反馈导入新月报的兼容性还需样例核实。
+- 环比末位、备注、是否说明和计算过程与 VBA 的差异尚未全部解释。Rust-Audit 目标文档明确要求继续对拍，不得用容差掩盖 Excel 等号比较。
+- 未修改 config-real、公开业务配置、原始测试文件或执行结果文件。
+
+【验证】
+- 本轮未运行测试或打包。test_version_manifest.py 中仅更新版本断言，没有新增测试。
+- 未提交、未推送。
+
+【组件版本】
+系统：S3 大集中统计系统
+影响功能：S3-F01 v1.6.0 → v1.7.0；S3-F02 v1.1.0 → v2.0.0；S3-F03 v1.1.0 → v1.2.0；S3-F04 v1.3.0 → v1.4.0
+影响配置：S3-CFG-00 v2.0.2、S3-CFG-01 v3.0.3、S3-CFG-02 v1.0.3、S3-CFG-03 v2.0.0（均未变）
+未修改的相关组件：S1-*、S2-*、S3-F05
+产品版本：V26.2.1.0（未变；本轮未发布）

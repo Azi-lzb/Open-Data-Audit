@@ -60,6 +60,7 @@ def run_comparison(
     expression_schema: str | None = None,
     xlsx_reader: str = "AUTO",
     xlsx_writer: str = "AUTO",
+    trim_indicator_names: bool = False,
 ) -> ComparisonResult:
     """执行比较：两期导数（CSV/XLSX）→ 比较结果.xlsx。
 
@@ -210,6 +211,7 @@ def run_comparison(
         target_unit=target_unit,
         sheet_date=current.record_date,
         writer=xlsx_writer,
+        trim_indicator_names=trim_indicator_names,
         on_engine=lambda message: say("比较结果写入：" + message),
     )
 
@@ -254,6 +256,15 @@ def run_comparison(
 
     ready_rules = expression_stats.get("expression_rules_ready") or []
     not_ready_rules = expression_stats.get("expression_rules_skipped_not_ready") or []
+    vba_scope_missing = expression_stats.get(
+        "expression_rules_skipped_vba_scope_missing"
+    ) or []
+    if vba_scope_missing:
+        log_rows.append((
+            "规则适用范围",
+            f"VBA兼容：{len(vba_scope_missing)} 条跨期核对表达式没有机构类代码范围，按 VBA 的规则装载条件未执行；"
+            "请在对应的五段式规则中补充机构类代码范围。",
+        ))
     if ready_rules or not_ready_rules:
         preview = "、".join(not_ready_rules[:5]) + ("…" if len(not_ready_rules) > 5 else "")
         log_rows.append(("规则命中",

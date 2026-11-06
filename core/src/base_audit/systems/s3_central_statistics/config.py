@@ -191,7 +191,8 @@ class CentralConfig:
     action_rules: list[dict[str, str]] = field(default_factory=list)
     complex_rules: list[dict[str, str]] = field(default_factory=list)
     # 5 段式规则（FIVE_SEGMENT_V1）：机构/地区为规则级作用域列，
-    # token [指标,属性,币种,频度,批次]。仅当工作簿含该表时加载。
+    # token [指标,属性,币种,频度,批次]。仅当工作簿含该表时加载；
+    # “跨期核对”组执行时还遵循 VBA 的机构范围非空装载门槛。
     five_segment_rules: list[dict[str, str]] = field(default_factory=list)
     cross_rules: list[dict[str, str]] = field(default_factory=list)
     forms: list[dict[str, str]] = field(default_factory=list)
@@ -433,6 +434,68 @@ def format_alert_band_remark(band: dict | None) -> str:
     if auto and manual:
         return f"{auto} | {manual}"
     return auto or manual
+
+
+def format_vba_alert_band_remark(band: dict | None) -> str:
+    """Format the visible comparison remark in the legacy VBA wording.
+
+    The current config stores numeric bounds and the manual note separately,
+    while the VBA workbook stored one preformatted text cell per band. This
+    formatter reconstructs that visible text without changing the new config
+    schema or the rule/explanation text formatter above.
+    """
+    if not band:
+        return ""
+    manual = _text(band.get("备注文字"))
+    active = any((
+        manual,
+        _text(band.get("填充颜色")) not in {"", "0"},
+        _text(band.get("是否整行填充")) not in {"", "0"},
+        _text(band.get("金额变动阈值")),
+        _text(band.get("是否说明")),
+    ))
+    if not active:
+        return ""
+    lower = _as_number(band.get("下限"))
+    upper = _as_number(band.get("上限"))
+
+    if lower is None:
+        return manual
+
+    def bound_label(value: float) -> str:
+        if value >= 100:
+            return f"{value / 100:g}倍"
+        return f"{value:g}%"
+
+    if lower < 0:
+        if upper is None:
+            return manual
+        right = bound_label(upper)
+        # Preserve the exact legacy label from the VBA month workbook, including
+        # its missing minus sign at this one boundary. Matching is on the numeric
+        # bounds; this text quirk does not affect band selection.
+        if lower == -80 and upper == -50:
+            right = "50%"
+        auto = f"降幅({bound_label(lower)},{right}]"
+        return f"{auto},{manual}" if manual else auto
+
+    if upper is None:
+        auto = f"增幅{bound_label(lower)}以上"
+        # This is the historical top-band text in the VBA comparison output.
+        if lower == 10000 and ("100倍以上" in manual or manual == "请核实"):
+            return f"{auto}，请核实"
+        if manual and manual != f"扩增{bound_label(lower)}以上":
+            return f"{auto},{manual}"
+        return auto
+
+    auto = f"增幅[{bound_label(lower)},{bound_label(upper)})"
+    # Positive-band notes that only restate the same multiplier range were
+    # embedded into the VBA interval label rather than appended a second time.
+    if lower >= 100 and upper >= 100:
+        repeated_note = f"增加{bound_label(lower)}-{bound_label(upper)}"
+        if manual == repeated_note:
+            return auto
+    return f"{auto},{manual}" if manual else auto
 
 
 def alert_band_for(ratio: float, alerts: list[dict]) -> dict | None:

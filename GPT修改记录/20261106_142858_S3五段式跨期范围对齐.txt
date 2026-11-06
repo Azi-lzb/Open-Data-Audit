@@ -1,0 +1,61 @@
+时间：2026-11-06 14:28:58（Asia/Shanghai）
+执行者：Codex
+项目：3.open-data-audit / S3 大集中统计系统
+
+【Git 与 WIP】
+修改前 HEAD：15bd244fe21a0ac0d297583c33536dccfdfb3446
+修改后 HEAD：15bd244fe21a0ac0d297583c33536dccfdfb3446（未提交）
+工作区已有其他未提交改动及未跟踪文件。本轮在其上增量修改，没有清理、覆盖或提交其他 WIP。
+
+【修改目的】
+用户要求五段式与八段式及 VBA 的规则命中结果对齐，允许局部规则说明文字不同；规则命中对象必须一致。将 VBA 旧“跨期核对”页的机构范围非空装载门槛同步应用到五段式同来源规则。
+
+【实现与适用范围】
+- FIVE_SEGMENT_V1 中仅来源分组为“跨期核对”的规则要求机构类代码范围非空；空范围规则不执行，已填机构/地区范围按正则匹配。
+- 五段式其他来源组的空范围仍表示不限制机构/地区，未改变其既有含义。
+- LEGACY_8 的“跨期核对”规则继续按规则编号从配套五段式规则取回机构/地区范围；没有机构范围时不执行。
+- 两种 schema 被范围门槛跳过的规则数写入运行记录；不改工作簿配置、不改其他规则组。
+
+【修改文件】
+- 修改 `core/src/base_audit/systems/s3_central_statistics/complex_rule_engine.py`：将范围缺失筛选同时应用于 LEGACY_8 与 FIVE_SEGMENT_V1，并限制五段式门槛只作用于“跨期核对”。
+- 修改 `core/src/base_audit/systems/s3_central_statistics/config.py`、`rules/06_VBA复刻与配置复核.md`：说明五段式作用域与跨期门槛。
+- 修改 `core/tests/test_complex_rule_preflight.py`：新增五段式空机构范围跳过、机构范围匹配，以及非跨期来源组仍允许空范围的测试。
+- 修改 `core/tests/TEST_GROUPS.md`：登记两种 schema 范围行为测试。
+- 修改 `core/tests/test_version_manifest.py`、`版本管理/VERSION_MANIFEST.json`、S3-F01 与产品 CHANGELOG：升级组件/产品版本并登记验收结果。
+- 修改 `日志/开发日志.txt`、`日志/更新日志.txt`：分别登记开发过程与用户可见功能变化。
+- 修改 `docs/Rust-Audit同步目标_S3维护更新_20261106.md`：补充 Rust 端两种 schema 的范围门槛和三方命中对拍要求。
+
+【配置与数据影响】
+- 未修改 `config-real/`、月报 CSV、VBA 源文件或 VBA 结果工作簿。
+- 当前本机配置的五段式跨期核对共 83 条，其中 65 条机构范围为空；实际运行经过日期、编译和数据就绪筛选后，月报运行日志显示 53 条因机构范围为空未执行。
+- 不同来源组的五段式规则与用户配置值未变。
+
+【月报对拍】
+- 输入：2026.10/2026.09 月报 CSV、VBA 输出 `2026.10 比较文件.xls`。
+- VBA、LEGACY_8、FIVE_SEGMENT_V1 均输出 3,868 条明细。
+- “是否说明”命中均为 30 条；按稳定业务键比较，VBA、LEGACY_8、FIVE_SEGMENT_V1 三方集合完全相等，单边命中 0。
+- “计算过程”命中均为 23 条；按稳定业务键比较，三方集合完全相等，单边命中 0。
+- 计算过程代入结果与 VBA 为 23/23 一致。完整过程文本精确相等：LEGACY_8 为 22/23，FIVE_SEGMENT_V1 为 0/23（五段式 token 展示格式不同）；按用户要求允许局部说明文字不同，不将公式展示格式差异计作规则命中差异。
+- “是否说明”精确文案与 VBA 相同为 13/30。规则命中键相同是本次规则范围验收依据，文案不要求逐字一致。
+- 本次未重测备注文字和浮点末位；之前对拍发现备注和浮点仍有差异，须单独验收。
+
+【验证】
+- `python -m pytest -q core/tests/test_complex_rule_preflight.py core/tests/test_central_expression.py`：40 passed。
+- `python -m pytest -q -rs -m s3 core/tests`：589 passed / 568 deselected / 5 subtests passed。
+- `python -m pytest -q core/tests/test_version_manifest.py`：8 passed。
+- 月报三方对拍脚本将源 `.xls` 只读复制至系统临时目录用于读取；所有运行输出写在临时目录，没有覆盖输入。
+- 未运行全量 core 测试，未打包。
+
+【已知问题】
+- 五段式完整“计算过程”文字与 VBA 不同，原因包括公式 token 展示语法差异；本轮确认其代入计算结果 23/23 一致。
+- 备注与浮点精确值未在本轮重验；仅说明文字允许局部差异，不代表其他字段自动通过。
+
+【删除与回滚】
+- 未删除文件。回滚本轮时只撤销上述文件中的五段式跨期门槛与版本/日志增补，保留开始前已有的其他 WIP。
+
+【组件版本】
+系统：S3 大集中统计系统
+影响功能：S3-F01 两期数据到比较文件 v1.7.1 → v1.7.2
+影响配置：S3-CFG-00/01/02/03 未变；未修改真实配置内容。
+产品版本：V26.2.2.1 → V26.2.2.2
+版本升级原因：PATCH，修复 FIVE_SEGMENT_V1 的“跨期核对”规则未遵循 VBA 机构范围非空装载条件的问题。

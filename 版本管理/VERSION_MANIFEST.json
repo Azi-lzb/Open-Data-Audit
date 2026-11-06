@@ -2,7 +2,7 @@
   "product": {
     "id": "V3",
     "name": "审核工具",
-    "version": "26.2.1.0",
+    "version": "26.2.2.3",
     "version_scheme": "YY.MAJOR.MINOR.PATCH（年份.大版本.中版本.小版本）",
     "changelog": "版本管理/产品发布/CHANGELOG.md",
     "description": "V3 是产品身份/项目代号；整包发布版本使用年份.大版本.中版本.小版本，业务功能和配置组件版本独立。"
@@ -77,39 +77,39 @@
     },
     "S3-F01": {
       "name": "两期数据到比较文件",
-      "version": "1.6.0",
+      "version": "1.7.3",
       "system": "S3",
       "implementation": "core/src/base_audit/systems/s3_central_statistics/comparison_engine.py",
       "description": "大集中统计系统：两期数据文件配对、环比与警戒着色，生成比较文件。",
       "changelog": "版本管理/S3_大集中统计系统/功能/S3-F01_两期数据到比较文件/CHANGELOG.md",
-      "version_note": "v1.6.0：MINOR——XLSX 导数支持 Calamine 自动/手动读取选择；新建比较结果支持 Rust xlsxwriter 与 OpenPyXL 自动/手动写入选择，运行日志记录实际引擎，业务结果语义不变。"
+      "version_note": "v1.7.3：PATCH——S3-F01 比较文件备注按 VBA 警戒区间文案输出；数据值、上期值和增减额按 Excel 15 位有效数字归一，环比按实际写出的增减额/上期值计算。"
     },
     "S3-F02": {
       "name": "比较文件到说明文件",
-      "version": "1.1.0",
+      "version": "3.0.0",
       "system": "S3",
       "implementation": "core/src/base_audit/systems/s3_central_statistics/explanation_exporter.py",
       "description": "大集中统计系统：按“输出说明”标记导出简化说明文件。",
       "changelog": "版本管理/S3_大集中统计系统/功能/S3-F02_比较文件到说明文件/CHANGELOG.md",
-      "version_note": "v1.1.0：MINOR——新增多地区与村镇银行长机构代码导出支持，金额列显示两位小数，底层数值不舍入。"
+      "version_note": "v3.0.0：MAJOR——月报输出表头、工作表名、字体、列宽和机构合并方式与 VBA 月报一致；日报在机构名称后增加地区代码和地区名称。两种格式均使用原机构代码和不带地区后缀的机构名称。"
     },
     "S3-F03": {
       "name": "机构说明到说明文件",
-      "version": "1.1.0",
+      "version": "2.0.0",
       "system": "S3",
       "implementation": "core/src/base_audit/systems/s3_central_statistics/explanation_exporter.py",
       "description": "大集中统计系统：批量导入机构反馈说明文件并回写变动原因。",
       "changelog": "版本管理/S3_大集中统计系统/功能/S3-F03_机构说明到说明文件/CHANGELOG.md",
-      "version_note": "v1.1.0：MINOR——新增长机构代码与反馈格式兼容；按机构代码、指标代码、数据值和增减额匹配，金额按四位小数比较，名称不参与匹配，冲突明确报告。"
+      "version_note": "v2.0.0：MAJOR——反馈匹配键对齐 VBA 为机构代码、指标代码、本期值、上期值（金额按两位小数）；日报额外加入地区代码；支持纵向合并机构单元格的逐行匹配。"
     },
     "S3-F04": {
       "name": "本期数值核对",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "system": "S3",
       "implementation": "core/src/base_audit/systems/s3_central_statistics/cross_period_engine.py",
       "description": "大集中统计系统：按本期数值核对规则做多频度多批次数值核对。",
       "changelog": "版本管理/S3_大集中统计系统/功能/S3-F04_本期数值核对/CHANGELOG.md",
-      "version_note": "v1.3.0：MINOR——XLSX 大集中导数支持 Calamine 自动/手动读取选择，并保留 OpenPyXL 兼容路径；核对结果语义不变。"
+      "version_note": "v1.4.0：MINOR——增加可选的结果工作簿自动打开；默认关闭，使用系统文件关联程序。"
     },
     "S3-F05": {
       "name": "比较文件到金融表单",

@@ -6,7 +6,12 @@
 
 from __future__ import annotations
 
-from .config import CentralConfig, alert_band_for, format_alert_band_remark
+from .config import (
+    CentralConfig,
+    alert_band_for,
+    format_alert_band_remark,
+    format_vba_alert_band_remark,
+)
 from .models import (
     CentralDataset,
     CentralRecord,
@@ -93,7 +98,7 @@ def _band_remark(ratio: float, alerts: list[dict]) -> tuple[str, int, int, int]:
             full_row = int(band.get("是否整行填充") or 0)
         except (TypeError, ValueError):
             full_row = 0
-        return format_alert_band_remark(band), color, full_row, 1
+        return format_vba_alert_band_remark(band), color, full_row, 1
     return REMARK_SHRINK_100, COLOR_BELOW_BANDS, 1, 1
 
 
@@ -141,7 +146,8 @@ def build_order_replacements(config: CentralConfig) -> dict[str, tuple[str, str]
         except (TypeError, ValueError):
             line_no = 0
         order_code = f"{form}_{line_no:04d}"
-        alias = str(row.get("指标别名") or "").strip()
+        alias_text = str(row.get("指标别名") or "")
+        alias = alias_text if alias_text.strip() else ""
         replacements[code] = (order_code, alias)
     return replacements
 
@@ -242,8 +248,8 @@ def sort_comparison_rows(rows: list[ComparisonRow]) -> list[ComparisonRow]:
     return sorted(
         rows,
         key=lambda row: (
-            row.record.org_code,
-            row.record.region_code,
-            row.order_code_out or row.record.indicator,
+            str(row.record.org_code or "").casefold(),
+            str(row.record.region_code or "").casefold(),
+            str(row.order_code_out or row.record.indicator or "").casefold(),
         ),
     )

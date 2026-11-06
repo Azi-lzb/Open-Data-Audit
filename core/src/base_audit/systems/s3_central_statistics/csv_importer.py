@@ -305,7 +305,8 @@ def _build_dataset(
             region_name=fields[5].strip(),
             order_code=_clean_code(fields[6]),
             indicator=indicator,
-            indicator_name=fields[8].strip(),
+            # 指标名称是展示字段，保留原始缩进/空白；输出时由 S3 设置决定是否 trim。
+            indicator_name=fields[8],
             data_attr=fields[9].strip(),
             currency=fields[10].strip(),
             frequency=fields[11].strip(),

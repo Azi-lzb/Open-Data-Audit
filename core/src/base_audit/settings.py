@@ -195,6 +195,9 @@ class UserSettings:
     central_previous_csv: str = ""
     central_data_reader: str = "AUTO"
     central_comparison_writer: str = "AUTO"
+    central_auto_open_result: bool = False
+    central_explanation_format: str = "MONTHLY"
+    central_trim_indicator_names: bool = False
     central_output_dir: str = ""
     central_output_auto: bool = True
     central_cross_current_csv: str = ""
@@ -435,6 +438,13 @@ class SettingsStore:
                 if str(payload.get("central_comparison_writer") or "AUTO").strip().upper()
                 in CENTRAL_COMPARISON_WRITERS else "AUTO"
             ),
+            central_auto_open_result=bool(payload.get("central_auto_open_result", False)),
+            central_explanation_format=(
+                str(payload.get("central_explanation_format") or "MONTHLY").strip().upper()
+                if str(payload.get("central_explanation_format") or "MONTHLY").strip().upper()
+                in {"MONTHLY", "DAILY"} else "MONTHLY"
+            ),
+            central_trim_indicator_names=bool(payload.get("central_trim_indicator_names", False)),
             central_output_dir=str(payload.get("central_output_dir") or ""),
             central_output_auto=bool(payload.get("central_output_auto", True)),
             central_cross_current_csv=str(payload.get("central_cross_current_csv") or ""),

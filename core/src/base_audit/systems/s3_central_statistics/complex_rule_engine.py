@@ -37,12 +37,18 @@ class _Rule:
     __slots__ = (
         "rule_id", "description", "inverted", "thd", "soft", "expression",
         "variants", "source_group", "required_frequency_keys",
+        "legacy_scope_required", "legacy_scope_missing",
+        "legacy_org_pattern", "legacy_region_pattern",
     )
 
     def __init__(self, rule_id: str, description: str, inverted: bool, thd: float,
                  soft: bool, expression: str, variants: list[list[str]],
                  source_group: str = "",
-                 required_frequency_keys: tuple[str, ...] = ()) -> None:
+                 required_frequency_keys: tuple[str, ...] = (),
+                 legacy_scope_required: bool = False,
+                 legacy_scope_missing: bool = False,
+                 legacy_org_pattern: str = "",
+                 legacy_region_pattern: str = "") -> None:
         self.rule_id = rule_id
         self.description = description
         self.inverted = inverted
@@ -52,6 +58,10 @@ class _Rule:
         self.variants = variants
         self.source_group = source_group
         self.required_frequency_keys = required_frequency_keys
+        self.legacy_scope_required = legacy_scope_required
+        self.legacy_scope_missing = legacy_scope_missing
+        self.legacy_org_pattern = legacy_org_pattern
+        self.legacy_region_pattern = legacy_region_pattern
 
 
 @dataclass(frozen=True)
@@ -159,6 +169,21 @@ def inspect_complex_rules(config: CentralConfig) -> ComplexRuleCompileResult:
     from .expression_parser import ExpressionError, parse_cached
 
     result = ComplexRuleCompileResult(total_rows=len(config.complex_rules))
+    # The legacy VBA page "k复杂校验-跨期核对" only loaded rows whose third
+    # column (机构类代码) was non-empty. The 8-segment compatibility sheet
+    # does not carry those two scope columns, while its paired 5-segment sheet
+    # retains them under the same rule IDs. Reuse that metadata only for this
+    # legacy source group. FIVE_SEGMENT_V1 carries scopes directly; its
+    # "跨期核对" group applies the same non-empty institution gate at runtime,
+    # while blank scope stays unrestricted for other source groups.
+    legacy_scope_by_id = {
+        str(row.get("规则编号") or "").strip(): (
+            str(row.get("机构类代码") or "").strip(),
+            str(row.get("地区代码") or "").strip(),
+        )
+        for row in config.five_segment_rules
+        if str(row.get("规则编号") or "").strip()
+    }
     for row in config.complex_rules:
         if _is_disabled(row.get("禁用")):
             result.disabled_rows += 1
@@ -256,12 +281,23 @@ def inspect_complex_rules(config: CentralConfig) -> ComplexRuleCompileResult:
 
         description = str(row.get("校验描述") or "").strip()
         inverted = bool(str(row.get("取反标识") or "").strip())
+        source_group = str(row.get("来源") or row.get("来源分组") or "").strip()
+        legacy_scope_required = (
+            source_group == "跨期核对" and bool(config.five_segment_rules)
+        )
+        legacy_org_pattern, legacy_region_pattern = legacy_scope_by_id.get(
+            str(row.get("规则编号") or "").strip(), ("", "")
+        )
         rule = _Rule(
             rule_id=str(row.get("规则编号") or ""), description=description,
             inverted=inverted, thd=thd, soft="软性" in description,
             expression=expression, variants=current_variants,
-            source_group=str(row.get("来源") or row.get("来源分组") or "").strip(),
+            source_group=source_group,
             required_frequency_keys=tuple(required_frequency_keys),
+            legacy_scope_required=legacy_scope_required,
+            legacy_scope_missing=(legacy_scope_required and not legacy_org_pattern),
+            legacy_org_pattern=legacy_org_pattern,
+            legacy_region_pattern=legacy_region_pattern,
         )
         result.compiled_rules += 1
         for segments in current_variants:
@@ -729,7 +765,31 @@ def enrich_complex_rules(
     if not rules_by_code:
         return
     rules_by_code = _filter_rules_by_date(rules_by_code, expression_dates[0])
+    def _vba_scope_missing(rule) -> bool:
+        if five_segment_mode:
+            # Five-segment rows carry their scope directly. Only the migrated
+            # VBA group "跨期核对" inherits the legacy non-empty institution
+            # gate; blank scope remains unrestricted for other groups.
+            return rule.source_group == "跨期核对" and not rule.org_pattern
+        return rule.legacy_scope_missing
+
+    vba_scope_missing_ids = sorted({
+        rule.rule_id
+        for rules in rules_by_code.values()
+        for rule in rules
+        if _vba_scope_missing(rule)
+    })
+    if vba_scope_missing_ids:
+        rules_by_code = {
+            code: [rule for rule in rules if not _vba_scope_missing(rule)]
+            for code, rules in rules_by_code.items()
+        }
+        rules_by_code = {code: rules for code, rules in rules_by_code.items() if rules}
     if not rules_by_code:
+        if stats_out is not None and vba_scope_missing_ids:
+            stats_out["expression_rules_ready"] = []
+            stats_out["expression_rules_skipped_not_ready"] = []
+            stats_out["expression_rules_skipped_vba_scope_missing"] = vba_scope_missing_ids
         return
     if expr_backend == expression_backend.BACKEND_OFFICE and office_evaluator is None:
         raise expression_backend.ExpressionBackendError(
@@ -740,6 +800,8 @@ def enrich_complex_rules(
         skipped_ids: set[str] = set()
         for code, rules in rules_by_code.items():
             for rule in rules:
+                if _vba_scope_missing(rule):
+                    continue
                 if all(key in fres for key in rule.required_frequency_keys):
                     ready_ids.add(rule.rule_id)
                 else:
@@ -748,7 +810,8 @@ def enrich_complex_rules(
                     skipped_ids.add(rule.rule_id)
             filtered = [
                 rule for rule in rules
-                if all(key in fres for key in rule.required_frequency_keys)
+                if not _vba_scope_missing(rule)
+                and all(key in fres for key in rule.required_frequency_keys)
             ]
             if filtered:
                 kept[code] = filtered
@@ -781,6 +844,13 @@ def enrich_complex_rules(
             matched = next((v for v in rule.variants if _variant_matches(v, row)), None)
             if matched is None:
                 continue
+            if not five_segment_mode and rule.legacy_scope_required:
+                if rule.legacy_scope_missing:
+                    continue
+                if not _safe_scope_match(rule.legacy_org_pattern, row.record.org_code):
+                    continue
+                if not _safe_scope_match(rule.legacy_region_pattern, row.record.region_code):
+                    continue
             if five_segment_mode:
                 # 5 段式规则级作用域：机构/地区列正则过滤当前比较行
                 # （标准正则；不匹配的机构整行跳过，禁止跨机构笛卡尔积）。
@@ -846,4 +916,6 @@ def enrich_complex_rules(
                 row.fill_color = soft_color
                 row.fill_scope = "remark"
     if stats_out is not None:
+        if vba_scope_missing_ids:
+            stats_out["expression_rules_skipped_vba_scope_missing"] = vba_scope_missing_ids
         stats_out.update(_expression_stats(expr_mode, expr_backend, office_evaluator, lae_context))

@@ -87,8 +87,15 @@ def test_alert_ranges_have_explicit_upper_bounds_and_keep_boundary_semantics() -
         # 上限边界归入下一档：与旧版“最大下限命中”的行为一致。
         first_remark = _band_remark(-0.91, config.alerts)[0]
         second_remark = _band_remark(-0.9, config.alerts)[0]
-        assert first_remark == "降幅[-99%,-90%) | 缩小10倍-100倍"
-        assert second_remark == "降幅[-90%,-80%) | 缩小5倍-10倍"
+        assert first_remark == "降幅(-99%,-90%],缩小10倍-100倍"
+        assert second_remark == "降幅(-90%,-80%],缩小5倍-10倍"
+
+        third_remark = _band_remark(-0.7, config.alerts)[0]
+        upper_remark = _band_remark(2.0, config.alerts)[0]
+        top_remark = _band_remark(200.0, config.alerts)[0]
+        assert third_remark == "降幅(-80%,50%],缩小1倍-5倍"
+        assert upper_remark == "增幅[1倍,5倍)"
+        assert top_remark == "增幅100倍以上，请核实"
 
 
 def test_alert_band_can_append_explanation_without_overwriting_existing_rules() -> None:

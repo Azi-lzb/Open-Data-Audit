@@ -32,9 +32,9 @@ class ExplanationExporterTests(unittest.TestCase):
 
             self.assertEqual(export_selected_explanations(source, output), 1)
             result = load_workbook(output, data_only=True)
-            explanation = result["说明文件"]
+            explanation = result["(说明)2026.08 说明文件"]
             self.assertEqual(explanation.max_row, 3)
-            self.assertEqual(explanation["A1"].value, "xx说明")
+            self.assertEqual(explanation["A1"].value, "xxx说明")
             self.assertIn("A1:H1", {str(area) for area in explanation.merged_cells.ranges})
             self.assertEqual(explanation.max_column, 8)
             self.assertEqual(explanation.cell(3, 3).value, "A001")
@@ -42,10 +42,10 @@ class ExplanationExporterTests(unittest.TestCase):
             # E/F/G 显示两位小数（显示格式，单元格数值不四舍五入）。
             self.assertEqual(explanation.cell(3, 5).number_format, "0.00")
             self.assertEqual(explanation.cell(3, 7).number_format, "0.00")
-            self.assertEqual(result["生成信息"].cell(4, 2).value, 1)
+            self.assertEqual(result.sheetnames, ["(说明)2026.08 说明文件"])
             result.close()
 
-    def test_uses_precise_then_wildcard_org_reference_and_keeps_source_region(self):
+    def test_uses_precise_then_wildcard_org_reference_without_adding_region_suffix(self):
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "比较结果.xlsx"
             config = Path(folder) / "3.0大集中通用配置.xlsx"
@@ -73,8 +73,12 @@ class ExplanationExporterTests(unittest.TestCase):
             self.assertEqual(export_selected_explanations(source, output, config_path=config), 2)
             result = load_workbook(output, data_only=True)
             explanation = result["说明文件"]
-            self.assertEqual(explanation.cell(3, 2).value, "示例乙银行（广东省）")
-            self.assertEqual(explanation.cell(4, 2).value, "示例甲银行（广东省）")
+            names = {
+                explanation.cell(row, 1).value: explanation.cell(row, 2).value
+                for row in range(3, explanation.max_row + 1)
+                if explanation.cell(row, 1).value is not None
+            }
+            self.assertEqual(names, {"7020": "示例乙银行", "6k0i": "示例甲银行"})
             result.close()
 
     def test_imports_feedback_by_four_business_identity_columns(self):
@@ -157,8 +161,8 @@ class ExplanationExporterTests(unittest.TestCase):
             self.assertIn("业务原因甲", "\n".join(str(value or "") for value in row))
             report.close()
 
-    def test_exports_village_bank_code_with_region_appended(self):
-        """村镇银行机构类代码全国重号，对齐 VBA 用机构代码+地区代码长码。"""
+    def test_monthly_export_keeps_original_institution_code_and_name(self):
+        """月报按 VBA 的八列表头输出，不拼地区后缀或地区码。"""
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "比较结果.xlsx"
             output = Path(folder) / "指标说明.xlsx"
@@ -174,13 +178,28 @@ class ExplanationExporterTests(unittest.TestCase):
             self.assertEqual(export_selected_explanations(source, output), 2)
             result = load_workbook(output, data_only=True)
             explanation = result["说明文件"]
-            self.assertEqual(explanation.cell(3, 1).value, "70204413231")
-            self.assertEqual(explanation.cell(4, 1).value, "6k0i")
+            self.assertEqual(
+                tuple(explanation.cell(2, column).value for column in range(1, 9)),
+                ("机构代码", "机构名称", "指标代码", "指标名称", "本期金额（亿元）", "上期金额（亿元）", "增减额（亿元）", "变动原因"),
+            )
+            self.assertEqual(explanation["A1"].value, "xxx说明")
+            self.assertIn("A1:H1", {str(item) for item in explanation.merged_cells.ranges})
+            self.assertIsNone(explanation.auto_filter.ref)
+            self.assertIsNone(explanation.freeze_panes)
+            self.assertEqual(explanation["A2"].number_format, "@")
+            self.assertEqual(explanation["E3"].number_format, "0.00")
+            self.assertEqual(explanation.column_dimensions["A"].width, 9.0)
+            self.assertEqual(explanation.column_dimensions["B"].width, 24.875)
+            values = {
+                explanation.cell(row, 1).value: explanation.cell(row, 2).value
+                for row in range(3, explanation.max_row + 1)
+                if explanation.cell(row, 1).value is not None
+            }
+            self.assertEqual(values, {"7020": "村镇银行", "6k0i": "广东惠州农商行"})
             result.close()
 
-    def test_exports_region_code_for_multi_region_org_and_keeps_single_region_plain(self):
-        """同机构覆盖多个地区时拼地区代码区分（数值相同也能被四项标识区分）；
-        单地区机构保持原码，机构按原习惯填短码即可匹配。"""
+    def test_daily_export_adds_region_columns_without_changing_institution_code(self):
+        """日报在机构名称后新增地区列，地区不同的机构行保持可区分。"""
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "比较结果.xlsx"
             output = Path(folder) / "指标说明.xlsx"
@@ -194,20 +213,57 @@ class ExplanationExporterTests(unittest.TestCase):
             book.save(source)
             book.close()
 
-            self.assertEqual(export_selected_explanations(source, output), 3)
+            self.assertEqual(export_selected_explanations(source, output, format_mode="DAILY"), 3)
             result = load_workbook(output, data_only=True)
             explanation = result["说明文件"]
-            # 6k0i 两个地区 → 机构代码各自拼地区代码，即使数值完全相同也可区分。
-            self.assertEqual(explanation.cell(3, 1).value, "6k0i4400000")
-            self.assertEqual(explanation.cell(4, 1).value, "6k0i4413000")
-            # 单地区机构保持原码。
-            self.assertEqual(explanation.cell(5, 1).value, "6k0u")
-            self.assertEqual(explanation.cell(3, 2).value, "广东惠州农商行（广东省）")
-            self.assertEqual(explanation.cell(4, 2).value, "广东惠州农商行（惠州市）")
+            self.assertEqual(
+                tuple(explanation.cell(2, column).value for column in range(1, 11)),
+                ("机构代码", "机构名称", "地区代码", "地区名称", "指标代码", "指标名称", "本期金额（亿元）", "上期金额（亿元）", "增减额（亿元）", "变动原因"),
+            )
+            self.assertEqual(
+                [tuple(explanation.cell(row, column).value for column in range(1, 5)) for row in range(3, 6)],
+                [
+                    ("6k0i", "广东惠州农商行", "4400000", "广东省"),
+                    ("6k0i", "广东惠州农商行", "4413000", "惠州市"),
+                    ("6k0u", "龙门农商行", "4400000", "广东省"),
+                ],
+            )
+            self.assertEqual(explanation.auto_filter.ref, "A2:J5")
+            self.assertEqual({str(r) for r in explanation.merged_cells.ranges}, {"A1:J1"})
             result.close()
 
+    def test_feedback_import_fills_down_merged_monthly_institution_cells(self):
+        """VBA 月报纵向合并机构代码/名称后，F3 仍可逐指标回写说明。"""
+        with tempfile.TemporaryDirectory() as folder:
+            target_path = Path(folder) / "指标说明.xlsx"
+            feedback_path = Path(folder) / "机构反馈.xlsx"
+            for path, reasons in (
+                (target_path, ("待机构填写", "待机构填写")),
+                (feedback_path, ("指标一原因", "指标二原因")),
+            ):
+                book = Workbook()
+                sheet = book.active
+                sheet.title = "(说明)2026.10 说明文件"
+                sheet.merge_cells("A1:H1")
+                sheet["A1"] = "xxx说明"
+                sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "本期金额（亿元）", "上期金额（亿元）", "增减额（亿元）", "变动原因"))
+                sheet.append(("6k0i", "广东惠州农商行", "A001", "指标一", 2.0, 1.0, 1.0, reasons[0]))
+                sheet.append((None, None, "A002", "指标二", 3.0, 2.0, 1.0, reasons[1]))
+                sheet.merge_cells("A3:A4")
+                sheet.merge_cells("B3:B4")
+                book.save(path)
+                book.close()
+
+            result = import_explanation_feedback(target_path, [feedback_path])
+            self.assertEqual((result.imported, result.unmatched, result.conflicts), (2, 0, 0))
+            target = load_workbook(target_path, data_only=True)
+            sheet = target["(说明)2026.10 说明文件"]
+            self.assertEqual(sheet["H3"].value, "指标一原因")
+            self.assertEqual(sheet["H4"].value, "指标二原因")
+            target.close()
+
     def test_import_tolerates_case_name_and_rounding_differences(self):
-        """2026.09 二批真实反馈回归：大小写、机构/指标名称差异、金额 4 位誊抄均应匹配。"""
+        """大小写、机构/指标名称差异及 VBA 两位金额匹配规则均可回写。"""
         with tempfile.TemporaryDirectory() as folder:
             target_path = Path(folder) / "指标说明.xlsx"
             feedback_path = Path(folder) / "机构反馈.xlsx"
@@ -223,9 +279,10 @@ class ExplanationExporterTests(unittest.TestCase):
             sheet = book.active
             sheet.title = "说明文件"
             sheet.append(("机构代码", "机构名称", "指标代码", "指标名称", "数据值", "上期值", "增减额(亿元)", "变动原因"))
-            # 大写机构代码、改写过的名称、4 位舍入金额、文本数字，都应命中目标行。
-            sheet.append(("6K0u", "写错也不影响", "12a18", "前缀_指标甲", "0.4185", "1.0", "-0.00020", "誊抄舍入原因"))
-            sheet.append(("7020", "村镇银行（惠州市）", "12A22", "指标乙", 1.0, 0.5, "0.50004", "数字代码原因"))
+            # 大写代码、改写名称与 VBA 两位小数的金额格式都应命中目标行。
+            # VBA 键使用本期和上期金额，增减额不参与匹配。
+            sheet.append(("6K0u", "写错也不影响", "12a18", "前缀_指标甲", "0.4185", "1.0", "99.00", "誊抄舍入原因"))
+            sheet.append(("7020", "村镇银行（惠州市）", "12A22", "指标乙", 1.0, 0.5, "99.00", "数字代码原因"))
             book.save(feedback_path)
             book.close()
 

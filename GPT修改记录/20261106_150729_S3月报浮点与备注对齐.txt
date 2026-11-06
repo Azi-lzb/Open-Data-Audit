@@ -1,0 +1,54 @@
+项目：3.open-data-audit / S3 大集中统计系统
+日期：2026-11-06 15:07:29（Asia/Shanghai）
+分支：desktop
+
+【Git 与 WIP】
+修改前 HEAD：15bd244fe21a0ac0d297583c33536dccfdfb3446
+当前仍未提交。工作区在本轮前已有多项 S1/S2/S3、规则、文档和测试改动；本轮在现有 WIP 上增量修改，没有清理、覆盖或提交其他内容。
+
+【修改目的】
+用户确认规则触发对象对齐即可，并要求重新复验、对齐 VBA 月报的浮点输出和备注。
+
+【修改内容】
+- 在 `config.py` 增加 VBA 备注兼容格式化器，保留警戒区间边界、百分比/倍数、人工备注和 VBA 历史标签写法；`“是否说明”` 的配置说明格式不变。
+- S3-F01 的“备注”改为输出该 VBA 兼容格式。
+- S3-F01 写出数值前按 Excel 15 位有效数字归一数据值、上期值、增减额；环比使用即将写出的增减额/上期值计算。该变化只在导出阶段进行，规则触发仍按原始比较结果执行。
+- 增加数值输出单测，更新警戒文案预期；同步 S3-F01 测试分组、Rust-Audit 同步说明、版本清单、CHANGELOG、开发日志和用户更新日志。
+
+【影响文件】
+- `core/src/base_audit/systems/s3_central_statistics/config.py`
+- `core/src/base_audit/systems/s3_central_statistics/comparison_engine.py`
+- `core/src/base_audit/systems/s3_central_statistics/comparison_exporter.py`
+- `core/tests/test_central_config_split.py`
+- `core/tests/test_central_comparison_writer.py`
+- `core/tests/test_version_manifest.py`
+- `core/tests/TEST_GROUPS.md`
+- `rules/` 外的版本管理、日志和 Rust-Audit 对拍目标文档
+- 本记录
+
+【数据与配置影响】
+- 未修改 config-real、原始 CSV、VBA 工作簿或比较输出。
+- VBA 的 `.xls` 文件只读复制到系统临时目录并改扩展名为 `.xlsx` 后读取；测试生成物均在临时目录。
+
+【2026.10 月报复验】
+- VBA 与 Python 均为 3,868 行，稳定业务键及顺序 3,868/3,868 一致。
+- 备注：双方各 306 个非空，逐行文本差异 0。
+- 数据值：3,838/3,838 精确相等；上期值：3,833/3,833；增减额：2,946/2,946。
+- 环比：2,911 个数值中 2,905 个精确相等；剩余 6 个的最大绝对差为 1.1102230246251565e-16，最大相对差为 8.401955346737343e-15。保留该差异并如实报告，没有进一步舍入来掩盖尾差。
+- 规则触发对象保持对齐：“是否说明”30/30、“计算过程”23/23，单边命中均为 0。
+- 本轮实际输出使用 `AUTO`，运行记录显示 `s3-comparison-writer 0.2.0 / rust_xlsxwriter 0.100.0`，写入阶段 0.194 秒。
+
+【测试】
+- 定向：`test_central_config_split.py`、`test_central_comparison_writer.py`：11 passed。
+- S3 系统回归：590 passed / 568 deselected / 5 subtests passed。
+- 本轮版本清单测试在版本升级后补跑；未运行全量 core 测试，未打包。
+
+【组件版本】
+系统：S3 大集中统计系统
+影响功能：S3-F01 两期数据到比较文件 v1.7.2 → v1.7.3
+影响配置：S3-CFG-00/01/02/03 未变；未修改真实配置。
+产品版本：V26.2.2.2 → V26.2.2.3
+版本升级原因：PATCH，按 VBA 对齐比较备注文本，并减少结果表中的 Excel 数值尾差。
+
+【提交状态】
+未提交、未推送。
