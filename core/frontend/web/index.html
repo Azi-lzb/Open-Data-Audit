@@ -168,12 +168,8 @@ input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offse
 .operation-stack{min-width:0;display:flex;flex-direction:column;gap:16px}
 .card.actionbar{flex-direction:column;align-items:stretch;gap:10px;padding:14px 18px}
 .card.actionbar .btn{width:100%}
-.s5-maintenance-actions{display:flex;flex-direction:column;gap:8px}
-.s5-maintenance-actions[hidden]{display:none!important}
-.s5-maintenance-actions .btn{width:100%}
 .files-wrap{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,1fr);gap:16px;min-height:0;align-items:start}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-card);padding:18px;min-width:0;display:flex;flex-direction:column}
-#page-configured .card[hidden]{display:none!important}
 
 /* ---------- 通用字段 ---------- */
 .field{margin-bottom:16px}
@@ -233,7 +229,6 @@ select:disabled{opacity:.6;cursor:not-allowed}
 .file-list{flex:1;min-height:150px;overflow:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-content:start;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);padding:10px}
 .file-row{display:grid;grid-template-columns:18px 22px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 12px;cursor:pointer;border:1px solid var(--border);border-radius:10px;background:var(--surface);transition:background .12s,box-shadow .12s}
 .file-row:hover{background:var(--accent-soft);box-shadow:0 1px 3px rgba(16,24,40,.08)}
-#s5-file-list .file-row{grid-template-columns:18px 22px minmax(0,1fr) auto}
 .file-row.checked{background:#f5f9ff}
 .file-check{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;margin:0}
 .file-doc{display:grid;place-items:center;color:var(--text-3)}
@@ -312,11 +307,7 @@ select:disabled{opacity:.6;cursor:not-allowed}
 body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S1"]) .sidenav-item[data-system="S1"],
 body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S2"]) .sidenav-item[data-system="S2"],
 body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S3"]) .sidenav-item[data-system="S3"],
-body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S4"]) .sidenav-item[data-system="S4"],
-body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S5"]) .sidenav-item[data-system="S5"],
-body.distribution-s1s2-only:not(.distribution-ui-unlocked) .sidenav-item[data-system="S3"],
-body.distribution-s1s2-only:not(.distribution-ui-unlocked) .sidenav-item[data-system="S4"],
-body.distribution-s1s2-only:not(.distribution-ui-unlocked) .sidenav-item[data-system="S5"]{display:none!important}
+body.distribution-s1s2-only:not(.distribution-ui-unlocked) .sidenav-item[data-system="S3"]{display:none!important}
 body.distribution-ui-unlocked .sidenav-item[data-system]{display:flex!important}
 /* 报表采集系统页 */
 .collect-page{flex:1;min-height:0;overflow:auto;padding:22px 26px;display:flex;flex-direction:column;gap:16px}
@@ -343,27 +334,7 @@ body.distribution-ui-unlocked .sidenav-item[data-system]{display:flex!important}
 .collect-card h2{margin:0 0 6px;font-size:15px}
 .collect-card p{margin:4px 0;color:var(--text-2);font-size:13px;line-height:1.7}
 .collect-tip{margin:8px 0 0;font-size:11.5px;color:var(--text-3);line-height:1.6}
-#s5-config-status{white-space:pre-line}
-.s5-check-overlay{position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(16,24,40,.42)}
-.s5-check-overlay[hidden]{display:none}
-.s5-check-dialog{width:min(680px,96vw);max-height:min(82vh,760px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border);border-radius:14px;background:var(--surface);box-shadow:0 18px 60px rgba(0,0,0,.24)}
-.s5-check-head,.s5-check-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
-.s5-check-head h3{margin:0;font-size:16px}
-.s5-check-foot{border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end}
-#s5-config-check-open-report[hidden]{display:none!important}
-.s5-check-body{padding:16px 18px;overflow:auto}
-.s5-check-status{margin:0 0 10px;font-weight:600;color:var(--text)}
-.s5-check-progress{display:flex;align-items:center;gap:10px;margin:0 0 10px}
-.s5-check-track{height:8px;flex:1;overflow:hidden;border-radius:999px;background:var(--border)}
-.s5-check-fill{height:100%;width:0;border-radius:999px;background:var(--accent);transition:width .25s ease}
-.s5-check-fill.running{position:relative;overflow:hidden}
-.s5-check-fill.running:after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);animation:shimmer 1.3s ease-in-out infinite}
-.s5-check-percent{min-width:42px;text-align:right;font-size:12px;color:var(--text-2);font-variant-numeric:tabular-nums}
-.s5-check-detail{max-height:48vh;overflow:auto;margin:0;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);font:12px/1.65 Consolas,'Microsoft YaHei',monospace;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text-2)}
-.s5-config-check-actions{display:flex;flex-wrap:wrap;gap:4px}
-.s5-config-check-actions .btn{padding:3px 6px;font-size:10.5px;white-space:nowrap}
 .pair-filter-panel{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:10px;align-items:end;margin-bottom:12px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2)}
-.s5-file-filter-panel{grid-template-columns:repeat(3,minmax(0,1fr)) auto;margin-top:8px}
 .s1-file-filter-panel{grid-template-columns:repeat(2,minmax(0,1fr)) auto;margin-top:8px}
 .pair-filter-panel[hidden]{display:none}
 .file-list .file-row[hidden]{display:none!important}
@@ -767,14 +738,6 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
     S3 大集中统计系统
   </button>
-  <button type="button" class="sidenav-item" data-page="dijin" data-system="S4" onclick="openDijinWorkbench()" title="地金系统">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 10h1M14 10h1M9 14h1M14 14h1M10 21v-3h4v3"/></svg>
-    S4 地金系统
-  </button>
-  <button type="button" class="sidenav-item" data-page="configured" data-system="S5" onclick="openS5Workbench()" title="S5 逐笔统计系统（配置版）">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
-    <span>S5 逐笔统计系统<br><small>（配置版）</small></span>
-  </button>
   <button type="button" class="sidenav-item" data-page="settings" onclick="openSettingsWorkbench()" title="设置中心">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1.51 1 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     设置中心
@@ -1053,89 +1016,6 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     </div>
   </div>
 </section><!-- /page-central -->
-
-<section class="page" id="page-dijin">
-  <main class="layout">
-    <section class="card">
-      <h3>S4 地金系统</h3>
-      <p class="about-body">地金工具的功能与操作流程正在整理中。</p>
-    </section>
-  </main>
-</section>
-
-<section class="page" id="page-configured">
-  <div id="s5-panel-f1">
-  <main class="layout">
-    <section class="card paths-card"><div class="paths-grid">
-      <div class="field"><div class="field-head"><label>源数据目录</label></div><div class="input-group"><div class="path-name empty" id="s5-input_dir-name">未选择</div><button class="btn" onclick="pickS5('input_dir')">选择</button></div></div>
-      <div class="field"><div class="field-head"><label>模板文件目录</label></div><div class="input-group"><div class="path-name empty" id="s5-template_dir-name">未选择</div><button class="btn" onclick="pickS5('template_dir')">选择</button></div></div>
-      <div class="field"><div class="field-head"><label>输出目录</label><button class="pin-btn" id="s5OutputPin" onclick="toggleS5OutputPin()" title="固定输出目录" aria-label="固定输出目录"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5M5 17h14l-4-6V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v5z"/></svg></button></div><div class="input-group"><div class="path-name empty" id="s5-output_dir-name">未选择</div><button class="btn" onclick="pickS5('output_dir')">修改</button></div></div>
-      <div class="field"><div class="field-head tight"><label>配置版系统配置</label><span class="s5-config-check-actions"><button class="btn soft micro" onclick="checkS5Config('current_business')" title="只检查当前匹配模板对应业务的启用规则">检查当前业务</button><button class="btn soft micro" onclick="checkS5Config('all_enabled')" title="按模板目录逐业务检查所有启用规则">检查全量</button></span></div><div class="input-group"><div class="path-name empty" id="s5-config_path-name">未选择</div><button class="btn" onclick="pickS5('config_path')">选择</button></div></div>
-      <div class="field"><div class="field-head"><label>大集中系统数据</label></div><div class="input-group"><div class="path-name empty" id="s5-external_path-name">未选择</div><button class="btn" onclick="pickS5('external_path')">选择</button></div></div>
-      <div class="field"><div class="field-head tight"><label>匹配模板</label><button class="btn soft micro" onclick="recognizeS5Template()" title="点击后按当前勾选文件识别模板、业务和报告期">识别模板</button></div><div class="input-group"><div class="path-name empty" id="s5-template_path-name">未选择</div><button class="btn" onclick="pickS5('template_path')">手动选择</button></div></div>
-    </div><div class="collect-tip" id="s5-config-status" role="status">请选择源数据目录和模板目录，再手动点击“识别模板”；配置检查也需要手动点击。</div></section>
-    <div class="files-wrap only-files">
-      <div class="file-panel"><div class="file-head"><span class="file-title">待处理文件 <span class="count-pill" id="s5-file-count"></span></span><span class="file-actions"><button class="btn soft micro" id="s5-file-filter-toggle" onclick="toggleS5FileFilters()" aria-expanded="false" aria-controls="s5-file-filters" title="按模板匹配、业务类型和报告日期筛选">筛选</button><button class="btn tiny" onclick="selectS5Files(true)">全选</button><button class="btn tiny" onclick="selectS5Files(false)">取消</button><button class="btn tiny" onclick="refreshS5Files()">刷新</button></span></div><div class="pair-filter-panel s5-file-filter-panel" id="s5-file-filters" hidden>
-        <label class="pair-filter-field">模板匹配<select id="s5-match-filter" onchange="setS5FileFilter('match',this.value)"><option value="">全部状态</option></select></label>
-        <label class="pair-filter-field">业务类型<select id="s5-business-filter" onchange="setS5FileFilter('business',this.value)"><option value="">全部业务</option></select></label>
-        <label class="pair-filter-field">报告日期<select id="s5-period-filter" onchange="setS5FileFilter('period',this.value)"><option value="">全部日期</option></select></label>
-        <button class="btn soft" onclick="resetS5FileFilters()">清空筛选</button>
-        <div class="collect-tip pair-filter-note">筛选只影响列表；勾选状态会保留。全选或取消只作用于当前显示的文件。</div>
-      </div><div class="file-list" id="s5-file-list"></div></div>
-      <div class="operation-stack"><div class="card actionbar s5-action-card">
-        <button class="btn primary" data-action="S5-F01" onclick="runS5('S5-F01')">F1 汇总核查表校验</button>
-        <div id="s5-maintenance-entry" class="s5-maintenance-actions" hidden>
-          <button class="btn" data-action="S5-F02" onclick="openS5MaintenanceTool('vcur')">F2 模板 V_CUR 表达式</button>
-          <button class="btn" data-action="S5-F03" onclick="openS5MaintenanceTool('vext')">F3 外部文件 V_EXT 表达式</button>
-          <button class="btn" data-action="S5-F04" onclick="openS5MaintenanceTool('candidates')">F4 模板校验公式转配置</button>
-        </div>
-      </div></div>
-    </div>
-  </main>
-  </div>
-  <div id="s5-maintenance-view" hidden>
-    <main class="layout">
-      <section class="card"><div class="file-head"><h3 id="s5-maintenance-title">S5 配置维护</h3><button class="btn" onclick="closeS5MaintenanceTool()">返回 F1</button></div></section>
-      <section class="card s5-maintenance-panel" id="s5-tool-vcur" hidden>
-        <h3>F2 模板 V_CUR 表达式</h3>
-        <p class="hint">直接使用 S5 面板当前匹配的模板，按数字区域与完整行列表头路径生成表达式参考副本；本期生成 V_CUR，复制到上期规则时可改为 V_PRE。原模板只读。</p>
-        <div class="field"><div class="field-head"><label>沿用 S5 面板的匹配模板</label><button class="btn tiny" onclick="closeS5MaintenanceTool()">返回修改路径</button></div><div class="path-name empty" id="s5-vcur-template-path">未选择</div></div>
-        <div class="parameter-grid">
-          <div class="field"><div class="field-head"><label>输出目录</label><button class="btn tiny" onclick="pickS5Maintenance('vcur_output')">选择</button></div><input id="s5-vcur-output" placeholder="选择输出目录"></div>
-        </div>
-        <button class="btn" onclick="saveS5Maintenance('vcur')">保存工具设置</button> <button class="btn primary" onclick="runS5Maintenance('vcur')">生成 V_CUR 参考副本</button>
-        <div class="status" id="s5-maintenance-status-vcur" role="status" aria-live="polite"></div><div class="result" id="s5-maintenance-result-vcur"></div>
-      </section>
-      <section class="card s5-maintenance-panel" id="s5-tool-vext" hidden>
-        <h3>F3 外部文件 V_EXT 表达式</h3>
-        <p class="hint">直接使用 S5 面板当前选择的大集中系统数据，兼容普通报表与带“数据日期/行名称”的时序格式；金额单位转换仅影响金额指标，原文件只读。</p>
-        <div class="field"><div class="field-head"><label>沿用 S5 面板的大集中系统数据</label><button class="btn tiny" onclick="closeS5MaintenanceTool()">返回修改路径</button></div><div class="path-name empty" id="s5-vext-external-path">未选择</div></div>
-        <div class="parameter-grid">
-          <div class="field"><div class="field-head"><label>输出目录</label><button class="btn tiny" onclick="pickS5Maintenance('vext_output')">选择</button></div><input id="s5-vext-output" placeholder="选择输出目录"></div>
-          <div class="field"><div class="field-head"><label for="s5-vext-unit">外部金额单位</label></div><select id="s5-vext-unit"><option>万元</option><option>亿元</option><option>元</option></select></div>
-          <div class="field"><div class="field-head"><label for="s5-vext-source">数据源 ID</label></div><input id="s5-vext-source" value="EXT"></div>
-        </div>
-        <button class="btn" onclick="saveS5Maintenance('vext')">保存工具设置</button> <button class="btn primary" onclick="runS5Maintenance('vext')">生成 V_EXT 参考副本</button>
-        <div class="status" id="s5-maintenance-status-vext" role="status" aria-live="polite"></div><div class="result" id="s5-maintenance-result-vext"></div>
-      </section>
-      <section class="card s5-maintenance-panel" id="s5-tool-candidates" hidden>
-        <h3>F4 模板校验公式转配置</h3>
-        <p class="hint">直接使用 S5 面板当前匹配的模板扫描“校验区域”公式；若模板公式含外部查找，也会沿用面板当前的大集中系统数据。生成的候选规则默认禁用，确认后由你人工复制到 S5 正式配置。输入文件和正式配置只读。</p>
-        <div class="parameter-grid">
-          <div class="field"><div class="field-head"><label>沿用 S5 面板的匹配模板</label><button class="btn tiny" onclick="closeS5MaintenanceTool()">返回修改路径</button></div><div class="path-name empty" id="s5-candidate-template-path">未选择</div></div>
-          <div class="field"><div class="field-head"><label>沿用 S5 面板的大集中系统数据</label></div><div class="path-name empty" id="s5-candidate-external-path">未选择</div></div>
-        </div>
-        <div class="parameter-grid">
-          <div class="field"><div class="field-head"><label>输出目录</label><button class="btn tiny" onclick="pickS5Maintenance('candidate_output')">选择</button></div><input id="s5-candidate-output" placeholder="选择输出目录"></div>
-          <div class="field"><div class="field-head"><label for="s5-candidate-business">业务名称（可选）</label></div><input id="s5-candidate-business" placeholder="留空时按模板名称填写"></div>
-          <div class="field"><div class="field-head"><label for="s5-candidate-unit">外部金额单位</label></div><select id="s5-candidate-unit"><option>万元</option><option>亿元</option><option>元</option></select></div>
-        </div>
-        <button class="btn" onclick="saveS5Maintenance('candidates')">保存工具设置</button> <button class="btn primary" onclick="runS5Maintenance('candidates')">生成配置候选</button>
-        <div class="status" id="s5-maintenance-status-candidates" role="status" aria-live="polite"></div><div class="result" id="s5-maintenance-result-candidates"></div>
-      </section>
-    </main>
-  </div>
-</section>
 
 <section class="page" id="page-settings">
   <div class="settings-page">
@@ -1789,8 +1669,9 @@ function showSettingsPaneLoading(){
 }
 /* ---------- 主界面页面切换（逐笔统计 / 报表采集 / 设置中心） ---------- */
 let currentPage='audit';
-const developerPages={audit:'S1',collect:'S2',central:'S3',dijin:'S4',configured:'S5'};
-function isS1S2Edition(){return !isSystemVisible('S3')&&!isSystemVisible('S4')}
+const DEVELOPER_SYSTEMS=['S1','S2','S3'];
+const developerPages={audit:'S1',collect:'S2',central:'S3'};
+function isS1S2Edition(){return !isSystemVisible('S3')}
 function loadDistributionConfig(){
   const node=document.getElementById('audit-distribution-config');
   if(node&&node.textContent){try{return JSON.parse(node.textContent)}catch(e){}}
@@ -1798,6 +1679,7 @@ function loadDistributionConfig(){
 }
 const DISTRIBUTION_CONFIG=loadDistributionConfig();
 function isSystemVisible(system){
+  if(!DEVELOPER_SYSTEMS.includes(system))return false;
   if(state&&state.distributionUnlocked===true)return true;
   const body=document.body;
   if(DISTRIBUTION_CONFIG&&Array.isArray(DISTRIBUTION_CONFIG.enabledSystems)){
@@ -1810,6 +1692,8 @@ function isSystemVisible(system){
 }
 function isUpdateSystemIncluded(system){
   if(system==='通用')return true;
+  if(!DEVELOPER_SYSTEMS.includes(system))return false;
+  if(state&&state.distributionUnlocked===true)return true;
   if(DISTRIBUTION_CONFIG&&Array.isArray(DISTRIBUTION_CONFIG.enabledSystems))return DISTRIBUTION_CONFIG.enabledSystems.includes(system);
   const body=document.body;
   const profile=(body&&body.dataset&&body.dataset.distributionProfile)||(state&&state.distributionProfile);
@@ -1823,13 +1707,14 @@ function applyDistributionProfile(){
 }
 function includesUndeliveredSystemInfo(text){
   const value=String(text||'');
+  if(/\bS[45](?:\b|F\d|CFG)|地金|(?:逐笔统计系统（配置版）|配置版.{0,8}逐笔统计)|配置规则审核|模板校验公式转配置/i.test(value))return true;
   const systems=DISTRIBUTION_CONFIG&&Array.isArray(DISTRIBUTION_CONFIG.systems)?DISTRIBUTION_CONFIG.systems:[];
   for(const system of systems){
     if(isUpdateSystemIncluded(system.id))continue;
     if((system.contentKeywords||[]).some(keyword=>keyword&&value.toLowerCase().includes(String(keyword).toLowerCase())))return true;
   }
-  if(systems.length)return false;
-  return (!isUpdateSystemIncluded('S3')||!isUpdateSystemIncluded('S4')||!isUpdateSystemIncluded('S5'))&&/\bS[345](?:\b|F\d|CFG)|(?:^|[^\d.])3\.[0-3](?=$|[^\d.])|大集中统计系统|地金|逐笔统计系统（配置版）|配置规则审核|模板公式审核|大集中比较|大集中指标查询|大集中通用配置|大集中执行比较|大集中本期数值核对|大集中指标比较拆分|两期数据\s*[⇨→]|比较文件\s*[⇨→]|机构说明\s*[⇨→]|本期数值核对|指标比较拆分/i.test(value);
+  if(!isUpdateSystemIncluded('S3'))return /(?:^|[^\d.])3\.[0-3](?=$|[^\d.])|大集中统计系统|大集中比较|大集中指标查询|大集中通用配置|大集中执行比较|大集中本期数值核对|大集中指标比较拆分|两期数据\s*[⇨→]|比较文件\s*[⇨→]|机构说明\s*[⇨→]|本期数值核对|指标比较拆分/i.test(value);
+  return false;
 }
 function updateItemInfo(item){
   const value=String(item||'');
@@ -1844,22 +1729,23 @@ function updateItemVisible(item){
   return info.systems.some(isUpdateSystemIncluded);
 }
 function editionUpdateEntries(entries){
-  if(['S1','S2','S3','S4','S5'].every(isUpdateSystemIncluded))return entries;
   return entries.map(entry=>({...entry,groups:(entry.groups||[]).map(group=>({
     ...group,items:(group.items||[]).filter(updateItemVisible)
   })).filter(group=>group.items.length)})).filter(entry=>entry.groups.length);
 }
 function editionFaqItems(items){
-  if(['S1','S2','S3','S4','S5'].every(isSystemVisible))return items;
   const systems=DISTRIBUTION_CONFIG&&Array.isArray(DISTRIBUTION_CONFIG.systems)?DISTRIBUTION_CONFIG.systems:[];
   return items.map(item=>({...item,answer:!isSystemVisible('S3')&&item.answerS1S2?item.answerS1S2:item.answer}))
     .filter(item=>{
-      const tagged=Array.isArray(item.systems)?item.systems:[];
+      const tagged=Array.isArray(item.systems)?item.systems:(typeof item.systems==='string'?item.systems.split(/[\s,/]+/).filter(Boolean):[]);
       const categorySystems=systems.filter(system=>(system.faqCategories||[]).includes(String(item.category||''))).map(system=>system.id);
       const itemSystems=tagged.length?tagged:categorySystems;
-      return itemSystems.every(isSystemVisible);
-    })
-    .filter(item=>!includesUndeliveredSystemInfo(String(item.question||'')+String(item.answer||'')));
+      const supportedSystems=itemSystems.filter(system=>DEVELOPER_SYSTEMS.includes(system));
+      if(supportedSystems.length)return supportedSystems.some(isSystemVisible);
+      if(itemSystems.includes('通用'))return true;
+      if(itemSystems.length)return false;
+      return !includesUndeliveredSystemInfo([item.category,item.question,item.answer].join(' '));
+    });
 }
 function updateAuditWorkbenchMode(){
   const primary=document.getElementById('auditPrimaryButton'),summary=document.getElementById('auditSummaryButton');
@@ -2145,7 +2031,6 @@ const GUIDE_FLOWS=[
   {n:'S1F3',editionSystem:'S1',name:'组合工作表（核查表）',egg:true,scenario:'文件名规范、需要把同一机构的多类报表（如个人贷款和单位贷款）合成一本，供制作联合模板或跨表核查。',prep:'源文件主名第一个下划线前必须是机构全称。',steps:'① 选择源数据目录；② 需要时勾选递归；③ 点击“组合工作表（核查表）”。',output:'每家机构一本合并工作簿。',tip:'同名工作表只保留先复制的一张；本流程不需要模板、外部文件或数据期。'},
   {n:'S1F4',editionSystem:'S1',name:'组合工作表（按配置）',egg:true,scenario:'按设置中心中当前选择的组合方案分组，适合机构名称或文件命名不规则的情况。',prep:'连续点击“设置中心”五次，进入“组合工作表配置”维护方案与分组。',steps:'① 选择源数据目录；② 在设置中心保存组合方案；③ 点击“组合工作表（按配置）”。',output:'按当前方案生成组合工作簿。',tip:'文件名正则和文件名关键字两种分组方式均可用。'},
   {n:'S1F5',editionSystem:'S1',name:'制作联合模板',egg:true,scenario:'需要把多个模板的独有工作表合并成一本“联合模板”，集中存放集中系统数据、参照表等公共依赖工作表，供跨表核查或制作模板时使用；这是低频的模板制作动作。',prep:'准备一个“基准模板”（包含集中系统数据、参照表等公共依赖工作表）和若干要并入的模板文件。',steps:'① 点击主界面“制作联合模板”按钮；② 阅读中文说明并确认；③ 第 1 步选择“基准模板”；④ 第 2 步批量选择“并入模板”；⑤ 等待制作完成。',output:'基准模板同级的“联合模板”目录：联合模板文件与“联合模板检查报告”。',tip:'基准模板只会另存为最终联合模板，原文件不修改；同名工作表保留先出现的一张，后续跳过；本动作不使用页面路径，也不会自动识别模板，不要将普通业务模板误选为基准模板。'},
-  {n:'S5F1',editionSystem:'S5',name:'汇总核查表校验',scenario:'使用 S5 独立审核配置，对一个业务的报送文件执行规则校验。',prep:'选择本期源目录、模板目录与 S5 审核配置；手动点击“识别模板”后核对业务和报告期。外部核对需要外部文件。',steps:'① 选择源数据目录和模板目录；② 点击“识别模板”，或手动选择匹配模板；③ 按匹配状态、业务类型和日期筛选待处理文件并勾选；④ 需要时手动点击“检查配置”；⑤ 点击 F1 汇总核查表校验。',output:'审核结果直接保存到“执行结果”目录，每次只生成一份汇总 XLSX，运行记录显示各阶段耗时。',tip:'配置检查和模板识别均由用户手动触发；S5 使用独立配置规则引擎，不调用 S1-F01 模板公式审核流程。上期选择框暂不显示，V_PRE 取数能力保留，未提供上期时会报告取数失败。'}
 ];
 /* 设置中心卡片标题条：点击收起/展开卡片内容（事件委托，重渲染后仍有效）。 */
 document.getElementById('settingsPane').addEventListener('click',function(e){
@@ -2465,306 +2350,6 @@ async function applyConfigUpdate(){
     renderConfigUpdate('更新失败：'+(e&&e.message||e));
   }
 }
-/* ---- S5 独立页面：共用样式、路径浏览与运行记录，独立表单状态 ---- */
-let s5EggClickTimes=[];
-let s5MaintenanceCurrentTool='';
-let s5MaintenanceVisible=false;
-let s5FileFilters={match:'',business:'',period:''};
-const S5_FILE_MATCH_LABELS={matched:'匹配',partial:'含模板外工作表',unmatched:'未匹配',pending:'待识别'};
-function s5FileMatchesFilters(item,filters=s5FileFilters){
-  if(filters.match&&String(item.match_status||'pending')!==filters.match)return false;
-  if(filters.business&&(filters.business==='__unknown__'?!!item.business:String(item.business||'')!==filters.business))return false;
-  if(filters.period&&(filters.period==='__unknown__'?!!item.period:String(item.period||'')!==filters.period))return false;
-  return true;
-}
-function s5VisibleFiles(files){return (files||[]).filter(item=>s5FileMatchesFilters(item))}
-function toggleS5FileFilters(){
-  const panel=document.getElementById('s5-file-filters'),button=document.getElementById('s5-file-filter-toggle');
-  if(!panel)return;panel.hidden=!panel.hidden;if(button)button.setAttribute('aria-expanded',String(!panel.hidden));
-}
-function setS5FileFilter(key,value){if(!(key in s5FileFilters))return;s5FileFilters[key]=value||'';renderS5(state)}
-function syncS5FileFilterSelect(id,key,values,placeholder){
-  const select=document.getElementById(id);if(!select)return;
-  const choices=[...new Set((values||[]).filter(Boolean))].sort();
-  if(values&&values.some(value=>!value))choices.push('__unknown__');
-  const signature=JSON.stringify(choices);
-  if(select.dataset.options!==signature){
-    select.innerHTML='<option value="">'+esc(placeholder)+'</option>'+choices.map(value=>{
-      const label=value==='__unknown__'?'未识别':(key==='match'?(S5_FILE_MATCH_LABELS[value]||value):value);
-      return '<option value="'+esc(value)+'">'+esc(label)+'</option>';
-    }).join('');
-    select.dataset.options=signature;
-  }
-  if(s5FileFilters[key]&&!choices.includes(s5FileFilters[key]))s5FileFilters[key]='';
-  select.value=s5FileFilters[key]||'';
-}
-function resetS5FileFilters(){s5FileFilters={match:'',business:'',period:''};renderS5(state)}
-function s5MaintenanceUnlocked(){return s5MaintenanceVisible}
-function applyS5MaintenanceVisibility(){
-  const unlocked=s5MaintenanceUnlocked();
-  const entry=document.getElementById('s5-maintenance-entry'),view=document.getElementById('s5-maintenance-view'),main=document.getElementById('s5-panel-f1');
-  if(entry)entry.hidden=!unlocked;
-  if(!unlocked){if(view)view.hidden=true;if(main)main.hidden=false;s5MaintenanceCurrentTool=''}
-}
-applyS5MaintenanceVisibility();
-function registerS5NavigationClick(){
-  const now=Date.now();s5EggClickTimes=s5EggClickTimes.filter(t=>now-t<2000);s5EggClickTimes.push(now);
-  if(s5EggClickTimes.length<5)return;
-  s5EggClickTimes=[];s5MaintenanceVisible=!s5MaintenanceVisible;const unlocked=s5MaintenanceUnlocked();
-  applyS5MaintenanceVisibility();
-  showToast(unlocked?'已显示 S5 配置维护工具':'已隐藏 S5 配置维护工具');
-}
-function openS5MaintenanceTool(tool){
-  if(!s5MaintenanceUnlocked()){showToast('连续点击左侧 S5 导航 5 次以显示配置维护工具');return}
-  const main=document.getElementById('s5-panel-f1'),view=document.getElementById('s5-maintenance-view');
-  if(main)main.hidden=true;if(view)view.hidden=false;
-  s5MaintenanceCurrentTool=tool;
-  document.querySelectorAll('.s5-maintenance-panel').forEach(panel=>{panel.hidden=panel.id!=='s5-tool-'+tool});
-  const titles={vcur:'F2 模板 V_CUR 表达式',vext:'F3 外部文件 V_EXT 表达式',candidates:'F4 模板校验公式转配置'};
-  const title=document.getElementById('s5-maintenance-title');if(title)title.textContent=titles[tool]||'S5 配置维护';
-}
-function closeS5MaintenanceTool(){
-  const main=document.getElementById('s5-panel-f1'),view=document.getElementById('s5-maintenance-view');
-  if(main)main.hidden=false;if(view)view.hidden=true;s5MaintenanceCurrentTool='';
-}
-async function openS5Workbench(){
-  registerS5NavigationClick();
-  requestSystemNavigation('S5','configured');
-  if(!isSystemVisible('S5'))return;
-  await refresh();
-}
-function s5FormValues(){return {}}
-async function toggleS5OutputPin(){
-  await bridge.api.update_s5({output_pinned:!((state.s5||{}).output_pinned)});await refresh();
-}
-async function recognizeS5Template(){
-  try{
-    const form=(state.s5||{}),preserve=!!(form.template_manual&&form.template_path);
-    await bridge.api.recognize_s5_inputs(preserve);await refresh();
-  }catch(e){showToast(e.message||String(e))}
-}
-async function pickS5(field){
-  if(state.busy)return;
-  try{
-    let path='';
-    if(usesBrowserPathPicker()){
-      const folder=['input_dir','template_dir','output_dir'].includes(field);
-      const paths=await pickPathViaBrowser({title:'选择 S5 '+(folder?'目录':'文件'),select:folder?'dir':'file',mode:folder?'':'excel_ooxml',start:(state.s5||{})[field]||''});
-      if(!paths.length)return;
-      path=paths[0];
-    }
-    await bridge.api.choose_s5(field,path);
-    await refresh();
-  }catch(e){showToast(e.message||String(e))}
-}
-async function checkS5Config(scope='current_business'){
-  const overlay=document.getElementById('s5-config-check-overlay');
-  const scopeLabel=scope==='all_enabled'?'全量启用配置':'当前业务启用配置';
-  document.getElementById('s5-config-check-title').textContent='S5 检查配置 · '+scopeLabel;
-  overlay.hidden=false;
-  renderS5ConfigCheckTask({task_state:'queued',scope,scope_label:scopeLabel,message:'正在启动 S5 配置检查…',progress:{percent:0,message:'准备读取审核配置'}});
-  try{
-    const started=await bridge.api.check_s5_config(scope);
-    if(!started.accepted){
-      renderS5ConfigCheckTask({task_state:'failed',message:started.message||'无法启动 S5 配置检查'});
-      return;
-    }
-    let task={};
-    while(true){
-      task=await bridge.api.get_s5_config_check();
-      if(task.task_id===started.task_id)renderS5ConfigCheckTask(task);
-      if(task.task_id!==started.task_id||!['queued','running'].includes(task.task_state))break;
-      await new Promise(resolve=>setTimeout(resolve,500));
-    }
-    if(task.task_id===started.task_id)renderS5ConfigCheckTask(task);
-    await refresh();
-  }catch(e){renderS5ConfigCheckTask({task_state:'failed',message:e.message||String(e)})}
-}
-function renderS5ConfigCheckTask(task){
-  const state=task.task_state||'queued',running=['queued','running'].includes(state);
-  const progress=task.progress||{},percent=Math.max(0,Math.min(100,Number(progress.percent)||0));
-  const labels={queued:'正在准备配置检查',running:'正在检查配置',succeeded:'检查完成',incomplete:'检查完成，但有项目未检查',failed:'检查发现问题'};
-  document.getElementById('s5-config-check-title-status').textContent=labels[state]||'配置检查';
-  document.getElementById('s5-config-check-progress-message').textContent=progress.message||task.message||'';
-  document.getElementById('s5-config-check-percent').textContent=Math.round(percent)+'%';
-  const fill=document.getElementById('s5-config-check-fill');fill.style.width=percent+'%';fill.className='s5-check-fill'+(running?' running':'');
-  const report=task.report||{};
-  const detail=[];
-  if(state==='queued'||state==='running'){
-    detail.push(progress.message||task.message||'等待检查结果');
-  }else if(report.valid===false){
-    detail.push('检查发现配置问题');
-  }else if(report.complete===false){
-    detail.push('检查完成，部分项目未检查');
-  }else if(state==='succeeded'){
-    detail.push('配置检查完成');
-  }else{
-    detail.push(task.message||'配置检查未完成');
-  }
-  const issueCount=Number(report.error_count)||((report.configuration_errors||[]).length);
-  const warningCount=(report.warnings||[]).length;
-  if(issueCount)detail.push('发现 '+issueCount+' 项配置问题，详细内容请打开检查报告查看。');
-  else if(warningCount)detail.push('有 '+warningCount+' 条提示，详细内容请打开检查报告查看。');
-  document.getElementById('s5-config-check-detail').textContent=detail.join('\n');
-  const close=document.getElementById('s5-config-check-close');close.disabled=running;
-  const open=document.getElementById('s5-config-check-open-report');open.hidden=!task.report_path;
-  open.onclick=()=>openPath(task.report_path);
-}
-function closeS5ConfigCheck(){
-  const task=((state.s5||{}).configurationCheckTask)||{};
-  if(['queued','running'].includes(task.task_state)){showToast('S5 配置检查仍在运行，请稍候查看结果');return}
-  document.getElementById('s5-config-check-overlay').hidden=true;
-}
-async function refreshS5Files(){
-  try{await bridge.api.update_s5({});await refresh()}catch(e){showToast(e.message||String(e))}
-}
-async function selectS5Files(all){
-  const form=(state.s5||{}),visible=s5VisibleFiles(form.files||[]),selected=new Set(form.selected_files||[]);
-  visible.forEach(item=>all?selected.add(item.path):selected.delete(item.path));
-  try{await bridge.api.update_s5({selected_files:[...selected]});await refresh()}catch(e){showToast(e.message||String(e))}
-}
-async function updateS5Selection(){
-  const form=(state.s5||{}),visible=new Set(s5VisibleFiles(form.files||[]).map(item=>item.path)),selected=new Set(form.selected_files||[]);
-  document.querySelectorAll('#s5-file-list input').forEach(input=>{
-    if(!visible.has(input.value))return;
-    if(input.checked)selected.add(input.value);else selected.delete(input.value);
-  });
-  const paths=[...selected];
-  try{await bridge.api.update_s5({selected_files:paths});await refresh()}catch(e){showToast(e.message||String(e))}
-}
-function s5MaintenanceValues(tool){
-  if(tool==='vcur')return {outputDir:document.getElementById('s5-vcur-output').value.trim()};
-  if(tool==='vext')return {outputDir:document.getElementById('s5-vext-output').value.trim(),unit:document.getElementById('s5-vext-unit').value,sourceId:document.getElementById('s5-vext-source').value.trim()||'EXT'};
-  return {outputDir:document.getElementById('s5-candidate-output').value.trim(),business:document.getElementById('s5-candidate-business').value.trim(),unit:document.getElementById('s5-candidate-unit').value};
-}
-async function saveS5Maintenance(tool){
-  try{await bridge.api.update_s5_maintenance(tool,s5MaintenanceValues(tool));await refresh();showToast('S5 配置维护工具设置已保存')}
-  catch(e){showToast(e.message||String(e))}
-}
-async function pickS5Maintenance(field){
-  if(state.busy)return;
-  const map={
-    vcur_output:{tool:'vcur',key:'outputDir',kind:'dir',id:'s5-vcur-output'},
-    vext_output:{tool:'vext',key:'outputDir',kind:'dir',id:'s5-vext-output'},
-    candidate_output:{tool:'candidates',key:'outputDir',kind:'dir',id:'s5-candidate-output'}
-  };
-  const spec=map[field];if(!spec)return;
-  try{
-    let chosen=[];
-    if(usesBrowserPathPicker()){
-      const current=(document.getElementById(spec.id).value||'').split(/\r?\n/)[0];
-      chosen=await pickPathViaBrowser({title:'选择输出目录',select:'dir',start:current||''});
-      if(!chosen.length)return;
-    }
-    const settings=usesBrowserPathPicker()
-      ?await bridge.api.choose_s5_maintenance(field,chosen)
-      :await bridge.api.choose_s5_maintenance(field);
-    const value=settings[spec.key];
-    document.getElementById(spec.id).value=Array.isArray(value)?value.join('\n'):(value||'');
-    await refresh();
-  }catch(e){showToast(e.message||String(e))}
-}
-async function runS5Maintenance(tool){
-  try{
-    const result=await bridge.api.start_s5_maintenance(tool,s5MaintenanceValues(tool));
-    if(!result.accepted)showToast(result.message||'已有任务正在运行');
-    await refresh();
-  }catch(e){showToast(e.message||String(e))}
-}
-function renderS5PathName(id,value){
-  const box=document.getElementById(id);if(!box)return;
-  const path=String(value||'');box.classList.toggle('empty',!path);box.title=path;box.replaceChildren();
-  if(!path){box.textContent='未选择';return}
-  const link=document.createElement('a');link.className='path-link';link.href='javascript:void(0)';
-  link.onclick=()=>openPath(path);link.textContent=shortName(path);link.title=path;box.appendChild(link);
-}
-function renderS5Maintenance(form){
-  const saved=form.maintenanceTools||{};
-  const put=(id,value)=>{const el=document.getElementById(id);if(el&&document.activeElement!==el)el.value=Array.isArray(value)?value.join('\n'):(value||'')};
-  const vcur=saved.vcur||{},vext=saved.vext||{},candidates=saved.candidates||{};
-  renderS5PathName('s5-vcur-template-path',form.template_path);put('s5-vcur-output',vcur.outputDir);
-  renderS5PathName('s5-vext-external-path',form.external_path);put('s5-vext-output',vext.outputDir);put('s5-vext-unit',vext.unit||'万元');put('s5-vext-source',vext.sourceId||'EXT');
-  renderS5PathName('s5-candidate-template-path',form.template_path);renderS5PathName('s5-candidate-external-path',form.external_path);put('s5-candidate-output',candidates.outputDir);put('s5-candidate-business',candidates.business);put('s5-candidate-unit',candidates.unit||'万元');
-  applyS5MaintenanceVisibility();
-  const task=form.maintenanceTask||{},running=task.task_state==='running';
-  ['vcur','vext','candidates'].forEach(tool=>{
-    const status=document.getElementById('s5-maintenance-status-'+tool),box=document.getElementById('s5-maintenance-result-'+tool);
-    if(!status||!box)return;
-    const matches=task.tool===tool;status.textContent=matches?(task.message||''):(running?'另一个 S5 配置维护工具正在运行':'');
-    status.className='status'+(status.textContent?' show ':' ')+(running?'warn':task.task_state==='failed'?'error':task.task_state==='partial_failed'?'warn':'ok');
-    box.replaceChildren();
-    if(!matches||!task.result)return;
-    const result=task.result,summary=result.counts||{};
-    const lines=document.createElement('div');
-    if(tool==='candidates')lines.textContent=`候选规则 ${summary.candidates||0} 条；待处理 ${summary.pending||0} 项；中间公式 ${summary.intermediate||0} 个。候选默认禁用。`;
-    else lines.textContent=`可用表达式 ${summary.ready||0} 项；待处理 ${summary.failed||0} 项；跳过 ${summary.skipped||0} 项。`;
-    box.appendChild(lines);
-    const links=[];
-    if(result.workbook_path)links.push(['打开配置候选工作簿',result.workbook_path]);
-    if(result.report_path&&result.report_path!==result.workbook_path)links.push(['打开生成报告',result.report_path]);
-    if(result.output_dir)links.push(['打开输出目录',result.output_dir]);
-    (result.files||[]).forEach(file=>{if(file.path)links.push(['打开 '+(file.name||shortName(file.path)),file.path])});
-    links.forEach(([label,path])=>{const button=document.createElement('button');button.className='btn tiny';button.textContent=label;button.onclick=()=>openPath(path);box.appendChild(button)});
-  });
-  document.querySelectorAll('#s5-maintenance-view .btn.primary').forEach(button=>{button.disabled=running||!!state.busy});
-}
-function runS5(action){
-  const snapshot=s5FormValues();
-  const label='S5F1 汇总核查表校验';
-  showRunConfirm(label,async function(){
-    try{
-      lastAction=action;
-      const result=await bridge.api.start_s5(action,snapshot);
-      if(!result.accepted)showToast(result.message||'已有任务正在运行');
-      await refresh();
-    }catch(e){showToast(e.message||String(e))}
-  },'本次执行 '+label+'\n已勾选 '+((state.s5||{}).selected_files||[]).length+' 份文件；报告期 '+((state.s5||{}).period||'未识别')+'。\n业务：'+((state.s5||{}).business||'未识别')+'；结果保存到“执行结果”目录。',[]);
-}
-function renderS5(s){
-  const form=s.s5;if(!form)return;
-  ['input_dir','template_dir','output_dir','config_path','template_path','external_path'].forEach(key=>{
-    renderS5PathName('s5-'+key+'-name',form[key]);
-  });
-  const recognition=form.recognition||{},messages=[];
-  if(form.business)messages.push('识别业务：'+form.business);
-  if(form.period)messages.push('本期：'+form.period+'（'+(recognition.period_source||'已识别')+'）');
-  Object.values(recognition.errors||{}).forEach(message=>messages.push(message));
-  document.getElementById('s5-config-status').textContent=messages.join('；')||'请选择源数据目录和模板目录，再手动点击“识别模板”；配置检查也需要手动点击。';
-  const pin=document.getElementById('s5OutputPin');
-  pin.classList.toggle('on',!!form.output_pinned);pin.title=form.output_pinned?'跟随源数据目录':'固定输出目录';pin.setAttribute('aria-label',pin.title);
-  const selected=new Set(form.selected_files||[]),files=form.files||[];
-  const visible=s5VisibleFiles(files),activeFilters=Object.values(s5FileFilters).filter(Boolean).length;
-  const count=document.getElementById('s5-file-count');
-  count.textContent='已选 '+selected.size+' / '+files.length+(activeFilters?' · 显示 '+visible.length:'');
-  const filterButton=document.getElementById('s5-file-filter-toggle');
-  if(filterButton)filterButton.textContent='筛选'+(activeFilters?'（'+activeFilters+'）':'');
-  syncS5FileFilterSelect('s5-match-filter','match',Object.keys(S5_FILE_MATCH_LABELS), '全部状态');
-  syncS5FileFilterSelect('s5-business-filter','business',files.map(item=>item.business||''), '全部业务');
-  syncS5FileFilterSelect('s5-period-filter','period',files.map(item=>item.period||''), '全部日期');
-  const list=document.getElementById('s5-file-list');
-  const status=(value)=>S5_FILE_MATCH_LABELS[value]||S5_FILE_MATCH_LABELS.pending;
-  const html=files.length?(visible.length?visible.map(item=>{
-    const matchStatus=String(item.match_status||'pending');
-    const matched=matchStatus==='matched',unmatched=matchStatus==='unmatched';
-    const meta=['业务：'+(item.business||'未识别'), '日期：'+(item.period||'未识别')];
-    if(item.template&&item.template!=='未识别')meta.push('模板：'+item.template);
-    if(item.source_sheet_count)meta.push('源表匹配：'+(item.matched_sheets||0)+'/'+item.source_sheet_count);
-    return '<label class="file-row'+(selected.has(item.path)?' checked':'')+'" title="'+esc(item.path+(item.match_detail?'\n'+item.match_detail:''))+'">'
-      +'<input class="file-check" type="checkbox" value="'+esc(item.path)+'"'+(selected.has(item.path)?' checked':'')+(s.busy?' disabled':'')+' onchange="updateS5Selection()">'
-      +'<span class="file-doc">'+ICON.file+'</span><span class="file-main"><span class="file-name">'+esc(item.name)+'</span><span class="file-meta">'+esc(meta.join(' · '))+'</span></span>'
-      +'<span class="file-tag'+(unmatched?' warn':'')+'">'+esc(status(item.match_status))+'</span></label>';
-  }).join(''):'<div class="empty"><p>没有符合当前筛选条件的文件，请调整或清空筛选。</p></div>'):'<div class="empty"><p>选择源数据目录后列出本期 XLSX/XLSM 文件</p></div>';
-  if(list.innerHTML!==html)list.innerHTML=html;
-  renderS5Maintenance(form);
-}
-function s5ProgressState(s){
-  const form=s.s5||{},task=form.task||{},progress=form.progress||{};
-  const running=['queued','running'].includes(task.task_state);
-  if(!running&&(s.busy||currentPage!=='configured'||!task.task_state))return s;
-  const status=running?'running':task.task_state==='cancelled'?'cancelled':task.task_state==='failed'?'failed':'completed';
-  const elapsed=running&&task.started_at_epoch?Math.max(0,Date.now()/1000-task.started_at_epoch):task.elapsed_seconds||progress.elapsedSeconds;
-  return {...s,periodProgress:{...progress,status,label:progress.message||'S5 审核',current:progress.file_index,total:progress.files_total,elapsedSeconds:elapsed}};
-}
 /* ---- 操作指引 ---- */
 function renderGuide(){
   const pane=document.getElementById('settingsPane');
@@ -2783,7 +2368,7 @@ function renderGuide(){
 let FAQ_ALL=[];
 let FAQ_CATEGORY='全部';
 let FAQ_KEYWORD='';
-const FAQ_CATEGORY_ORDER=['全部','准备与数据','逐笔统计系统','报表采集系统','大集中统计系统','地金系统','通用'];
+const FAQ_CATEGORY_ORDER=['全部','准备与数据','逐笔统计系统','报表采集系统','大集中统计系统','通用'];
 function setFaqCategory(cat){
   FAQ_CATEGORY=cat;
   var body=document.getElementById('updatesBody');
@@ -2963,10 +2548,11 @@ function renderAdvanced(){
     +envSubgroup('deps','运行依赖',rowsEnvDeps)
     +'</div></div>';
   const rowsPicker=[
-    row('文件/目录选择方式','系统原生适合桌面外壳；Tk 依赖 python3-tk；浏览器内置支持粘贴路径。Flask 默认 Tk，桌面外壳默认系统原生。适用于全部功能的路径与文件选择弹窗。',
+    row('文件/目录选择方式','Linux Flask 可调用当前桌面提供的系统选择框；Tk 依赖 python3-tk，浏览器内置支持粘贴路径。桌面外壳使用系统原生选择框。适用于全部功能的路径与文件选择弹窗。',
       '<select class="gen-select" id="setFilePickerMode" onchange="setFilePickerMode(this.value)">'
       +'<option value="系统原生"'+(s.filePickerMode==='系统原生'?' selected':'')+(s.filePickerSystemNativeAvailable===false?' disabled title="Flask 浏览器外壳不提供系统原生对话框"':'')+'>系统原生（推荐桌面版）</option>'
-      +'<option value="Tk 对话框"'+(s.filePickerMode==='Tk 对话框'?' selected':'')+(s.filePickerTkAvailable===false?' disabled title="当前 Python 未安装 Tcl/Tk，请使用浏览器内置方式"':'')+'>Tk 对话框（推荐 Flask）</option>'
+      +'<option value="Linux 桌面原生（Portal）"'+(s.filePickerMode==='Linux 桌面原生（Portal）'?' selected':'')+(s.filePickerLinuxPortalAvailable===false?' disabled title="当前登录桌面未提供 XDG 文件选择服务"':'')+'>Linux 桌面原生（推荐 Linux Flask）</option>'
+      +'<option value="Tk 对话框"'+(s.filePickerMode==='Tk 对话框'?' selected':'')+(s.filePickerTkAvailable===false?' disabled title="当前 Python 未安装 Tcl/Tk，请使用浏览器内置方式"':'')+'>Tk 对话框（兼容）</option>'
       +'<option value="浏览器内置"'+(s.filePickerMode==='浏览器内置'?' selected':'')+'>浏览器内置（可粘贴路径）</option>'
       +'</select>'),
   ].join('');
@@ -3821,7 +3407,7 @@ let distributionUnlockClicks=[];
 function openAbout(){distributionUnlockClicks=[];document.getElementById('aboutMask').style.display='flex'}
 function closeAbout(){document.getElementById('aboutMask').style.display='none'}
 function registerDistributionUnlockClick(){
-  if(document.getElementById('aboutMask').style.display!=='flex'||['S1','S2','S3','S4','S5'].every(isSystemVisible))return;
+  if(document.getElementById('aboutMask').style.display!=='flex'||DEVELOPER_SYSTEMS.every(isSystemVisible))return;
   const now=Date.now();
   distributionUnlockClicks=distributionUnlockClicks.filter(t=>now-t<2000);
   distributionUnlockClicks.push(now);
@@ -3884,7 +3470,6 @@ let pendingConfirm=null;
 function openAuditEgg(){registerAuditEggClick();}
 function openCollectWorkbench(){requestSystemNavigation('S2','collect')}
 function openCentralWorkbench(){requestSystemNavigation('S3','central')}
-function openDijinWorkbench(){requestSystemNavigation('S4','dijin')}
 const CENTRAL_PATHS=[["centralCommonConfig","centralCommonConfigName"],["centralComparisonConfig","centralComparisonConfigName"],["centralCrossConfig","centralCrossConfigName"],["centralFormsConfig","centralFormsConfigName"],["centralCur","centralCurName"],["centralPre","centralPreName"],["centralOutput","centralOutputName"],["centralCrossCur","centralCrossCurName"],["centralCrossOutput","centralCrossOutputName"],["centralCompareFile","centralCompareFileName"],["centralExplainFile","centralExplainFileName"],["centralFormOutput","centralFormOutputName"]];
 function renderCentral(s){
   CENTRAL_PATHS.forEach(([key,id])=>{
@@ -4819,7 +4404,6 @@ async function refresh(){
   showRunDetailLogs=!!s.showRunDetailLogs;
   showPerformanceDiagnostics=!!s.showPerformanceDiagnostics;
   renderCentral(s);
-  renderS5(s);
   const rm=document.getElementById('centralRenderMode');
   if(rm)rm.textContent='当前生成方式：'+(String(s.xlsxRenderMode||'FAST_OOXML')==='FAST_OOXML'?'直接填充模板（Python 标准库）':'通过工作簿生成（openpyxl）');
   fields.forEach(x=>{
@@ -4875,7 +4459,7 @@ async function refresh(){
     pinEl.disabled=!!s.busy;
   }
   renderLog();
-  applyProgress(s5ProgressState(s));
+  applyProgress(s);
   renderFiles(s);
   renderExplanation(s);
   renderCollect(s);
@@ -5077,16 +4661,5 @@ document.getElementById('explanationList').addEventListener('click',e=>{
 setInterval(()=>{if(window.bridge)refresh()},800);
 setInterval(()=>{if(window.bridge&&libreOfficeInstallVisible())refreshLibreOfficeInstall()},1500);
 </script>
-<div id="s5-config-check-overlay" class="s5-check-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="s5-config-check-title">
-  <section class="s5-check-dialog">
-    <header class="s5-check-head"><h3 id="s5-config-check-title">S5 检查配置</h3><span id="s5-config-check-title-status">正在准备配置检查</span></header>
-    <div class="s5-check-body">
-      <p class="s5-check-status" id="s5-config-check-progress-message">准备读取审核配置</p>
-      <div class="s5-check-progress"><div class="s5-check-track"><div class="s5-check-fill" id="s5-config-check-fill"></div></div><span class="s5-check-percent" id="s5-config-check-percent">0%</span></div>
-      <pre class="s5-check-detail" id="s5-config-check-detail">检查结果会显示在这里。</pre>
-    </div>
-    <footer class="s5-check-foot"><button class="btn" id="s5-config-check-open-report" hidden>打开检查报告</button><button class="btn primary" id="s5-config-check-close" onclick="closeS5ConfigCheck()" disabled>关闭</button></footer>
-  </section>
-</div>
 </body>
 </html>

@@ -45,7 +45,8 @@ LEGACY_UI_THEME_MAP = {"浅色": "日间", "深色": "夜间", "纯黑": "夜间
 # 两套色板，模式切换时同名自动换浓淡。纯显示偏好。
 UI_ACCENTS = ("默认蓝", "青", "绿", "紫", "金", "橙", "玫", "靛")
 DEFAULT_UI_ACCENT = "默认蓝"
-FILE_PICKER_MODES = ("系统原生", "Tk 对话框", "浏览器内置")
+LINUX_PORTAL_FILE_PICKER_MODE = "Linux 桌面原生（Portal）"
+FILE_PICKER_MODES = ("系统原生", LINUX_PORTAL_FILE_PICKER_MODE, "Tk 对话框", "浏览器内置")
 # 条件格式检测模式：NATIVE=Excel/WPS COM 真实渲染（Windows 默认，保持既有
 # 稳定行为）；OOXML=纯规则求值。UOS 固定 OOXML，与该设置无关。
 # 条件格式判定方式（三选一，决定“规则是否触发”）：PYTHON=OOXML 规则求值；

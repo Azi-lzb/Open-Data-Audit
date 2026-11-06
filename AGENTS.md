@@ -5,7 +5,7 @@
 
 ## 项目与架构
 
-- V3 服务 Windows 与 UOS/Linux，包含 S1 逐笔统计、S2 报表采集、S3 大集中统计、S5 逐笔统计配置版；S4 仅保留预览 UI，暂不纳入实现与 Rust 迁移。
+- V3 服务 Windows 与 UOS/Linux，当前仅保留 S1 逐笔统计、S2 报表采集、S3 大集中统计。S4 地金预览和 S5 逐笔统计配置版已退出当前产品；历史记录及本机真实配置保留，交付包不再包含其代码、界面或专属配置。
 - 只有一套业务核心：`core/`。`shell-flask/`、`shell-pywebview/` 是共用 core 的外壳；平台差异仅放在适配层和启动层。
 - 技术选型：性能敏感的解析、计算和批量读写优先评估 Rust；按操作能力在 Rust、Calamine、Direct OOXML、openpyxl 与 Office 间路由，正确性及端到端实测性能决定默认后端。已有 Calamine 读取和 Direct OOXML 快速路径不为 Rust 化而强行替换，优先评估仍由 openpyxl 承担且已证明是瓶颈的操作。Calamine 用于读取，rust_xlsxwriter 用于新建工作簿，umya 可评估已有工作簿编辑；不能互相冒充。公式复制/保存与重算分别处理；未完成专项兼容验收的真实工作簿重算仍使用 Office。openpyxl/Direct OOXML 不计算公式。详见 `rules/12_Rust优化与引擎路由.md`。
 - 配置检查只读；启用规则必须成功进入执行链或明确失败；迁移默认保留 VBA/现有配置业务语义，数量差异必须可解释；原始业务文件不得覆盖。

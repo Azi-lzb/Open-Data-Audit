@@ -19,21 +19,14 @@ Linux 用户也可在目标机运行 `bash run_full_test_linux.sh`；应分别�
 
 Linux 桌面真机可双击仓库根目录 `运行Linux全量测试.sh`：脚本会尝试在桌面终端显示结果、自动选择当前架构最新的本地发行包；只有检测到 `dpkg-deb` 时才自动选择 DEB，否则只查找 TAR.GZ。有 Python 3.8+ 与 pytest/项目依赖时运行 core 全量测试，否则直接用发行包自带 Python 运行启动冒烟并在报告中标明 core 未执行。脚本不联网、不安装依赖。将脚本拷到目标机时，需同时带上 `run_full_test_linux.sh`、`shell-flask/Linux-1-启动审核工具.sh`、`shell-flask/Linux-3-测试发行包启动.sh` 和同架构发行包；完整源码 pytest 还需 `core/` 与兼容的 Python 测试环境。该包测试面向 UOS、麒麟、Ubuntu、Debian 等兼容的 glibc Linux；DEB 需 Debian 系包管理工具，其他系统使用 TAR.GZ。架构、glibc 和系统共享库必须兼容，不能据此承诺所有 Linux 发行版（如 Alpine/musl）。
 
-分组由 `core/tests/conftest.py` 给现有测试模块自动标记，标记定义在 `core/pytest.ini`。设置、Web API、路径、配置指引、应用身份和版本清单等公共测试同时进入三组；因此三组测试数之和大于全量测试数。新增测试模块必须在 `conftest.py` 归类，否则收集时明确报错。不要把某一组通过写成“全部功能通过”。
+S4/S5 已退出当前版本，专属测试已移除。共享启动与交付回归验证只提供 S1/S2/S3，界面解锁不恢复退役系统，旧 S5 设置文件保留原样，完整包和 S1/S2 包均不收集 S5 源码或专属配置。
+
+分组由 `core/tests/conftest.py` 给现有测试模块自动标记，标记定义在 `core/pytest.ini`。设置、Web API、Linux 桌面文件选择器、路径、配置指引、应用身份和版本清单等公共测试同时进入三组；因此三组测试数之和大于全量测试数。新增测试模块必须在 `conftest.py` 归类，否则收集时明确报错。不要把某一组通过写成“全部功能通过”。
 
 `test_distribution_profile.py` 同时进入三组：执行共用前端的完整版/S1-S2 版显示逻辑，
 覆盖常规配置、操作指引、问答、按系统标签过滤更新日志（五连击解锁不扩大包的日志范围）、
 Windows 双语 PE 产品属性、关于五连击密码显示入口及脚本语法；
 后端用例检查错误密码、本次运行状态与设置文件不变。前端需要 Node.js，缺失时明确跳过。
-
-## S5：逐笔统计系统（配置版）
-
-运行 `python -m pytest -q -rs -m s5 core/tests`。`core/tests/s5/` 包含迁入的合成读取、
-表达式、OOXML、条件格式测试及宿主适配测试，覆盖显式模板、只读输入、V_PRE 缺失与配对、
-配置坐标错误、取消、互斥和独立状态；`test_s5_integration.py` 另验证 S5-F02/F03/F04 隐藏维护工具
-默认不可见、五次点击 S5 导航后显示、再次五击隐藏并返回 F1。真实 Office 对拍在无引擎环境明确跳过；
-Flask 浏览器路由另做隔离冒烟。来源独立 CLI/HTTP 层不迁入，不将这些壳层用例计为原样通过。
-共用测试同时进入 S5。
 
 ## 现成配置的选择顺序
 
@@ -184,21 +177,6 @@ Flask 浏览器路由另做隔离冒烟。来源独立 CLI/HTTP 层不迁入，�
 | 按机构回填及内嵌模板使用 | `test_central_forms.py::RenderFormsTests::test_renders_one_file_per_org_with_values_and_colors`、`::test_embedded_config_is_used_as_template_and_not_emitted` |
 | FAST_OOXML 与 openpyxl 的表单、数值、格式、颜色、隐藏行一致 | `test_central_renderers.py::DualModeParityTests::test_sheet_names_and_order_match`、`::test_cell_values_match`、`::test_number_formats_match`、`::test_warning_fills_match`、`::test_hidden_rows_match` |
 | 3.3 配置检查及内嵌表单引用 | `test_s3_forms_config_check.py::test_formal_config_passes_and_is_not_modified`、`::test_missing_referenced_embedded_form_sheet_is_reported` |
-
-### S5-F01 汇总核查表校验
-
-- `s5/test_s5_recognition.py`：模板、业务与报告期识别；日期冲突/缺失、模板/业务歧义明确提示；源工作表全部包含于模板时视为匹配，模板多出的表不降级，源工作簿多出的表单独标注；源目录输出跟随与固定。
-- `s5/test_s5_integration.py::test_complete_f1_explicit_template_source_without_names_final_cf_and_read_only`：源表无命名区域时使用显式模板；批次与单机构结果保留条件格式；输入哈希不变。
-- `::test_vpre_without_previous_is_visible_and_matching_previous_is_retained`：缺上期明确报告取数失败，提供上期后按机构配对。
-- `::test_external_code_mapping_runs_complete_f1_with_both_layouts_and_readers`：普通/时序外部布局按本期报告期取数，并验证 Calamine 与强制 openpyxl 回退。
-- `s5/test_s5_configured_engine.py::test_external_numeric_blank_or_text_is_zero_with_a_quality_warning`、`s5/test_s5_integration.py::test_external_layout_anomalies_warn_and_continue_for_both_layouts`：即使外部配置含固定数据源契约，也按普通/时序布局读取；匹配值空白/非数值按0，有值但行名称为空时提示并忽略；只有整行全空的内部行提示，时序元数据本身不触发行名称异常；批次与单机构结果写入“数据质量提示”，任务结束展示提示数量，时序日期仍按本期精确匹配。
-- `s5/test_s5_integration.py::test_s5_maintenance_tools_are_hidden_by_default_and_toggle_with_five_nav_clicks`：S5 主面板 F1-F4 按钮位于同一卡片；F2-F4 默认隐藏并由左侧 S5 导航五击切换，空闲说明卡片不显示。
-- `::test_time_series_missing_current_date_only_fails_affected_rule_and_continues_batch`：某机构缺少本期有效日期时，对应规则明确失败，批次继续审核其他机构。
-- `::test_s5_maintenance_uses_the_current_panel_paths`、`::test_s5_vext_reference_export_supports_both_external_layouts`：三个维护工具沿用 S5 面板模板/外部文件路径，V_EXT 参考同时支持普通与时序外部布局。
-- `::test_configuration_error_reports_physical_sheet_cell_and_rule`、`::test_no_enabled_rules_is_not_reported_as_pass`：配置物理坐标与无启用规则诊断。
-- `::test_cancellation_stops_before_next_institution_and_never_returns_success`：实际停止后续机构，不把取消报告为成功。
-
-- `::test_s5_start_freezes_parameters_before_thread`、`::test_s5_state_does_not_write_s1_fields_and_mutual_exclusion`：参数快照、状态隔离与执行互斥。
 
 ## 后续执行口径
 

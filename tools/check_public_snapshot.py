@@ -43,11 +43,23 @@ def workbook_privacy_errors(book, *, external_reference: bool = False) -> list[s
 
 
 def main() -> int:
-    raw = subprocess.check_output(["git", "diff", "--cached", "--name-only", "-z"], cwd=ROOT)
-    paths = [Path(p.decode("utf-8")) for p in raw.split(b"\0") if p]
-    if not paths:
+    all_raw = subprocess.check_output(
+        ["git", "diff", "--cached", "--name-only", "-z"], cwd=ROOT
+    )
+    all_paths = [Path(p.decode("utf-8")) for p in all_raw.split(b"\0") if p]
+    if not all_paths:
         print("没有暂存文件。")
         return 1
+    # Deleted workbooks have no index blob to inspect. They cannot introduce
+    # private data, so scan only staged paths that still have content.
+    raw = subprocess.check_output(
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMRTUXB", "-z"],
+        cwd=ROOT,
+    )
+    paths = [Path(p.decode("utf-8")) for p in raw.split(b"\0") if p]
+    if not paths:
+        print(f"公开文件检查通过：暂存区 {len(all_paths)} 个文件均为删除，无文件内容需要检查。")
+        return 0
     errors: list[str] = []
     books = 0
     # 清单与工作簿都检查暂存版本，避免工作区改名扩大豁免范围。
@@ -82,7 +94,10 @@ def main() -> int:
     if errors:
         print("\n".join(errors))
         return 1
-    print(f"公开文件检查通过：{len(paths)} 个暂存文件，{books} 个空表头工作簿。")
+    print(
+        f"公开文件检查通过：暂存区 {len(all_paths)} 个文件（检查 {len(paths)} 个新增/修改文件），"
+        f"{books} 个空表头工作簿。"
+    )
     return 0
 
 

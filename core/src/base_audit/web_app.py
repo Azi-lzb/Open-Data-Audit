@@ -238,14 +238,18 @@ def serialize_execution_start(method):
     return guarded
 
 
-from .systems.s5_configured_statistics.web_api import S5WebApiMixin
-
-
-class WebApi(S5WebApiMixin):
-    def __init__(self, project_root: Path, *, file_picker_default: str = "系统原生") -> None:
+class WebApi:
+    def __init__(
+        self,
+        project_root: Path,
+        *,
+        file_picker_default: str = "系统原生",
+        file_picker_linux_portal_available: bool = False,
+    ) -> None:
         self.project_root = project_root
         self._execution_start_lock = threading.RLock()
         self._file_picker_default = file_picker_default if file_picker_default in FILE_PICKER_MODES else "系统原生"
+        self._file_picker_linux_portal_available = bool(file_picker_linux_portal_available)
         # The S1 engine reads optional, explicitly supplied KARE settings from
         # this per-user data directory. The Linux installer targets host APT.
         os.environ.setdefault("BASE_AUDIT_DATA_DIR", str(project_root / "data"))
@@ -367,12 +371,19 @@ class WebApi(S5WebApiMixin):
             "showPerformanceDiagnostics": self.settings.show_performance_diagnostics,
             # 旧前端/旧外壳兼容别名：只表示是否导出运行日志 Excel。
             "writeFlowLogs": self.settings.export_run_logs,
-            "filePickerMode": self.settings.file_picker_mode,
+            "filePickerMode": (
+                self.settings.file_picker_mode
+                if self.settings.file_picker_mode != "Linux 桌面原生（Portal）"
+                or self._file_picker_linux_portal_available
+                else self._file_picker_default
+            ),
             # 本机环境摘要（系统/引擎/COM 接管/外壳依赖）：高级设置展示、报障定位。
             "systemEnvironment": self._system_environment_text,
             "systemEnvironmentInfo": self._system_environment_info,
             # 桌面外壳提供系统原生对话框；Flask 可覆盖为 false。
             "filePickerSystemNativeAvailable": True,
+            # Linux Flask 可通过当前桌面会话的 XDG Portal 打开系统文件选择器。
+            "filePickerLinuxPortalAvailable": self._file_picker_linux_portal_available,
             "libreOfficeInstallAvailable": sys.platform.startswith("linux"),
             "xlsxRenderMode": self.settings.xlsx_render_mode,
             # V3 已转正：规则引擎不再暴露选择，历史存档值一律按 v3 执行。
@@ -517,7 +528,6 @@ class WebApi(S5WebApiMixin):
         "configIssues": {},
         }
         self._cancel_event = threading.Event()
-        self._init_s5()
         # state 建好后才能启动后台环境探测：线程回调会写入 self.state。
         self._start_environment_probe()
         initialize_history_workbook(self.history_path)
@@ -1434,14 +1444,6 @@ class WebApi(S5WebApiMixin):
     def _execution_busy(self) -> bool:
         """已有任务或维护操作运行时，不启动会并行访问工作簿的新任务。"""
         if self.state["busy"]:
-            return True
-        s5_check_task = (self.state.get("s5") or {}).get("configurationCheckTask") or {}
-        if s5_check_task.get("task_state") in {"queued", "running"}:
-            self.state["status"] = "S5 配置检查正在运行，请完成后再启动其他工作簿任务。"
-            return True
-        s5_tool_task = (self.state.get("s5") or {}).get("maintenanceTask") or {}
-        if s5_tool_task.get("task_state") == "running":
-            self.state["status"] = "S5 配置维护工具正在运行，请完成后再执行其他任务。"
             return True
         phase_getter = getattr(self._libreoffice_installer, "operation_phase", None)
         phase = phase_getter() if callable(phase_getter) else self._libreoffice_installer.snapshot().get("phase")
@@ -3048,6 +3050,11 @@ class WebApi(S5WebApiMixin):
             candidate = str(values["filePickerMode"]).strip()
             if candidate not in FILE_PICKER_MODES:
                 self._log("文件/目录选择方式只能选择：" + "、".join(FILE_PICKER_MODES))
+            elif (
+                candidate == "Linux 桌面原生（Portal）"
+                and not self.state.get("filePickerLinuxPortalAvailable")
+            ):
+                self._log("当前运行环境没有可用的 Linux 桌面文件选择服务。")
             else:
                 self.state["filePickerMode"] = candidate
                 self._save_settings()

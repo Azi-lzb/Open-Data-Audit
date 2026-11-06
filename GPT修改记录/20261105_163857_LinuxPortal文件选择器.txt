@@ -1,0 +1,24 @@
+────────────────── 2026-11-05 16:38（Linux Flask 桌面原生文件选择器与 AMD64 DEB）──────────────────
+【通用路径选择能力】
+· Linux Flask 检测当前桌面会话的 XDG FileChooser Portal；Portal 可用时默认走桌面原生文件/目录选择窗口，设置中心保留可切换方式。未安装 Qt/GTK 运行库；通过 D-Bus 调用桌面已有 Portal。Portal 调用失败回退 Tk，对话框不可用时提示使用浏览器文件选择。
+· 增加目录/多文件选择、过滤器、URI 转本地路径与超时处理；添加 dbus-next 作为 Linux 条件依赖，并在冻结包收集模块。
+· 不修改 S1/S2/S3 业务审核逻辑；S1/S2/S3 组件版本与配置版本不变。产品版本 V26.2.0.0 → V26.2.1.0。
+【验证与打包】
+· 定向回归：105 passed / 0 failed，3 个子测试通过；Python 编译、前端脚本语法及 diff whitespace 检查通过（仅有既存 CRLF 转换提示）。
+· Fake Portal D-Bus 集成：目录选择、文件过滤和 Response 信号通过；DEB 内冻结程序端到端验证 Portal 可用状态和含中文路径的文件选择结果通过。
+· Debian 10 AMD64 DEB 元数据正确；启动冒烟 HTTP 200、静态资源正常、停止后端口释放。ELF 最低 GLIBC 2.25，未引入 GLIBCXX 依赖，符合 GLIBC 2.28 目标。
+· 包内 28 个活动 XLSX 配置与 config-real 逐项 SHA-256 相同；无缺失、多余或哈希差异；排除已退役 S5 专属配置。只复制 DEB 到 dist，不复制校验和及 build-info 旁文件。
+· 未在真实 UOS/Kylin/UKUI 桌面做 GUI 外观验收；当前验证使用 Fake Portal 和 WSL Linux。
+【文件范围】
+· 增改：core/src/base_audit/native/linux_file_picker.py、core/src/base_audit/settings.py、core/src/base_audit/web_app.py、core/src/base_audit/config_guide.py、core/frontend/web/index.html、core/tests/test_linux_file_picker.py、core/tests/test_web_app.py、core/tests/conftest.py、core/tests/TEST_GROUPS.md、shell-flask/app.py、shell-flask/requirements.txt、shell-flask/Linux-2-打包DEB与TARGZ.sh、shell-flask/文件说明.txt、版本管理/VERSION_MANIFEST.json、版本管理/产品发布/CHANGELOG.md、日志/开发日志.txt、日志/更新日志.txt。
+· 工作区原有 S4/S5 退役等未提交 WIP；本轮按最小文件范围保留，未清理、未覆盖、未提交。
+【组件版本】
+系统：通用路径选择能力
+影响功能：新增 Linux Flask 桌面 Portal 文件/文件夹选择方式；S1/S2/S3 功能组件均未变
+影响配置：S1/S2/S3 配置组件均未变
+未修改的相关组件：S1-*, S2-*, S3-* 组件版本不变
+产品版本：V26.2.0.0 → V26.2.1.0
+版本升级原因：MINOR，新增可选的桌面原生选择能力。
+【Git 与回滚】
+修改前后 commit：e09bf2d74bafe8e35824c1ebc8a2186bfa91c091（未提交）。
+回滚本项改动时，应只撤销上面列出的 Portal 相关修改；不要覆盖工作区既有 S4/S5 退役 WIP。

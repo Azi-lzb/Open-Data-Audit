@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-DEVELOPER_SYSTEMS = ("S1", "S2", "S3", "S4", "S5")
+DEVELOPER_SYSTEMS = ("S1", "S2", "S3")
 DISTRIBUTION_PASSWORD = "HZPBC790"
 
 

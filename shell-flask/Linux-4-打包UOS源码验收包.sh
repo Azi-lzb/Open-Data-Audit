@@ -80,6 +80,9 @@ chmod 755 "$PKG/Linux-1-启动审核工具.sh" "$PKG/Linux-4-打包UOS源码验�
 # ---- 共享核心：后端 + 前端 + 使用说明 ----
 mkdir -p "$PKG/core"
 cp -r "$CORE/src" "$PKG/core/src"
+# Keep retired S5 engines out of the source release copy, including older trees.
+rm -rf -- "$PKG/core/src/s1audit_configured" \
+    "$PKG/core/src/base_audit/systems/s5_configured_statistics"
 cp -r "$CORE/frontend" "$PKG/core/frontend"
 mkdir -p "$PKG/版本管理"
 cp "$ROOT/版本管理/VERSION_MANIFEST.json" "$PKG/版本管理/VERSION_MANIFEST.json"
@@ -98,6 +101,8 @@ else
     cp "$CONFIG_SOURCE/"*.xlsx "$PKG/config/"
     echo "[配置] 已复制公开空表头工作簿。"
 fi
+# S5 settings and templates can remain in local config-real; omit them from every release copy.
+find "$PKG/config" -depth \( -name 'S5_*' -o -name '5.逐笔统计系统_*' \) -exec rm -rf -- {} +
 printf '%s\n' "$CONFIG_PROFILE" > "$PKG/config-profile.txt"
 
 find "$PKG" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true

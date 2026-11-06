@@ -22,12 +22,10 @@ EXPECTED_FEATURES = {
     "S1-F01", "S1-F02", "S1-F03", "S1-F04", "S1-F05",
     "S2-F01",
     "S3-F01", "S3-F02", "S3-F03", "S3-F04", "S3-F05",
-    "S5-F01", "S5-F02", "S5-F03", "S5-F04",
 }
 EXPECTED_CONFIGS = {
     "S1-CFG-01", "S2-CFG-01", "S2-CFG-02",
     "S3-CFG-00", "S3-CFG-01", "S3-CFG-02", "S3-CFG-03",
-    "S5-CFG-01",
 }
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 PRODUCT_VERSION_RE = re.compile(r"^\d{2}\.\d+\.\d+\.\d+$")
@@ -50,10 +48,10 @@ def test_manifest_is_valid_json_with_core_sections(manifest: dict) -> None:
     assert (ROOT / product["changelog"]).is_file()
     release_log = (ROOT / product["changelog"]).read_text(encoding="utf-8")
     assert any(line.startswith(f"## V{product['version']} —") for line in release_log.splitlines())
-    assert set(manifest["systems"]) == {"S1", "S2", "S3", "S5"}
+    assert set(manifest["systems"]) == {"S1", "S2", "S3"}
 
 
-def test_all_15_features_and_8_configs_registered(manifest: dict) -> None:
+def test_all_11_features_and_7_configs_registered(manifest: dict) -> None:
     assert set(manifest["features"]) == EXPECTED_FEATURES
     assert set(manifest["configs"]) == EXPECTED_CONFIGS
 
@@ -101,17 +99,9 @@ EXPECTED_VERSIONS = {
     # S1-F02 v1.2.2：模板多出的表不显示部分匹配；源表区分兜底可用性；v1.3.0 增加 Calamine/Rust 读写路由；v1.3.1 修正模板外隐藏工作表提示。
     "S1-F01": "2.6.3", "S1-F02": "1.3.1", "S1-F03": "1.1.0",
     "S1-F04": "1.1.0", "S1-F05": "1.0.1",
-    # S5-F01 v2.2.x unified external-layout reads, row diagnostics, and the F1-F4 card.
-    # v2.3.0-v2.7.1 add configured-path, configuration-check, and matching improvements;
-    # v3.0.0 changes F1 output to one consolidated workbook and removes the ledger/copy protocol;
-    # v3.0.1 caches immutable audit-expression ASTs and dictionary/path validation indexes.
-    "S5-F01": "3.0.1",
-    # S5-F02/F03/F04 are separately registered hidden configuration tools.
-    "S5-F02": "1.0.0", "S5-F03": "1.0.0", "S5-F04": "1.0.0",
     "S2-F01": "10.8.1", "S3-F01": "1.6.0", "S3-F02": "1.1.0",
     "S3-F03": "1.1.0", "S3-F04": "1.3.0", "S3-F05": "2.0.0",
     "S1-CFG-01": "2.0.0", "S2-CFG-01": "8.4.0", "S2-CFG-02": "1.0.0",
-    "S5-CFG-01": "2.0.0",
     "S3-CFG-00": "2.0.2", "S3-CFG-01": "3.0.3",
     "S3-CFG-02": "1.0.3", "S3-CFG-03": "2.0.0",
 }
@@ -119,7 +109,7 @@ EXPECTED_VERSIONS = {
 
 def test_component_ids_are_unique_and_versions_wellformed(manifest: dict) -> None:
     ids = [*manifest["features"], *manifest["configs"]]
-    assert len(ids) == len(set(ids)) == 23
+    assert len(ids) == len(set(ids)) == 18
     for cid, component in [*manifest["features"].items(), *manifest["configs"].items()]:
         assert VERSION_RE.match(component["version"]), component
         assert component["version"] == EXPECTED_VERSIONS.get(cid, "1.0.0"), cid
@@ -137,7 +127,6 @@ EXPECTED_CONFIG_VERSIONS = {
     "S1-CFG-01": "2.0.0",
     "S2-CFG-01": "8.4.0",
     "S2-CFG-02": "1.0.0",
-    "S5-CFG-01": "2.0.0",
     "S3-CFG-00": "2.0.2",
     # v3.0.0：3.1 表达式规则输入列从“触发方式”升级为“是否取反（是/否）”。
     "S3-CFG-01": "3.0.3",

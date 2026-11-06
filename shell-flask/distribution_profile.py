@@ -8,6 +8,7 @@ import html
 import json
 from pathlib import Path
 import re
+import shutil
 import sys
 from typing import Any
 
@@ -44,8 +45,8 @@ def load_config(path: Path) -> dict[str, Any]:
     system_ids = [item.get("id") for item in systems]
     if any(not isinstance(value, str) for value in system_ids) or len(set(system_ids)) != len(system_ids):
         raise ValueError("systems 必须是 id 不重复的对象数组。")
-    if any(not isinstance(value, str) or not re.fullmatch(r"S[1-5]", value) for value in system_ids):
-        raise ValueError("系统编号只支持 S1、S2、S3、S4、S5。")
+    if any(not isinstance(value, str) or not re.fullmatch(r"S[1-3]", value) for value in system_ids):
+        raise ValueError("系统编号只支持 S1、S2、S3。")
     pages = [item.get("page") for item in systems]
     if any(not isinstance(value, str) or not re.fullmatch(r"[a-z][a-z0-9-]*", value) for value in pages):
         raise ValueError("每个系统都必须填写有效的前端 page 标识。")
@@ -126,13 +127,18 @@ def filter_release_config(directory: Path, config: dict[str, Any], profile_id: s
         raise ValueError(f"只能筛选发行副本的 config 目录：{directory}")
     if not root.is_dir():
         raise ValueError(f"发行配置目录不存在：{directory}")
-    excluded = [path for path in root.rglob("*") if path.is_file()
-                and any(fnmatchcase(part, pattern) for part in path.relative_to(root).parts for pattern in patterns)]
+    excluded = [path for path in root.rglob("*")
+                if any(fnmatchcase(part, pattern) for part in path.relative_to(root).parts for pattern in patterns)]
     for path in excluded:
         if root not in path.resolve().parents or path.is_symlink():
             raise ValueError(f"发行配置包含越界链接：{path}")
-    for path in excluded:
-        path.unlink()
+    for path in sorted(excluded, key=lambda item: len(item.parts), reverse=True):
+        if not path.exists():
+            continue
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
         print(f"[配置排除] {path.relative_to(root)}")
 
 

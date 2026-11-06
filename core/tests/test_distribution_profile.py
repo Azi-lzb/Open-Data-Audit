@@ -19,7 +19,7 @@ FRONTEND = ROOT / "core/frontend/web/index.html"
 
 @pytest.mark.parametrize("shell", ["shell-flask", "shell-pywebview"])
 @pytest.mark.parametrize("profile_id", ["full", "s1s2"])
-def test_external_reference_and_its_default_are_shipped_without_changing_source(tmp_path, monkeypatch, shell, profile_id):
+def test_release_config_keeps_s2_reference_and_excludes_s5_without_changing_source(tmp_path, monkeypatch, shell, profile_id):
     manifest = json.loads((ROOT / "版本管理/VERSION_MANIFEST.json").read_text(encoding="utf-8"))
     filename = Path(manifest["configs"]["S2-CFG-02"]["file"]).name
     private = tmp_path / "config-real"
@@ -31,8 +31,12 @@ def test_external_reference_and_its_default_are_shipped_without_changing_source(
     (private / "S5_模板文件/合成布局.xlsx").write_bytes(b"s5-layout")
     (private / "模板文件_命名区域").mkdir()
     (private / "模板文件_命名区域/共享命名区域模板.xlsx").write_bytes(b"shared-named-range-template")
+    (private / "模板文件_命名区域/S5_配置版专用模板.xlsx").write_bytes(b"s5-named-range-template")
     (private / "S5_审核配置.xlsx").write_bytes(b"s5-config")
     (private / "5.逐笔统计系统_审核配置.xlsx").write_bytes(b"renamed-s5-config")
+    (private / "默认配置/S5_审核配置.xlsx").write_bytes(b"s5-default-config")
+    (private / "备份").mkdir()
+    (private / "备份/5.逐笔统计系统_审核配置.xlsx").write_bytes(b"renamed-s5-backup")
     before = {p.relative_to(private): p.read_bytes() for p in private.rglob("*.xlsx")}
     monkeypatch.syspath_prepend(str(ROOT / "shell-flask"))
     spec = importlib.util.spec_from_file_location(f"external_pack_{shell.replace('-', '_')}", ROOT / shell / "build_exe.py")
@@ -50,11 +54,54 @@ def test_external_reference_and_its_default_are_shipped_without_changing_source(
     assert (release / "config" / filename).read_bytes() == before[Path(filename)]
     assert (release / "config/默认配置" / filename).read_bytes() == before[Path("默认配置") / filename]
     assert (release / "config/3.0-test.xlsx").exists() is (profile_id == "full")
-    assert (release / "config/S5_模板文件/合成布局.xlsx").exists() is (profile_id == "full")
-    assert (release / "config/S5_审核配置.xlsx").exists() is (profile_id == "full")
-    assert (release / "config/5.逐笔统计系统_审核配置.xlsx").exists() is (profile_id == "full")
+    assert not (release / "config/S5_模板文件").exists()
+    assert not (release / "config/S5_审核配置.xlsx").exists()
+    assert not (release / "config/5.逐笔统计系统_审核配置.xlsx").exists()
+    assert not (release / "config/默认配置/S5_审核配置.xlsx").exists()
+    assert not (release / "config/备份/5.逐笔统计系统_审核配置.xlsx").exists()
     assert (release / "config/模板文件_命名区域/共享命名区域模板.xlsx").exists()
+    assert not (release / "config/模板文件_命名区域/S5_配置版专用模板.xlsx").exists()
+    assert not any(
+        path.name.startswith("S5_") or path.name.startswith("5.逐笔统计系统_")
+        for path in (release / "config").rglob("*")
+    )
     assert {p.relative_to(private): p.read_bytes() for p in private.rglob("*.xlsx")} == before
+
+
+@pytest.mark.parametrize("shell", ["shell-flask", "shell-pywebview"])
+@pytest.mark.parametrize("profile_id", ["full", "s1s2"])
+def test_windows_release_core_copy_omits_s5_sources(tmp_path, monkeypatch, shell, profile_id):
+    monkeypatch.syspath_prepend(str(ROOT / "shell-flask"))
+    spec = importlib.util.spec_from_file_location(
+        f"release_core_{shell.replace('-', '_')}_{profile_id}", ROOT / shell / "build_exe.py"
+    )
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+
+    source = tmp_path / "source-core"
+    for relative in (
+        "src/s1audit_configured/batch.py",
+        "src/base_audit/systems/s1_transaction_statistics/service.py",
+        "src/base_audit/systems/s2_report_collection/service.py",
+        "src/base_audit/systems/s3_central_statistics/service.py",
+        "src/base_audit/systems/s5_configured_statistics/service.py",
+    ):
+        path = source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# packaging fixture\n", encoding="utf-8")
+    monkeypatch.setattr(builder, "CORE", source)
+    release = tmp_path / "release"
+    if shell == "shell-flask":
+        monkeypatch.setattr(builder, "DIST", release)
+        builder.assemble_core()
+    else:
+        builder.assemble_core(release)
+
+    packaged_src = release / "core/src"
+    for system in ("s1_transaction_statistics", "s2_report_collection", "s3_central_statistics"):
+        assert (packaged_src / f"base_audit/systems/{system}/service.py").is_file()
+    assert not (packaged_src / "s1audit_configured").exists()
+    assert not (packaged_src / "base_audit/systems/s5_configured_statistics").exists()
 
 
 @pytest.mark.parametrize("shell", ["shell-flask", "shell-pywebview"])
@@ -88,10 +135,43 @@ def test_linux_desktop_application_uses_audittools_english_name():
     assert "Maintainer: HZPBC" in script
 
 
+def test_distribution_profiles_only_ship_s1_through_s3():
+    from distribution_profile import DEFAULT_CONFIG, load_config
+
+    config = load_config(DEFAULT_CONFIG)
+    assert [system["id"] for system in config["systems"]] == ["S1", "S2", "S3"]
+    assert config["profiles"]["full"]["enabledSystems"] == ["S1", "S2", "S3"]
+    assert config["profiles"]["s1s2"]["enabledSystems"] == ["S1", "S2"]
+
+
+@pytest.mark.parametrize("shell", ["shell-flask", "shell-pywebview"])
+def test_windows_freeze_configuration_excludes_s5_engines(shell, monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / "shell-flask"))
+    spec = importlib.util.spec_from_file_location(
+        f"freeze_excludes_{shell.replace('-', '_')}", ROOT / shell / "build_exe.py"
+    )
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    assert "s1audit_configured.batch" not in builder.COMMON_HIDDEN
+    assert "s1audit_configured" in builder.COMMON_EXCLUDES
+    assert "base_audit.systems.s5_configured_statistics" in builder.COMMON_EXCLUDES
+
+
 def test_linux_packager_includes_shared_named_range_templates_in_s1s2_and_full_profiles():
     script = (ROOT / "shell-flask/Linux-2-打包DEB与TARGZ.sh").read_text(encoding="utf-8")
     assert 'if [ "$CONFIG_PROFILE" = internal-config ] && [ -d "$CONFIG_SOURCE/模板文件_命名区域" ]; then' in script
     assert 'cp -R "$CONFIG_SOURCE/模板文件_命名区域" "$PAYLOAD/config/"' in script
+    assert "--collect-submodules s1audit_configured" not in script
+    assert "--exclude-module s1audit_configured" in script
+    assert "--exclude-module base_audit.systems.s5_configured_statistics" in script
+    assert '"$CONFIG_SOURCE/S5_模板文件"' not in script
+
+
+def test_linux_source_acceptance_package_excludes_s5_sources_and_configs():
+    script = (ROOT / "shell-flask/Linux-4-打包UOS源码验收包.sh").read_text(encoding="utf-8")
+    assert '"$PKG/core/src/s1audit_configured"' in script
+    assert '"$PKG/core/src/base_audit/systems/s5_configured_statistics"' in script
+    assert "-name 'S5_*' -o -name '5.逐笔统计系统_*'" in script
 
 
 def test_linux_public_payload_keeps_external_headers_and_removes_private_rows(tmp_path):
@@ -184,7 +264,7 @@ def test_windows_build_finalizes_with_same_profile_as_linux(
         windows_page.read_text(encoding="utf-8"), re.S,
     ).group(1))
     assert payload["enabledSystems"] == (
-        ["S1", "S2"] if profile_id == "s1s2" else ["S1", "S2", "S3", "S4", "S5"]
+        ["S1", "S2"] if profile_id == "s1s2" else ["S1", "S2", "S3"]
     )
 
 
@@ -216,6 +296,7 @@ const assert=require('node:assert/strict');
 let reduced=false;
 const pane={innerHTML:''};
 const state={};
+const DEVELOPER_SYSTEMS=['S1','S2','S3'];
 const document={body:{classList:{contains:()=>reduced}},getElementById:()=>pane};
 const esc=value=>String(value);
 const configDefaultStatus=()=>'';
@@ -224,14 +305,21 @@ const syncGeneralControls=()=>{};
 const auditExtrasUnlocked=()=>true;
 """ + functions + flows + "\nconst faq=" + json.dumps(faq, ensure_ascii=False) + r""";
 const entries=[{date:'2026-10-15',groups:[{label:'优化',items:['S1 逐笔审核','S3 大集中统计系统','S4 地金系统','报表采集外部核对']}]}];
-assert.equal(editionFaqItems(faq),faq);
-assert.equal(editionUpdateEntries(entries),entries);
+const fullFaq=editionFaqItems(faq);
+assert.ok(fullFaq.length>0&&fullFaq.length<=faq.length);
+assert.ok(fullFaq.every(item=>!includesUndeliveredSystemInfo([item.category,item.question,item.answer].join(' '))));
+assert.deepEqual(editionFaqItems([
+  {category:'地金系统',question:'S4 历史问题',answer:'旧 S4 内容'},
+  {category:'逐笔统计系统（配置版）',question:'S5 历史问题',answer:'旧 S5 内容'}
+]),[]);
+assert.deepEqual(editionUpdateEntries(entries)[0].groups[0].items,
+  ['S1 逐笔审核','S3 大集中统计系统','报表采集外部核对']);
 renderGeneral();
 assert.match(pane.innerHTML,/大集中通用配置/);
 renderGuide();
 assert.match(pane.innerHTML,/本期数值核对/);
 const guideCodes=()=>[...pane.innerHTML.matchAll(/class="guide-flow-num">(S\dF\d+)/g)].map(match=>match[1]);
-assert.deepEqual(guideCodes(),['S1F1','S1F2','S2F1','S3F1','S3F2','S3F3','S3F4','S3F5','S1F3','S1F4','S1F5','S5F1']);
+assert.deepEqual(guideCodes(),['S1F1','S1F2','S2F1','S3F1','S3F2','S3F3','S3F4','S3F5','S1F3','S1F4','S1F5']);
 reduced=true;
 const visibleFaq=editionFaqItems(faq);
 assert.ok(visibleFaq.length>0&&visibleFaq.length<faq.length);
@@ -246,12 +334,22 @@ assert.equal(entries[0].groups[0].items.length,4);
 const taggedItems=['[通用] 跨系统说明','[S1] 逐笔校验','[S2] 报表采集使用大集中系统数据','[S3] 大集中比较','[S5] 配置版规则'];
 const taggedVisible=editionUpdateEntries([{groups:[{label:'新增',items:taggedItems}]}]);
 assert.deepEqual(taggedVisible[0].groups[0].items,taggedItems.slice(0,3));
+reduced=false;
+state.distributionUnlocked=true;
+assert.deepEqual(editionUpdateEntries([{groups:[{items:['[S3/S5] 混合版本更新','[S5] 已退役功能','[S4] 地金功能']}]}])[0].groups[0].items,
+  ['[S3/S5] 混合版本更新']);
+assert.deepEqual(editionFaqItems([
+  {category:'地金系统',question:'S4 历史问题',answer:'旧 S4 内容'},
+  {category:'逐笔统计系统（配置版）',question:'S5 历史问题',answer:'旧 S5 内容'}
+]),[]);
+state.distributionUnlocked=false;
+reduced=true;
 assert.deepEqual(updateItemInfo('[S1/S2] 共用更新').systems,['S1','S2']);
 assert.equal(updateItemInfo('[S2] 报表采集使用大集中系统数据').text,'报表采集使用大集中系统数据');
 state.distributionUnlocked=true;
-assert.deepEqual(editionUpdateEntries([{groups:[{items:taggedItems}]}])[0].groups[0].items,taggedItems.slice(0,3));
+assert.deepEqual(editionUpdateEntries([{groups:[{items:taggedItems}]}])[0].groups[0].items,taggedItems.slice(0,4));
 state.distributionUnlocked=false;
-assert.deepEqual(editionUpdateEntries([{groups:[{items:['S3 功能']}]}]),[]);
+assert.deepEqual(editionUpdateEntries([{groups:[{items:['大集中统计系统功能']}]}]),[]);
 assert.equal(includesUndeliveredSystemInfo('升级后检查 3.3「报表清单」'),true);
 assert.equal(includesUndeliveredSystemInfo('整包版本 V26.1.3.1'),false);
 assert.deepEqual(editionUpdateEntries([{groups:[{items:['大集中指标查询本期/上期']}]}]),[]);
@@ -266,8 +364,9 @@ assert.deepEqual(guideCodes(),['S1F1','S1F2','S2F1','S1F3','S1F4','S1F5']);
 console.log('profile behavior passed');
 """
     result = subprocess.run(
-        [NODE, "-e", program], check=True, capture_output=True, text=True, encoding="utf-8"
+        [NODE, "-e", program], capture_output=True, text=True, encoding="utf-8"
     )
+    assert result.returncode == 0, result.stderr
     assert "profile behavior passed" in result.stdout
 
 
@@ -710,6 +809,7 @@ def test_about_five_click_unlock_restores_embedded_profile_ui(tmp_path: Path) ->
     program = r"""
 const assert=require('node:assert/strict');
 let state={}, now=0, settingsRenders=0, accept=false;
+const DEVELOPER_SYSTEMS=['S1','S2','S3'];
 const Date={now:()=>now};
 const currentPage='settings', CFG={data:{},tab:'guide'};
 const setSettingsTab=()=>settingsRenders++;
@@ -724,13 +824,15 @@ const document={activeElement:{focus:()=>{}},body:{dataset:{},classList:{
 element('audit-distribution-config').textContent=PAYLOAD;
 const bridge={api:{unlock_distribution_ui:async password=>{
   assert.equal(password,'typed-password');
-  return accept?{ok:true,state:{distributionUnlocked:true,developerAccess:{S1:true,S2:true,S3:true,S4:true,S5:true}}}:{ok:false,message:'wrong password'};
+  return accept?{ok:true,state:{distributionUnlocked:true,developerAccess:{S1:true,S2:true,S3:true}}}:{ok:false,message:'wrong password'};
 }}};
 """.replace("PAYLOAD", json.dumps(json.dumps(payload, ensure_ascii=False), ensure_ascii=False))
     program += functions + r"""
 (async()=>{
 applyDistributionProfile();
 assert.equal(nav[2].hidden,true);
+assert.equal(nav[3].hidden,true);
+assert.equal(nav[4].hidden,true);
 openAbout();
 for(let i=0;i<4;i++)registerDistributionUnlockClick();
 assert.equal(element('developerUnlockMask').style.display,'none');
@@ -747,6 +849,8 @@ assert.equal(element('developerUnlockMask').style.display,'flex');
 await pending;
 assert.equal(element('developerUnlockError').textContent,'wrong password');
 assert.equal(nav[2].hidden,true);
+assert.equal(nav[3].hidden,true);
+assert.equal(nav[4].hidden,true);
 closeDeveloperUnlock();
 assert.equal(element('developerPassword').value,'');
 assert.equal(isSystemVisible('S3'),false);
@@ -756,12 +860,17 @@ element('developerPassword').value='typed-password';
 accept=true;
 await forceDeveloperEntry();
 assert.equal(element('developerUnlockMask').style.display,'none');
-assert.ok(nav.every(item=>!item.hidden));
+assert.ok(nav.slice(0,3).every(item=>!item.hidden));
+assert.ok(nav.slice(3).every(item=>item.hidden));
 assert.ok(classes.has('distribution-ui-unlocked'));
 assert.equal(settingsRenders,1);
 assert.equal(isSystemVisible('S3'),true);
+assert.equal(isSystemVisible('S4'),false);
+assert.equal(isSystemVisible('S5'),false);
 const faq=[{category:'大集中统计系统',question:'S3'}];
-assert.equal(editionFaqItems(faq),faq);
+const visibleFaq=editionFaqItems(faq);
+assert.equal(visibleFaq.length,1);
+assert.equal(visibleFaq[0].question,'S3');
 assert.deepEqual(DISTRIBUTION_CONFIG.enabledSystems,['S1','S2']);
 state={};
 DISTRIBUTION_CONFIG.enabledSystems=['S1','S2','S3','S4','S5'];

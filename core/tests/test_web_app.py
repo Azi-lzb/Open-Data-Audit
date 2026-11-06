@@ -34,6 +34,29 @@ class _Window:
 
 
 class WebAppCompatibilityTests(unittest.TestCase):
+    def test_retired_systems_are_not_exposed_and_saved_s5_data_is_preserved(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            legacy = root / "data" / "s5" / "界面设置.json"
+            legacy.parent.mkdir(parents=True)
+            saved = b'{"input_dir":"previous-s5-input"}'
+            legacy.write_bytes(saved)
+
+            api = WebApi(root)
+            state = api.get_state()
+            self.assertNotIn("s5", state)
+            self.assertEqual(set(state["developerAccess"]), {"S1", "S2", "S3"})
+            for method in ("start_s5", "check_s5_config", "start_s5_maintenance",
+                           "recognize_s5_inputs", "choose_s5", "update_s5"):
+                self.assertFalse(hasattr(api, method), method)
+
+            from base_audit.developer_access import DISTRIBUTION_PASSWORD
+            unlocked = api.unlock_distribution_ui(DISTRIBUTION_PASSWORD)
+            self.assertTrue(unlocked["ok"])
+            self.assertEqual(set(unlocked["state"]["developerAccess"]), {"S1", "S2", "S3"})
+            self.assertNotIn("s5", unlocked["state"])
+            self.assertEqual(legacy.read_bytes(), saved)
+
     def test_s1_file_badges_describe_template_extra_sheets_without_f1_f2_or_fallback_labels(self):
         source = (ROOT / "frontend" / "web" / "index.html").read_text(encoding="utf-8")
         render_files = source.split("function renderFiles(s){", 1)[1].split("function renderExplanation(s){", 1)[0]
@@ -148,8 +171,6 @@ class WebAppCompatibilityTests(unittest.TestCase):
             self.assertEqual(api.state["external"], str(external))
             self.assertEqual(api.state["pcCentral"], str(external))
             self.assertEqual(api.state["templateDir"], str(templates))
-            self.assertEqual(api.state["s5"]["template_dir"], str(templates))
-            self.assertEqual(api.state["s5"]["external_path"], str(external))
 
             custom_templates = root / "用户模板目录"
             custom_templates.mkdir()
@@ -970,9 +991,21 @@ class WebAppCompatibilityTests(unittest.TestCase):
             self.assertEqual(api.state["filePickerMode"], "系统原生")
             api.update({"filePickerMode": "浏览器内置"})
             self.assertEqual(api.state["filePickerMode"], "浏览器内置")
+            api.update({"filePickerMode": "Linux 桌面原生（Portal）"})
+            self.assertEqual(api.state["filePickerMode"], "浏览器内置")
+            enabled = WebApi(
+                Path(folder),
+                file_picker_default="Linux 桌面原生（Portal）",
+                file_picker_linux_portal_available=True,
+            )
+            enabled.update({"filePickerMode": "Linux 桌面原生（Portal）"})
+            self.assertEqual(enabled.state["filePickerMode"], "Linux 桌面原生（Portal）")
             api.update({"filePickerMode": "不存在"})
             self.assertEqual(api.state["filePickerMode"], "浏览器内置")
-            self.assertEqual(WebApi(Path(folder)).state["filePickerMode"], "浏览器内置")
+            self.assertEqual(
+                WebApi(Path(folder), file_picker_linux_portal_available=True).state["filePickerMode"],
+                "Linux 桌面原生（Portal）",
+            )
             api.reset_general_settings()
             self.assertEqual(api.state["filePickerMode"], "系统原生")
 

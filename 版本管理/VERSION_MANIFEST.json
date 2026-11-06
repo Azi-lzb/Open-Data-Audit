@@ -2,7 +2,7 @@
   "product": {
     "id": "V3",
     "name": "审核工具",
-    "version": "26.1.8.0",
+    "version": "26.2.1.0",
     "version_scheme": "YY.MAJOR.MINOR.PATCH（年份.大版本.中版本.小版本）",
     "changelog": "版本管理/产品发布/CHANGELOG.md",
     "description": "V3 是产品身份/项目代号；整包发布版本使用年份.大版本.中版本.小版本，业务功能和配置组件版本独立。"
@@ -18,9 +18,6 @@
     },
     "S3": {
       "name": "大集中统计系统"
-    },
-    "S5": {
-      "name": "逐笔统计系统（配置版）"
     }
   },
   "features": {
@@ -125,64 +122,6 @@
       "description": "大集中统计系统：按机构回填金融表单并应用警戒颜色（FAST_OOXML 为固定默认渲染路径）。",
       "changelog": "版本管理/S3_大集中统计系统/功能/S3-F05_比较文件到金融表单/CHANGELOG.md",
       "version_note": "v2.0.0：MAJOR——新增报表清单 E 列写入选择并改为空值默认不写入；空/否/0/false 禁用，其余启用，非法值只警告仍写入。两种渲染器共用判定，旧模板需明确填写启用值。"
-    },
-    "S5-F01": {
-      "name": "汇总核查表校验",
-      "version": "3.0.1",
-      "system": "S5",
-      "implementation": [
-        "core/frontend/web/index.html",
-        "core/src/base_audit/systems/s5_configured_statistics/recognition.py",
-        "core/src/base_audit/systems/s5_configured_statistics/service.py",
-        "core/src/base_audit/systems/s5_configured_statistics/web_api.py",
-        "core/src/s1audit_configured/workbook_config.py",
-        "core/src/s1audit_configured/external_layout.py",
-        "core/src/s1audit_configured/sources.py",
-        "core/src/s1audit_configured/model.py",
-        "core/src/s1audit_configured/batch.py",
-        "core/src/s1audit_configured/engine.py",
-        "core/src/s1audit_configured/outputs.py",
-        "core/src/s1audit_configured/dsl.py"
-      ],
-      "description": "独立配置规则驱动的汇总核查表校验；使用 S5 专属引擎，不调用 S1-F01 DAG。",
-      "changelog": "版本管理/S5_逐笔统计系统配置版/功能/S5-F01_配置规则审核/CHANGELOG.md",
-      "version_note": "v3.0.1：PATCH——缓存不可变审核表达式 AST 与取值字典解析/依赖检查结果，并按业务、工作表和指标路径索引模板目录；审核范围、表达式、取数结果与错误口径不变。"
-    },
-    "S5-F02": {
-      "name": "模板 V_CUR 表达式",
-      "version": "1.0.0",
-      "system": "S5",
-      "implementation": [
-        "core/src/base_audit/systems/s5_configured_statistics/web_api.py",
-        "core/src/base_audit/systems/s5_configured_statistics/expression_export.py"
-      ],
-      "description": "沿用 S5 面板当前匹配模板生成 V_CUR 表达式参考副本；模板原件只读，维护入口默认隐藏。",
-      "changelog": "版本管理/S5_逐笔统计系统配置版/功能/S5-F02_模板V_CUR表达式/CHANGELOG.md",
-      "version_note": "v1.0.0：Baseline——登记 S5 隐藏维护工具 F2，生成模板 V_CUR 表达式参考副本。"
-    },
-    "S5-F03": {
-      "name": "外部文件 V_EXT 表达式",
-      "version": "1.0.0",
-      "system": "S5",
-      "implementation": [
-        "core/src/base_audit/systems/s5_configured_statistics/web_api.py",
-        "core/src/base_audit/systems/s5_configured_statistics/expression_export.py"
-      ],
-      "description": "沿用 S5 面板当前选择的大集中系统数据生成 V_EXT 表达式参考副本；支持普通报表和时序布局，原文件只读。",
-      "changelog": "版本管理/S5_逐笔统计系统配置版/功能/S5-F03_外部文件V_EXT表达式/CHANGELOG.md",
-      "version_note": "v1.0.0：Baseline——登记 S5 隐藏维护工具 F3，生成外部文件 V_EXT 表达式参考副本。"
-    },
-    "S5-F04": {
-      "name": "模板校验公式转配置",
-      "version": "1.0.0",
-      "system": "S5",
-      "implementation": [
-        "core/src/base_audit/systems/s5_configured_statistics/web_api.py",
-        "core/src/base_audit/systems/s5_configured_statistics/formula_candidates.py"
-      ],
-      "description": "沿用 S5 面板当前匹配模板生成审核规则候选；候选默认禁用，需人工确认后复制到正式配置。",
-      "changelog": "版本管理/S5_逐笔统计系统配置版/功能/S5-F04_模板校验公式转配置/CHANGELOG.md",
-      "version_note": "v1.0.0：Baseline——登记 S5 隐藏维护工具 F4，生成模板校验公式配置候选。"
     }
   },
   "configs": {
@@ -254,14 +193,6 @@
       "note": "文件名中的 1./2./3.0~3.3 是历史文件编号，不是版本号；是否改名另行迁移。",
       "changelog": "版本管理/S3_大集中统计系统/配置/S3-CFG-03_大集中指标比较拆分配置/CHANGELOG.md",
       "version_note": "v2.0.0：MAJOR——报表清单新增 E 列是否启用写入；空/否/0/false 禁用，其余启用，非法值仅警告仍写入。空白和缺列不再默认启用，需要人工明确选择输出报表。"
-    },
-    "S5-CFG-01": {
-      "name": "逐笔统计系统配置版审核配置",
-      "version": "2.0.0",
-      "system": "S5",
-      "file": "config/S5_逐笔统计系统_审核配置.xlsx",
-      "changelog": "版本管理/S5_逐笔统计系统配置版/配置/S5-CFG-01_审核配置/CHANGELOG.md",
-      "version_note": "v2.0.0：MAJOR——S5 配置工作簿只保留“审核规则”和空白“核查表校验结果”两张工作表；原 S1 汇总配置不再复制进 S5。"
     }
   }
 }

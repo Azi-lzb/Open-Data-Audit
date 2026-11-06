@@ -17,7 +17,6 @@ for entry in (str(_SRC), str(_SRC.parent)):
 # 系统级回归入口由文件归属决定；共用 UI/配置/路径/版本测试进入三组。
 # 新增测试模块必须在这里归类，避免系统测试静默漏收。
 _SYSTEM_TEST_FILES = {
-    "s5": {"test_s5_source_reader.py", "test_s5_fast_ooxml.py", "test_s5_conditional_audit.py", "test_s5_formula_error_scan.py", "test_s5_configured_engine.py", "test_s5_integration.py", "test_s5_recognition.py"},
     "s1": {
         "test_combine_settings.py",
         "test_conditional_compare.py",
@@ -98,6 +97,7 @@ _SHARED_TEST_FILES = {
     "test_distribution_profile.py",
     "test_libreoffice_install.py",
     "test_libreoffice_install_api.py",
+    "test_linux_file_picker.py",
     "test_config_paths.py",
     "test_config_guide.py",
     "test_discovery.py",
@@ -106,6 +106,14 @@ _SHARED_TEST_FILES = {
     "test_version_manifest.py",
     "test_web_app.py",
 }
+
+
+@pytest.fixture(autouse=True)
+def isolate_background_environment_probe(monkeypatch):
+    """API 回归不拉起后台 Office 探测；显式 Office 业务测试仍使用真实引擎。"""
+    from base_audit.web_app import WebApi
+
+    monkeypatch.setattr(WebApi, "_start_environment_probe", lambda self: None)
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -118,7 +126,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         )
         if not groups:
             raise pytest.UsageError(
-                f"测试文件 {filename} 未归入 S1/S2/S3/S5；请更新 core/tests/conftest.py"
+                f"测试文件 {filename} 未归入 S1/S2/S3；请更新 core/tests/conftest.py"
             )
         for group in groups:
             item.add_marker(getattr(pytest.mark, group))

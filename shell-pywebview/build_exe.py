@@ -118,7 +118,6 @@ def rust_s1_summary_writer_arg(*, win7: bool, enabled_systems: list[str]) -> lis
     return ["--add-binary", f"{binary}{os_pathSep()}native"]
 
 COMMON_HIDDEN = [
-    "s1audit_configured.batch",
     # The S2 fast reader imports this Rust extension lazily; make sure the
     # pywebview onefile build collects its platform-specific binary too.
     "python_calamine",
@@ -139,6 +138,7 @@ COMMON_HIDDEN = [
 
 COMMON_EXCLUDES = [
     "doctest", "pydoc", "pytest", "unittest", "numpy", "pandas",
+    "s1audit_configured", "base_audit.systems.s5_configured_statistics",
     "lxml", "lxml.etree", "lxml.objectify", "lxml.html", "lxml.isoschematron",
     "pythonwin", "win32ui",
     "webview.platforms.android", "webview.platforms.cocoa",
@@ -322,7 +322,13 @@ def assemble_core(dist_dir: Path, profile_web: Path | None = None) -> None:
             existing = target / item
             if existing.exists():
                 shutil.rmtree(existing)
-            shutil.copytree(src, target / item, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            shutil.copytree(
+                src,
+                target / item,
+                ignore=shutil.ignore_patterns(
+                    "__pycache__", "*.pyc", "s1audit_configured", "s5_configured_statistics"
+                ),
+            )
     if profile_web is not None:
         target_web = target / "frontend" / "web"
         if target_web.exists():

@@ -328,12 +328,14 @@ set -- --noconfirm --clean --onedir --name "$LINUX_NAME" \
     --add-data "$ROOT/日志/更新日志.txt:日志" \
     --add-data "$ROOT/docs/常见问题.json:docs" \
     --collect-submodules base_audit \
-    --collect-submodules s1audit_configured \
+    --exclude-module s1audit_configured \
+    --exclude-module base_audit.systems.s5_configured_statistics \
     --collect-all flask \
     --collect-all openpyxl \
     --collect-all xlrd \
     --collect-all lxml \
     --collect-all python_calamine \
+    --collect-all dbus_next \
     --distpath "$PYI_DIST" \
     --workpath "$BUILD_STAGE/work" \
     --specpath "$BUILD_STAGE/spec"
@@ -469,16 +471,11 @@ print(f"[配置] {len(names)}册配置已复制；本机审核历史、机构参
 PY
 fi
 
-# S5 layouts belong to the full edition only; S1/S2 deliveries keep their scope.
-if [ "$PROFILE_ID" = full ] && [ -d "$CONFIG_SOURCE/S5_模板文件" ]; then
-    cp -R "$CONFIG_SOURCE/S5_模板文件" "$PAYLOAD/config/"
-fi
-
-# S1 and S5 share these named-range templates. Keep them in both full and S1/S2
+# S1 uses the shared named-range templates. Keep them in both full and S1/S2
 # internal packages so the first launch can point both template directories here.
 if [ "$CONFIG_PROFILE" = internal-config ] && [ -d "$CONFIG_SOURCE/模板文件_命名区域" ]; then
     cp -R "$CONFIG_SOURCE/模板文件_命名区域" "$PAYLOAD/config/"
-    echo "[配置] 已附带模板文件_命名区域（供 S1/S5 自动匹配模板）。"
+    echo "[配置] 已附带模板文件_命名区域（供 S1 自动匹配模板）。"
 fi
 
 "$BUILD_PY" "$SCRIPT_DIR/distribution_profile.py" filter-config "$PROFILE_ID" \

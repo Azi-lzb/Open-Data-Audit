@@ -1,0 +1,54 @@
+# S4/S5 系统退役
+
+时间：2026-11-05 14:17（Asia/Shanghai）
+执行者：Codex
+分支：desktop
+修改前 HEAD：`e09bf2d74bafe8e35824c1ebc8a2186bfa91c091`
+修改后 HEAD：同修改前；未暂存、未提交。
+修改前 WIP：`.zcode/`、`core/tests/.pytest-tmp-v3/`、`docs/Excel与Office技术栈盘点_2026-10-22.md`、`external/` 为既存未跟踪内容，均保留。`config-real/`、业务数据和既有打包产物未更改。
+
+## 目的与范围
+
+按用户要求将当前产品收敛为 S1 逐笔统计、S2 报表采集、S3 大集中统计。S4 仅有预览 UI；S5 有独立审核引擎、配置维护与宿主接口。本次移除当前产品中的 S4/S5 功能代码、UI、配置入口及打包收集，同时保留 S1/S2/S3 和本机原有真实配置/用户数据。
+
+## 修改文件
+
+- 项目和规则：`AGENTS.md`、`README.md`、`rules/01_项目范围与目录.md`、`rules/07_测试与发布.md`、`rules/11_版本管理与组件编号.md`、`rules/12_Rust优化与引擎路由.md`、`rules/13_表格读写技术选型与主动优化.md`、`版本管理/README.md`。
+- 前端与后端：`core/frontend/web/index.html`、`core/src/base_audit/developer_access.py`、`core/src/base_audit/web_app.py`。
+- 测试和发行：`core/pytest.ini`、`core/tests/TEST_GROUPS.md`、`core/tests/conftest.py`、`core/tests/test_distribution_profile.py`、`core/tests/test_version_manifest.py`、`core/tests/test_web_app.py`、`core/tests/test_config_paths.py`、`tools/check_public_snapshot.py`、`shell-flask/distribution-profiles.json`、`shell-flask/distribution_profile.py`、两个 Windows 外壳的 `build_exe.py`、`shell-flask/Linux-2-打包DEB与TARGZ.sh`、`shell-flask/Linux-4-打包UOS源码验收包.sh`、`shell-flask/README.md`、`shell-flask/文件说明.txt`。
+- 版本与日志：`版本管理/VERSION_MANIFEST.json`、`版本管理/产品发布/CHANGELOG.md`、`日志/开发日志.txt`、`日志/更新日志.txt`。
+- 删除公开占位配置：`config/S5_逐笔统计系统_审核配置.xlsx`。
+
+## 删除清单
+
+- `core/src/s1audit_configured/` 下全部 21 个 Python 文件：独立逐笔配置审核引擎。
+- `core/src/base_audit/systems/s5_configured_statistics/` 下全部 8 个文件：S5 服务、Web API mixin、识别和导出模块。
+- `core/tests/s5/` 下全部 8 个文件：仅属于已退役 S5 的测试。
+- `core/frontend/web/index.html` 中 S4 地金预览页、S5 页面/导航/维护工具/隐藏入口/弹窗及专属样式和状态逻辑。
+- `core/src/base_audit/web_app.py` 中 S5 mixin、初始化及与 S5 后台任务有关的互斥逻辑。
+
+没有删除 S5 的本机真实配置、已保存界面设置、历史结果、组件历史 CHANGELOG 或历史记录。前端仍有仅用于过滤旧更新日志中退役系统内容的识别条件；这不会显示 S4/S5 的当前功能入口。
+
+## 版本与用户日志
+
+- 产品版本 `26.1.8.0 → 26.2.0.0`，因移除整套系统能力升级大版本。
+- S1/S2/S3 的功能和配置组件版本不变；当前系统清单为 3 个系统、11 个功能、7 个配置组件。
+- 用户更新日志只写功能删减，并标注 `[通用]`；开发实现与测试细节写在开发日志和本记录。
+
+## 测试与验收
+
+- `core/tests/test_distribution_profile.py`：33 passed。
+- core 全量：1136 passed、7 skipped、5 subtests passed，173.56 秒。7 个跳过项均为当前 Windows 环境不适用的 Linux/UOS 分支。
+- Python `compileall` 通过；Node.js 前端语法与发行行为断言包含在发行配置专项测试中并通过。
+- `bash -n` 检查 Linux DEB/TARGZ 与 UOS 源码包脚本通过；`git diff --check` 通过。
+- 退役 S5 占位工作簿后，公开快照检查器曾尝试读取已删除的 index blob。本轮调整为只检查暂存区中仍有内容的新增/修改项，并增加删除占位配置的集成测试；`core/tests/test_config_paths.py`：12 passed。最终公开快照检查：78 个暂存路径、40 个新增/修改路径、0 个工作簿，检查通过。
+- 首次单测启动 Windows 后台 Office/COM 环境探测时，`win32com.client.Dispatch` 导致测试进程发生原生访问冲突。为让 API 回归可执行，在 `core/tests/conftest.py` 增加仅测试用的 autouse fixture，阻止 WebApi 构造时自动启动该后台探测；生产代码和实际 Office 业务调用未改。完整回归随后通过。Office 探测本身没有做本次实机验证。
+- 未执行 Flask/PyWebView Windows 打包、Linux/UOS 实际构建或浏览器手工验收。
+
+## 回滚提示
+
+本轮未提交。若需要撤回，只恢复本记录“修改文件”列出的任务文件和“删除清单”列出的路径到修改前版本；不要执行全仓库 reset/clean，也不要动既存未跟踪 WIP、`config-real/`、业务文件或打包产物。
+
+## 组件版本
+
+产品 V26.1.8.0 → V26.2.0.0；S4/S5 组件退出当前版本清单；S1/S2/S3 组件版本不变。

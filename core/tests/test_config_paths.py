@@ -34,6 +34,39 @@ def test_external_public_template_only_exempts_the_second_header_row() -> None:
     assert module.workbook_privacy_errors(book, external_reference=True)
 
 
+def test_public_snapshot_checker_allows_staged_deletion_of_public_config(tmp_path: Path, capsys) -> None:
+    import importlib.util
+    import subprocess
+    from openpyxl import Workbook
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    config_dir = repo / "config"
+    config_dir.mkdir()
+    Workbook().save(config_dir / "retired.xlsx")
+    (repo / "版本管理").mkdir()
+    (repo / "版本管理" / "VERSION_MANIFEST.json").write_text('{"configs": {}}', encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "commit.gpgsign=false", "commit", "-m", "baseline"],
+        cwd=repo, check=True, capture_output=True,
+    )
+    (config_dir / "retired.xlsx").unlink()
+    subprocess.run(["git", "add", "-u", "config"], cwd=repo, check=True)
+
+    checker = Path(__file__).resolve().parents[2] / "tools/check_public_snapshot.py"
+    spec = importlib.util.spec_from_file_location("deleted_config_snapshot_checker", checker)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.ROOT = repo
+
+    assert module.main() == 0
+    assert "均为删除" in capsys.readouterr().out
+
+
 def _file(root: Path, directory: str, relative_path: str) -> Path:
     path = root / directory / relative_path
     path.parent.mkdir(parents=True, exist_ok=True)

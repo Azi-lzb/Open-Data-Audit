@@ -43,7 +43,6 @@ if str(CORE / "src") not in sys.path:
 from base_audit.app_identity import app_title, executable_stem, faq_path, icon_path, load_product_info, manifest_path, update_log_path
 
 COMMON_HIDDEN = [
-    "s1audit_configured.batch",
     "base_audit.excel_com",
     "base_audit.service",
     "base_audit.merge_org",
@@ -64,6 +63,7 @@ COMMON_HIDDEN = [
 
 COMMON_EXCLUDES = [
     "doctest", "pydoc", "pytest", "unittest", "numpy", "pandas",
+    "s1audit_configured", "base_audit.systems.s5_configured_statistics",
     "lxml", "lxml.etree", "lxml.objectify", "lxml.html", "lxml.isoschematron",
     "pythonwin", "win32ui",
 ]
@@ -293,7 +293,13 @@ def assemble_core() -> None:
             existing = target / item
             if existing.exists():
                 shutil.rmtree(existing)
-            shutil.copytree(src, target / item, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            shutil.copytree(
+                src,
+                target / item,
+                ignore=shutil.ignore_patterns(
+                    "__pycache__", "*.pyc", "s1audit_configured", "s5_configured_statistics"
+                ),
+            )
     # 新发行包创建空的外部数据目录；重建已有发行目录时保留用户数据。
     (target / "data").mkdir(exist_ok=True)
     # tests 属于开发基线，不进发行包。

@@ -4,7 +4,7 @@
 - 前端 index.html 不做修改，由本模块在 ``<head>`` 注入一个 ``bridge.api``
   兼容层，把 ``bridge.api.方法名(...)`` 代理为 ``POST /api/方法名``。
 - 后端直接继承 ``base_audit.web_app.WebApi``；文件/目录选择可由高级设置切换
-  Tk 对话框（Flask 首次默认）、浏览器内置目录浏览或桌面系统原生模式。
+  Linux 桌面 Portal、Tk 对话框、浏览器内置目录浏览或桌面系统原生模式。
   窗口控制按钮为无操作（浏览器窗口由用户自己管理）。
 - 平台差异只有“打开文件/目录”：Windows 用 os.startfile，UOS/麒麟 用
   xdg-open；计算引擎选项由 core/base_audit/engines 按操作系统提供
@@ -42,6 +42,13 @@ if str(CORE / "src") not in sys.path:
     sys.path.insert(0, str(CORE / "src"))
 
 from base_audit.path_browser import browse_directory  # noqa: E402
+from base_audit.native.linux_file_picker import (  # noqa: E402
+    LinuxPortalSelectionError,
+    LinuxPortalUnavailable,
+    portal_available as linux_portal_available,
+    select_paths as select_linux_portal_paths,
+)
+from base_audit.settings import LINUX_PORTAL_FILE_PICKER_MODE as PORTAL_PICKER_MODE  # noqa: E402
 from base_audit.web_app import WebApi, serialize_execution_start  # noqa: E402
 from base_audit.app_identity import load_product_info, render_app_page  # noqa: E402
 
@@ -78,12 +85,20 @@ def _open_with_default_app(path: Path) -> None:
 
 
 class FlaskApi(WebApi):
-    """Flask 外壳：首次默认使用 Tk，用户可在高级设置切换三种选择器。"""
+    """Flask 外壳：Linux 优先桌面 Portal，其余环境默认 Tk。"""
 
     def __init__(self, project_root: Path) -> None:
-        super().__init__(project_root, file_picker_default="Tk 对话框")
+        is_linux = sys.platform.startswith("linux")
+        portal_available = bool(is_linux and linux_portal_available())
+        default_picker = PORTAL_PICKER_MODE if portal_available else "Tk 对话框"
+        super().__init__(
+            project_root,
+            file_picker_default=default_picker,
+            file_picker_linux_portal_available=portal_available,
+        )
         # Flask 运行在普通浏览器中，没有可调用的宿主系统对话框。
         self.state["filePickerSystemNativeAvailable"] = False
+        self.state["filePickerLinuxPortalAvailable"] = portal_available
         # Tk 有硬性线程约束：根窗口必须在创建它的线程上销毁，而 Flask 每个请求
         # 各占一个线程——实测第二次弹窗换线程重建 Tk 即触发 Tcl 跨线程销毁，
         # 进程直接非法指令退出（浏览器表现为 Failed to fetch）。因此起一个
@@ -111,8 +126,18 @@ class FlaskApi(WebApi):
         # 用户可能先运行过桌面外壳，用户设置中保留了“系统原生”。该模式在
         # Flask 中不存在，若不迁移，所有顶部“选择”都会返回 500 而没有对话框。
         selected_mode = str(self.state.get("filePickerMode") or "")
-        if selected_mode == "系统原生":
+        if self.settings.file_picker_mode == PORTAL_PICKER_MODE and not portal_available:
             replacement = "Tk 对话框" if tk_available else "浏览器内置"
+            self.state["filePickerMode"] = replacement
+            self.settings.file_picker_mode = replacement
+            self.settings_store.save(self.settings)
+            self._log(f"Linux 桌面选择服务不可用，已切换为“{replacement}”")
+        elif selected_mode == "系统原生":
+            replacement = (
+                PORTAL_PICKER_MODE if portal_available
+                else "Tk 对话框" if tk_available
+                else "浏览器内置"
+            )
             self.state["filePickerMode"] = replacement
             self.settings.file_picker_mode = replacement
             self.settings_store.save(self.settings)
@@ -184,8 +209,28 @@ class FlaskApi(WebApi):
         return self._tk_result
 
     def _select_path(self, **kwargs: Any) -> tuple[str, ...]:
+        if self.state.get("filePickerMode") == PORTAL_PICKER_MODE:
+            try:
+                return select_linux_portal_paths(
+                    title="选择文件夹" if kwargs.get("folder") else "选择文件",
+                    folder=bool(kwargs.get("folder")),
+                    current=str(kwargs.get("current") or ""),
+                    multiple=bool(kwargs.get("multiple")),
+                    file_types=tuple(kwargs.get("file_types") or ()),
+                )
+            except (LinuxPortalUnavailable, LinuxPortalSelectionError) as exc:
+                self._log(f"Linux 桌面选择框不可用：{exc}")
+                if self._tk_queue is not None:
+                    self._log("本次选择已退回 Tk 系统对话框。")
+                    return self._tk_dialog(**kwargs)
+                raise RuntimeError(
+                    "Linux 桌面选择框暂不可用，且 Tk 对话框未安装；"
+                    "请在高级设置切换为“浏览器内置”。"
+                ) from exc
         if self.state.get("filePickerMode") == "系统原生":
-            raise RuntimeError("系统原生选择器仅适用于桌面外壳；Flask 请改用“Tk 对话框”或“浏览器内置”")
+            raise RuntimeError(
+                "Flask 浏览器外壳没有宿主系统选择框；请使用 Linux 桌面原生、Tk 或浏览器内置方式。"
+            )
         return super()._select_path(**kwargs)
 
     def _open_path(self, path: Path, what: str) -> None:
