@@ -147,27 +147,77 @@ def _shift_refs_outside_strings(formula: str, dr: int, dc: int) -> str:
 _XML_ESCAPE_ORDER = (("&", "&amp;"), ("<", "&lt;"), (">", "&gt;"), ('"', "&quot;"))
 
 
+# 任意 [N] 外部簿前缀（引号/裸变体）；用于无条件剥离。
+_ANY_EXTERNAL_PREFIX_QUOTED_RE = re.compile(r"\[\d+\]'((?:[^']|'')*)'!")
+_ANY_EXTERNAL_PREFIX_BARE_RE = re.compile(r"\[\d+\]([^\s!'\[\]<>()]+)!")
+
+
 def _strip_external_prefixes(text: str, local_sheets: list[str]) -> tuple[str, int]:
-    """剥离公式中指向本地已存在表的 ``[N]`` 外部工作簿前缀。
+    """剥离公式里的 ``[N]`` 外部工作簿前缀（无条件，副本只允许工作簿内引用）。
 
     模板校验区域公式可能自带 ``[1]表名!`` 前缀（模板作者用外部链接写的规则）。
-    审核副本把外部工作簿导入为本地同名 sheet 后不再携带 externalLink 部件，
-    保留前缀就是悬空引用（Excel ``Workbooks.Open`` 报 0x80020009 拒绝整簿）。
-    仅当 [N] 后跟的表名在 ``local_sheets`` 中时剥离，指向真正外部簿的不动。
-    覆盖 ``表名!``、``'表名'!`` 与 ``''`` 转义变体。
+    审核副本不携带 externalLink 部件，保留前缀就是悬空引用（Excel
+    ``Workbooks.Open`` 报 0x80020009 拒绝整簿；WPS/LibreOffice 重算丢公式）。
+
+    按业务口径**一律剥掉外部簿前缀**（不保留跨簿引用）：
+    - 剥离后表名若正是本副本已有的同名工作表 → 公式指向本地表，正常重算；
+    - 若本地没有同名表 → 公式自然变成 ``#REF!``，由审核异常口径捕获，
+      优于整簿拒绝打开（也可据此提示用户导入对应外部表）。
+
+    ``local_sheets`` 仅用于识别“本地有同名表”以便上层统计，不影响是否剥离。
+    覆盖 ``'表名'!``（含 '' 转义）与裸 ``表名!`` 变体。
     """
-    if not local_sheets:
+    if not text:
         return text, 0
     total = 0
-    for name in local_sheets:
-        escaped = re.escape(name.replace("'", "''"))
-        quoted = re.compile(r"\[\d+\]'" + escaped + r"'!")
-        text, count = quoted.subn("'" + name.replace("'", "''") + "'!", text)
-        total += count
-        bare = re.compile(r"\[\d+\]" + re.escape(name) + r"!")
-        text, count = bare.subn(name + "!", text)
-        total += count
+
+    def quoted_sub(m):
+        nonlocal total
+        name = (m.group(1) or "").replace("''", "'")
+        total += 1
+        return "'" + (m.group(1) or "") + "'!"
+
+    def bare_sub(m):
+        nonlocal total
+        total += 1
+        return m.group(1) + "!"
+
+    text = _ANY_EXTERNAL_PREFIX_QUOTED_RE.sub(quoted_sub, text)
+    text = _ANY_EXTERNAL_PREFIX_BARE_RE.sub(bare_sub, text)
     return text, total
+
+
+def _sheet_names_from_workbook(workbook_xml: bytes) -> list[str]:
+    """从 workbook.xml 字节解析工作表名（解析失败回退正则）。"""
+    if not workbook_xml:
+        return []
+    try:
+        root = StdET.fromstring(workbook_xml)
+    except StdET.ParseError:
+        text = workbook_xml.decode("utf-8", "ignore")
+        return re.findall(r'<sheet\b[^>]*\bname="([^"]*)"', text)
+    return [(node.get("name") or "") for node in root.iter()
+            if node.tag.endswith("}sheet") or node.tag == "sheet"]
+
+
+def _dangling_after_strip(formula_text: str, local_sheets: list[str]) -> list[str]:
+    """剥离后仍指向“本地不存在表”的引用名（用于运行日志提示，不阻断）。
+
+    只识别合法表引用：``'表名'!`` 或由中文/字母/数字/下划线/空格组成的 ``表名!``；
+    名称字符类不含括号与运算符，避免把 ``INDEX(表名`` 整体误当成表名。
+    """
+    names = set(local_sheets)
+    missing: list[str] = []
+    pattern = re.compile(
+        r"(?:'((?:[^']|'')*)'|([A-Za-z_一-鿿][\w一-鿿 ．　]*))!")
+    for m in pattern.finditer(formula_text or ""):
+        name = (m.group(1) or m.group(2) or "").replace("''", "'").strip()
+        if not name or name in names or name in missing:
+            continue
+        if re.fullmatch(r"[A-Za-z]{1,3}\d+", name):
+            continue
+        missing.append(name)
+    return missing
 
 
 def _xml_escape_formula(text: str) -> str:
@@ -552,10 +602,14 @@ class DirectOoxmlFormulaRegionWriter:
                     "merge_write": True, "structured_rule_sheet": False}
     # 累计剥离的 [N] 外部引用数量（诊断用）
     _external_refs_stripped = 0
+    # 剥离后指向“本地不存在表”的引用名（运行日志提示用，不阻断）
+    _external_missing_sheets: list[str] = []
 
     def write(self, *, template_path: Path, audit_path: Path,
               definition, formula_overrides=None) -> FormulaRegionWriteResult:
         started = time.monotonic()
+        self._external_missing_sheets = []
+        self._external_refs_stripped_delta = 0
         if getattr(definition, "structured", False):
             # 结构化模板：ZIP 级写完校验区域后，用 openpyxl 把模板的“审核规则”
             # 工作表整表复制进副本（值/样式/批注，与 native _copy_sheet 同语义）。
@@ -564,10 +618,12 @@ class DirectOoxmlFormulaRegionWriter:
         else:
             self._structured_rule_sheet_pending = False
         template_reader = _TemplateReader(template_path, definition)
-        local_sheets = template_reader.local_sheet_names()
         with zipfile.ZipFile(Path(audit_path)) as archive:
             part_order = list(archive.namelist())
             parts = {name: archive.read(name) for name in part_order}
+        # 判定“本地同名表”必须用**副本**的表清单（副本可能已导入外部表，
+        # 也可能缺失某些表）；用模板清单会把“未导入”误判为“已存在”。
+        local_sheets = _sheet_names_from_workbook(parts.get("xl/workbook.xml", b""))
 
         written_cells = 0
         merged_merges = 0
@@ -649,7 +705,14 @@ class DirectOoxmlFormulaRegionWriter:
             written_cells=written_cells, merged_merges=merged_merges,
             styles_appended=styles_appended, seconds=seconds,
             messages=[f"Direct OOXML 写入：{written_cells} 格（样式 {styles_appended} 项，"
-                      f"合并 {merged_merges} 处{structured_note}，{seconds:.2f} 秒）"],
+                      f"合并 {merged_merges} 处{structured_note}，{seconds:.2f} 秒）"]
+            + ([f"已剥离外部工作簿引用 {self._external_refs_stripped_delta} 处"
+                + ("（均指向本副本内同名工作表）" if not self._external_missing_sheets
+                   else "（部分指向本副本不存在的工作表，见下条）")]
+               if self._external_refs_stripped_delta else [])
+            + ([f"外部工作簿引用指向本副本不存在的工作表：{'、'.join(self._external_missing_sheets)}"
+                f"；这些公式将按 #REF! 计入审核异常（未阻断流程）"]
+               if self._external_missing_sheets else []),
         )
 
     @staticmethod
@@ -743,6 +806,10 @@ class DirectOoxmlFormulaRegionWriter:
                             template_cell.formula, local_sheets)
                         if stripped:
                             type(self)._external_refs_stripped += stripped
+                            self._external_refs_stripped_delta += stripped
+                            for missing in _dangling_after_strip(formula_text, local_sheets):
+                                if missing not in self._external_missing_sheets:
+                                    self._external_missing_sheets.append(missing)
                         cells[col] = (
                             f'<c r="{ref}"{style_attr}>'
                             f"<f{_f_attrs_xml(template_cell.formula_attrs)}>"

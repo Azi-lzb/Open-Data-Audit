@@ -284,12 +284,33 @@ class ExternalPrefixStripTests(unittest.TestCase):
         self.assertEqual(count, 1)
         self.assertEqual(text, "'O''Brien表'!A1")
 
-    def test_keeps_reference_to_true_external_workbook(self):
-        from base_audit.formula_region_writer import _strip_external_prefixes
+    def test_strips_any_external_workbook_prefix_unconditionally(self):
+        """口径：副本只允许工作簿内引用——指向本地不存在表的 [N] 也剥离。
+
+        剥离后本地无同名表 → 公式自然成 #REF!，由审核异常口径捕获，
+        优于整簿被 Excel 拒绝打开。
+        """
+        from base_audit.formula_region_writer import (
+            _dangling_after_strip,
+            _strip_external_prefixes,
+        )
 
         text, count = _strip_external_prefixes("[99]真正外部簿!A1", ["本地表"])
-        self.assertEqual(count, 0)
-        self.assertEqual(text, "[99]真正外部簿!A1")
+        self.assertEqual(count, 1)
+        self.assertEqual(text, "真正外部簿!A1")
+        # 该表名不在本地 → 记入缺失提示（不阻断）
+        self.assertEqual(_dangling_after_strip(text, ["本地表"]), ["真正外部簿"])
+
+    def test_missing_sheet_list_empty_when_local_name_matches(self):
+        from base_audit.formula_region_writer import (
+            _dangling_after_strip,
+            _strip_external_prefixes,
+        )
+
+        text, count = _strip_external_prefixes("[1]'集中系统数据'!A1", ["集中系统数据"])
+        self.assertEqual(count, 1)
+        self.assertEqual(text, "'集中系统数据'!A1")
+        self.assertEqual(_dangling_after_strip(text, ["集中系统数据"]), [])
 
 
 if __name__ == "__main__":

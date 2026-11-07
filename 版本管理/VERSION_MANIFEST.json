@@ -23,12 +23,12 @@
   "features": {
     "S1-F01": {
       "name": "汇总核查表校验",
-      "version": "2.7.5",
+      "version": "2.7.6",
       "system": "S1",
       "implementation": "core/src/base_audit/native/result_writer.py",
       "description": "逐笔统计系统主流程：模板体检、表结构比对、公式复制、Excel/WPS 重算、问题提取与审核副本输出（DAG 编排）。",
       "changelog": "版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md",
-      "version_note": "v2.7.5（PATCH）：审核副本默认彻底断开外部工作簿引用——剥离 [N] 前缀后若全包再无 [N] 引用，则清除 externalReferences、外链关系、Content_Types 声明并剔除 externalLinks 部件，副本只含工作簿内引用；仍有真外部引用时保留外链定义。"
+      "version_note": "v2.7.6（PATCH）：审核副本无条件剥离公式中的 [N] 外部工作簿前缀（不再限于本地有同名表），本地缺表时公式按 #REF! 计入审核异常、不阻断流程；运行记录提示剥离数与缺失表名。"
     },
     "S1-F02": {
       "name": "汇总校验结果说明",
