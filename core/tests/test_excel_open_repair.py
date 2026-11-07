@@ -433,8 +433,12 @@ def test_drops_external_links_when_no_dangling_ref_left(tmp_path: Path) -> None:
     assert load_workbook(src)["发生额"]["B2"].value == "=INDEX(集中系统数据!$A:$A,1)"
 
 
-def test_keeps_external_links_when_dangling_ref_remains(tmp_path: Path) -> None:
-    """存在指向真外部簿的 [N]（未导入本地）→ 不删外链，避免新增悬空引用。"""
+def test_strips_true_external_ref_and_drops_links(tmp_path: Path) -> None:
+    """口径：副本只允许工作簿内引用——真外部簿的 [N] 也剥离。
+
+    剥离后该表名在本副本不存在 → 公式成 #REF!（按审核异常口径），
+    外链定义随之可安全清除（不再有 [N] 残留）。
+    """
     import zipfile
     src = tmp_path / "核查表.xlsx"
     book = Workbook()
@@ -447,11 +451,12 @@ def test_keeps_external_links_when_dangling_ref_remains(tmp_path: Path) -> None:
 
     result = repair_audit_copy_for_excel(src)
 
-    assert result["dropped_links"] == 0, result
+    assert result["stripped_refs"] == 1, result
+    assert result["dropped_links"] == 1, result
     with zipfile.ZipFile(src) as z:
-        assert "<externalReferences>" in z.read("xl/workbook.xml").decode("utf-8")
-        assert [n for n in z.namelist() if "externalLink" in n]
-    assert load_workbook(src)["发生额"]["B2"].value == "=INDEX([2]未导入的外部表!$A:$A,1)"
+        assert "<externalReferences>" not in z.read("xl/workbook.xml").decode("utf-8")
+        assert not [n for n in z.namelist() if "externalLink" in n]
+    assert load_workbook(src)["发生额"]["B2"].value == "=INDEX(未导入的外部表!$A:$A,1)"
 
 
 def test_drop_external_links_can_be_disabled(tmp_path: Path) -> None:

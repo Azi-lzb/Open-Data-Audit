@@ -315,3 +315,57 @@ class ExternalPrefixStripTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExternalReferenceFormatTests(unittest.TestCase):
+    """两种外部引用形态都必须剥离（用户指出：真实文件里也存在路径式）。
+
+    索引式：``[1]表名!A1``（对应 workbook.xml 的 externalReference 序号）
+    路径式：``'C:\文件夹\[工作簿.xlsx]表名'!A1``（自包含路径，无索引）
+    """
+
+    def _strip(self, formula, sheets):
+        from base_audit.formula_region_writer import _strip_external_prefixes
+        return _strip_external_prefixes(formula, sheets)
+
+    def test_strips_path_style_with_folder(self):
+        text, count = self._strip(
+            r"'C:\外部文件夹\[工作簿.xlsx]集中系统数据'!$A$1", ["集中系统数据"])
+        self.assertEqual(count, 1)
+        self.assertEqual(text, "'集中系统数据'!$A$1")
+
+    def test_strips_path_style_book_only(self):
+        text, count = self._strip("'[工作簿.xlsx]集中系统数据'!$A$1", ["集中系统数据"])
+        self.assertEqual(count, 1)
+        self.assertEqual(text, "'集中系统数据'!$A$1")
+
+    def test_strips_path_style_without_quotes(self):
+        text, count = self._strip("[工作簿.xlsx]集中系统数据!$A$1", ["集中系统数据"])
+        self.assertEqual(count, 1)
+        self.assertEqual(text, "集中系统数据!$A$1")
+
+    def test_strips_path_style_xlsm_and_space_name(self):
+        text, count = self._strip(r"'C:\a\[簿.xlsm]某 表'!$B$2", [])
+        self.assertEqual(count, 1)
+        self.assertEqual(text, "'某 表'!$B$2")
+
+    def test_strips_path_style_inside_function(self):
+        text, count = self._strip(
+            r"INDEX('C:\a\[簿.xlsx]数据'!$A:$A,1)", ["数据"])
+        self.assertEqual(count, 1)
+        self.assertEqual(text, "INDEX('数据'!$A:$A,1)")
+
+    def test_strips_index_style_still_works(self):
+        text, count = self._strip("[1]集中系统数据!$A$1", ["集中系统数据"])
+        self.assertEqual(count, 1)
+        self.assertEqual(text, "集中系统数据!$A$1")
+
+    def test_plain_local_reference_untouched(self):
+        text, count = self._strip("集中系统数据!$A$1", ["集中系统数据"])
+        self.assertEqual(count, 0)
+        self.assertEqual(text, "集中系统数据!$A$1")
+
+    def test_path_style_missing_sheet_reported(self):
+        from base_audit.formula_region_writer import _dangling_after_strip
+        text, _ = self._strip(r"'C:\a\[簿.xlsx]未导入表'!$A$1", [])
+        self.assertIn("未导入表", _dangling_after_strip(text, []))

@@ -1,0 +1,81 @@
+# S1-F01 外部引用剥离支持路径式形态
+
+时间：2026-11-07 23:55（Asia/Shanghai）
+范围：`formula_region_writer`（Windows DIRECT_OOXML 写入）与 `excel_open_repair`
+（native 路径/兜底）；接续 v2.7.6 的无条件剥离口径。
+
+## 问题（用户指出）
+
+用户指出真实文件里的外部引用形如
+`'外部文件路径文件夹[工作簿名称.xlsx]工作表名称'！A1`，应删减为 `'工作表名称'！A1`。
+此前的实现只处理**索引式** `[N]工作表!`，**路径式完全未覆盖**。
+
+实测确认：
+
+| 引用形态 | 修复前剥离 |
+|---|---|
+| `'C:\外部文件夹\[工作簿.xlsx]集中系统数据'!$A$1` | **0（漏剥）** |
+| `'[工作簿.xlsx]集中系统数据'!$A$1` | **0（漏剥）** |
+| `[工作簿.xlsx]集中系统数据!$A$1` | **0（漏剥）** |
+| `[1]集中系统数据!$A$1` | 1（已支持） |
+
+用户提供的 `！70.金融基础数据采集（债券业务）202608.xlsx` 内 12 处均为索引式
+（路径式 0 处），但路径式在其它来源文件中真实存在，属遗漏的能力面。
+
+## 实现
+
+两种形态、两处实现同步支持：
+
+`core/src/base_audit/formula_region_writer.py`（主路径）：
+
+- 新增 `_PATH_STYLE_QUOTED_RE` / `_PATH_STYLE_BARE_RE`：
+  - `'…[工作簿.xlsx]工作表'!` → `'工作表'!`
+  - `[工作簿.xlsx]工作表!` → `工作表!`
+  - 支持 `.xlsx/.xlsm/.xlsb/.xls`、含空格表名、函数内出现。
+- `_strip_external_prefixes` 在索引式替换后追加路径式替换。
+- `_PATH_STYLE_ANY_RE` 用于检测（判定"是否仍有外部引用"）。
+
+`core/src/base_audit/excel_open_repair.py`（native 路径 / 兜底）：
+
+- 同样新增路径式正则与替换；
+- 索引式剥离同步改为**无条件**（与 v2.7.6 口径一致；此前仍受 local_sheets 限制）；
+- `_has_dangling_external_ref` 同步识别路径式引用，避免"看似无残留 [N] 就删外链"
+  的误判（删除外链会让路径式引用变成新的悬空引用）。
+
+## 验证
+
+剥离效果（`_strip_external_prefixes`）：
+
+| 输入 | 输出 | 剥离 |
+|---|---|---:|
+| `'C:\外部文件夹\[工作簿.xlsx]集中系统数据'!$A$1` | `'集中系统数据'!$A$1` | 1 |
+| `'[工作簿.xlsx]集中系统数据'!$A$1` | `'集中系统数据'!$A$1` | 1 |
+| `[工作簿.xlsx]集中系统数据!$A$1` | `集中系统数据!$A$1` | 1 |
+| `'C:\a\[簿.xlsm]某 表'!$B$2` | `'某 表'!$B$2` | 1 |
+| `INDEX('C:\a\[簿.xlsx]数据'!$A:$A,1)` | `INDEX('数据'!$A:$A,1)` | 1 |
+| `集中系统数据!$A$1`（本地引用） | 不变 | 0 |
+
+## 测试
+
+- `test_formula_region_writer.py` 新增 `ExternalReferenceFormatTests` 8 项
+  （完整路径 / 仅簿名 / 无引号 / xlsm+空格名 / 函数内 / 索引式回归 /
+  本地引用不动 / 缺失表提示），合计 **22 passed**。
+- `test_excel_open_repair.py` 15 passed（"真外链保留"用例按无条件口径改写为
+  `test_strips_true_external_ref_and_drops_links`）。
+- 相关回归（excel_open_repair / formula_region_writer / external_copy_fallback /
+  native_uos / workflow）：**123 passed**。
+- S1 回归：**609 passed / 13 skipped**。
+
+## 版本
+
+- S1-F01：2.7.6 → 2.7.7，PATCH。MANIFEST、组件 CHANGELOG、用户版更新日志已同步。
+
+## 边界
+
+- 只剥"外部工作簿"前缀（含路径）；本簿内的工作表引用（`表名!A1`）保持不变。
+- 剥离后若本地无同名表，公式成 `#REF!`（用户已确认的口径，按审核异常计入，不阻断）。
+- 路径式正则要求工作簿扩展名为 xlsx/xlsm/xlsb/xls；其它扩展名（如 .ods）不在覆盖范围。
+
+## Git
+
+未提交、未推送。

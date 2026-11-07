@@ -151,6 +151,17 @@ _XML_ESCAPE_ORDER = (("&", "&amp;"), ("<", "&lt;"), (">", "&gt;"), ('"', "&quot;
 _ANY_EXTERNAL_PREFIX_QUOTED_RE = re.compile(r"\[\d+\]'((?:[^']|'')*)'!")
 _ANY_EXTERNAL_PREFIX_BARE_RE = re.compile(r"\[\d+\]([^\s!'\[\]<>()]+)!")
 
+# 路径式外部引用：'C:\文件夹\[工作簿.xlsx]工作表'!A1 → '工作表'!A1
+# （Excel 在无 externalLink 索引或从公式栏粘贴时使用这种自包含形式）
+_PATH_STYLE_QUOTED_RE = re.compile(
+    r"'[^']*\[[^\]\/]+\.(?:xlsx|xlsm|xlsb|xls)\]((?:[^']|'')*)'!")
+_PATH_STYLE_BARE_RE = re.compile(
+    r"\[[^\]\/]+\.(?:xlsx|xlsm|xlsb|xls)\]([^\s!'\[\]<>()]+)!")
+# 路径式引用的检测（用于判断是否仍需剥离/能否断开外链）
+_PATH_STYLE_ANY_RE = re.compile(
+    r"(?:'[^']*\[[^\]\/]+\.(?:xlsx|xlsm|xlsb|xls)\][^']*'!"
+    r"|\[[^\]\/]+\.(?:xlsx|xlsm|xlsb|xls)\][^\s!'\[\]<>()]+!)")
+
 
 def _strip_external_prefixes(text: str, local_sheets: list[str]) -> tuple[str, int]:
     """剥离公式里的 ``[N]`` 外部工作簿前缀（无条件，副本只允许工作簿内引用）。
@@ -184,6 +195,20 @@ def _strip_external_prefixes(text: str, local_sheets: list[str]) -> tuple[str, i
 
     text = _ANY_EXTERNAL_PREFIX_QUOTED_RE.sub(quoted_sub, text)
     text = _ANY_EXTERNAL_PREFIX_BARE_RE.sub(bare_sub, text)
+
+    # 路径式：'路径[工作簿.xlsx]工作表'! → '工作表'!；[工作簿.xlsx]工作表! → 工作表!
+    def path_quoted_sub(m):
+        nonlocal total
+        total += 1
+        return "'" + (m.group(1) or "") + "'!"
+
+    def path_bare_sub(m):
+        nonlocal total
+        total += 1
+        return m.group(1) + "!"
+
+    text = _PATH_STYLE_QUOTED_RE.sub(path_quoted_sub, text)
+    text = _PATH_STYLE_BARE_RE.sub(path_bare_sub, text)
     return text, total
 
 

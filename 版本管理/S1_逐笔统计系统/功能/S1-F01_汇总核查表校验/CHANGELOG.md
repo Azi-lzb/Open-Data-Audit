@@ -1,6 +1,37 @@
 # S1-F01 汇总核查表校验
 
-当前版本：v2.7.6
+当前版本：v2.7.7
+
+## v2.7.7 — 2026-11-07 23:55
+
+变更类型：Bugfix / PATCH
+
+前版本：v2.7.6；新版本：v2.7.7。
+
+- 外部引用剥离补齐**路径式**形态：`'C:\文件夹\[工作簿.xlsx]工作表'!A1` → `'工作表'!A1`
+  （含仅簿名 `'[工作簿.xlsx]工作表'!`、无引号 `[工作簿.xlsx]工作表!` 变体，支持
+  .xlsx/.xlsm/.xlsb/.xls 与含空格表名）。此前只处理索引式 `[N]工作表!`，
+  真实文件中存在的路径式引用会漏剥并导致 Excel 拒绝打开。
+- `formula_region_writer`（Windows DIRECT_OOXML 写入）与 `excel_open_repair`
+  （native 路径/兜底）两处同步支持两种形态；`excel_open_repair` 的索引式剥离
+  同步改为无条件（与 v2.7.6 口径一致）。
+- 外链断开检测同步识别路径式引用，避免"看起来无残留 [N] 就删外链"的误判。
+
+影响文件：`core/src/base_audit/formula_region_writer.py`、
+`core/src/base_audit/excel_open_repair.py`、`core/tests/test_formula_region_writer.py`、
+`core/tests/test_excel_open_repair.py`、`core/tests/test_version_manifest.py`、
+`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。
+
+测试：`test_formula_region_writer.py` 22 passed（新增 8 项路径式用例：完整路径/仅簿名/
+无引号/xlsm+空格名/函数内/索引式回归/本地引用不动/缺失表提示）；
+`test_excel_open_repair.py` 15 passed；相关回归 123 passed；
+S1 回归 609 passed / 13 skipped。
+
+GPT修改记录：`GPT修改记录/20261107_235500_S1F1外部引用路径式剥离.txt`。
+
+Git提交：未提交。
 
 ## v2.7.6 — 2026-11-07 23:20
 

@@ -105,9 +105,13 @@ def _strip_dangling_external_refs(text: str, local_sheets: list[str]) -> tuple[s
     覆盖带引号 ``'[表]名'!``（内部 ' 按 '' 转义）与裸 ``表名!`` 两种变体，
     ���容表名的字面与 NCR 实体两种编码。返回 (新文本, 剥离次数)。
     """
-    if not local_sheets:
-        return text, 0
     total = 0
+    # 无条件剥离索引式前缀（按业务口径：副本只允许工作簿内引用）。
+    # local_sheets 仅用于识别“本地有同名表”，不决定是否剥离。
+    text, count = _INDEX_STYLE_QUOTED_RE.subn(lambda m: "'" + (m.group(1) or "") + "'!", text)
+    total += count
+    text, count = _INDEX_STYLE_BARE_RE.subn(lambda m: m.group(1) + "!", text)
+    total += count
     for name in local_sheets:
         flex = _name_flex_regex(name)
         escaped = _name_flex_regex(name.replace("'", "''"))
@@ -117,6 +121,11 @@ def _strip_dangling_external_refs(text: str, local_sheets: list[str]) -> tuple[s
         bare = re.compile(r"\[\d+\]" + flex + r"!")
         text, count = bare.subn(name + "!", text)
         total += count
+    # 路径式外部引用：'C:\路径\[工作簿.xlsx]表名'!A1 → '表名'!A1
+    text, count = _PATH_STYLE_QUOTED_RE.subn(lambda m: "'" + (m.group(1) or "") + "'!", text)
+    total += count
+    text, count = _PATH_STYLE_BARE_RE.subn(lambda m: m.group(1) + "!", text)
+    total += count
     return text, total
 
 
@@ -132,6 +141,16 @@ def _dangling_ref_pattern(local_sheets: list[str]):
 
 
 _ANY_INDEX_PREFIX_RE = re.compile(r"\[\d+\][^\s!<>()\[\]]+!")
+# 路径式外部引用：'路径[工作簿.xlsx]表名'! 或 [工作簿.xlsx]表名!
+_INDEX_STYLE_QUOTED_RE = re.compile(r"\[\d+\]'((?:[^']|'')*)'!")
+_INDEX_STYLE_BARE_RE = re.compile(r"\[\d+\]([^\s!'\[\]<>()]+)!")
+_PATH_STYLE_QUOTED_RE = re.compile(
+    r"'[^']*\[[^\]\/]+\.(?:xlsx|xlsm|xlsb|xls)\]((?:[^']|'')*)'!")
+_PATH_STYLE_BARE_RE = re.compile(
+    r"\[[^\]\/]+\.(?:xlsx|xlsm|xlsb|xls)\]([^\s!'\[\]<>()]+)!")
+_PATH_STYLE_ANY_RE = re.compile(
+    r"(?:'[^']*\[[^\]\/]+\.(?:xlsx|xlsm|xlsb|xls)\][^']*'!"
+    r"|\[[^\]\/]+\.(?:xlsx|xlsm|xlsb|xls)\][^\s!'\[\]<>()]+!)")
 
 
 def _has_dangling_external_ref(archive: zipfile.ZipFile, local_sheets: list[str]) -> bool:
@@ -148,7 +167,7 @@ def _has_dangling_external_ref(archive: zipfile.ZipFile, local_sheets: list[str]
             text = archive.read(part).decode("utf-8", "ignore")
         except Exception:
             continue
-        if _ANY_INDEX_PREFIX_RE.search(text):
+        if _ANY_INDEX_PREFIX_RE.search(text) or _PATH_STYLE_ANY_RE.search(text):
             return True
     return False
 
