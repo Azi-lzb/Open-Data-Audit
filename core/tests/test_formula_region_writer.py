@@ -264,5 +264,33 @@ class HandlerDispatchTests(unittest.TestCase):
         self.assertIn("DIRECT_OOXML", WRITER_MODES)
 
 
+class ExternalPrefixStripTests(unittest.TestCase):
+    """模板公式带 [N] 外部簿前缀时的剥离口径（与 Rust-Tools / Rust-Audit 一致）。"""
+
+    def test_strips_prefix_pointing_to_local_sheet(self):
+        from base_audit.formula_region_writer import _strip_external_prefixes
+
+        local = ["存量单位贷款信息"]
+        text, count = _strip_external_prefixes(
+            "SUM([1]存量单位贷款信息!C5:C10)", local)
+        self.assertEqual(count, 1)
+        self.assertEqual(text, "SUM(存量单位贷款信息!C5:C10)")
+
+    def test_strips_quoted_and_escaped_variant(self):
+        from base_audit.formula_region_writer import _strip_external_prefixes
+
+        local = ["O'Brien表"]
+        text, count = _strip_external_prefixes("[2]'O''Brien表'!A1", local)
+        self.assertEqual(count, 1)
+        self.assertEqual(text, "'O''Brien表'!A1")
+
+    def test_keeps_reference_to_true_external_workbook(self):
+        from base_audit.formula_region_writer import _strip_external_prefixes
+
+        text, count = _strip_external_prefixes("[99]真正外部簿!A1", ["本地表"])
+        self.assertEqual(count, 0)
+        self.assertEqual(text, "[99]真正外部簿!A1")
+
+
 if __name__ == "__main__":
     unittest.main()

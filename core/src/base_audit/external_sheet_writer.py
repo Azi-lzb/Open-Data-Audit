@@ -89,6 +89,21 @@ class DirectOoxmlExternalSheetWriter:
         self._sheets: tuple[_Sheet, ...] = ()
         self.prepare_seconds = 0.0
 
+    def _local_sheet_names(self, parts: dict[str, bytes]) -> list[str]:
+        """审核副本当前的全部工作表名（含本次导入的表），用于判定 [N] 是否指向本地。"""
+        workbook_xml = parts.get("xl/workbook.xml", b"")
+        if not workbook_xml:
+            return []
+        try:
+            root = ET.fromstring(workbook_xml)
+        except ET.ParseError:
+            return []
+        return [
+            node.get("name") or ""
+            for node in root.iter()
+            if node.tag.split("}")[-1] == "sheet" and (node.get("name") or "")
+        ]
+
     def prepare(self) -> ExternalSheetWriteResult:
         started = time.monotonic()
         try:
@@ -195,7 +210,8 @@ class DirectOoxmlExternalSheetWriter:
             part = f"xl/worksheets/sheet{part_number}.xml"
             target = f"worksheets/sheet{part_number}.xml"
             relation_id = f"rId{relation_number}"
-            parts[part] = _render_sheet(sheet).encode("utf-8")
+            local_names = self._local_sheet_names(parts)
+            parts[part] = _render_sheet(sheet, local_names).encode("utf-8")
             order.append(part)
             escaped_name = html.escape(sheet.name, quote=True)
             workbook_xml = workbook_xml.replace(
@@ -297,7 +313,28 @@ def _parse_data_sheet(name: str, raw: bytes | None, shared: list[str]) -> _Sheet
     return _Sheet(name=name, rows=tuple(rows), ignored_features=tuple(ignored))
 
 
-def _render_sheet(sheet: _Sheet) -> str:
+def _strip_external_prefixes(text: str, local_sheets: list[str]) -> tuple[str, int]:
+    """剥离公式中指向本地已存在表的 ``[N]`` 外部工作簿前缀。
+
+    导入的外部表成为本地 sheet 后，公式若仍带 ``[1]表名!`` 就是悬空引用
+    （Excel Workbooks.Open 报 0x80020009 拒绝整簿）。仅当 [N] 后跟的表名
+    在 ``local_sheets`` 中时剥离；指向真正外部簿的不动。
+    """
+    if not local_sheets:
+        return text, 0
+    total = 0
+    for name in local_sheets:
+        escaped = re.escape(name.replace("'", "''"))
+        text, count = re.compile(r"\[\d+\]'" + escaped + r"'!").subn(
+            "'" + name.replace("'", "''") + "'!", text)
+        total += count
+        text, count = re.compile(r"\[\d+\]" + re.escape(name) + r"!").subn(
+            name + "!", text)
+        total += count
+    return text, total
+
+
+def _render_sheet(sheet: _Sheet, local_sheets: list[str] | None = None) -> str:
     rows = []
     for row_number, cells in sheet.rows:
         payload = []
@@ -308,7 +345,9 @@ def _render_sheet(sheet: _Sheet) -> str:
                     f' {html.escape(key, quote=True)}="{html.escape(value, quote=True)}"'
                     for key, value in cell.formula_attributes
                 )
-                formula_text = html.escape(cell.formula, quote=False)
+                raw_formula, _stripped = _strip_external_prefixes(
+                    cell.formula, local_sheets or [])
+                formula_text = html.escape(raw_formula, quote=False)
                 formula_xml = f"<f{formula_attributes}>{formula_text}</f>" if formula_text else f"<f{formula_attributes}/>"
                 cached_value = f"<v>{html.escape(cell.value, quote=False)}</v>" if cell.has_value_element else ""
                 payload.append(f'<c r="{cell.address}"{cell_type}>{formula_xml}{cached_value}</c>')

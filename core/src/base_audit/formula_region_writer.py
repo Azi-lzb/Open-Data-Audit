@@ -147,6 +147,29 @@ def _shift_refs_outside_strings(formula: str, dr: int, dc: int) -> str:
 _XML_ESCAPE_ORDER = (("&", "&amp;"), ("<", "&lt;"), (">", "&gt;"), ('"', "&quot;"))
 
 
+def _strip_external_prefixes(text: str, local_sheets: list[str]) -> tuple[str, int]:
+    """剥离公式中指向本地已存在表的 ``[N]`` 外部工作簿前缀。
+
+    模板校验区域公式可能自带 ``[1]表名!`` 前缀（模板作者用外部链接写的规则）。
+    审核副本把外部工作簿导入为本地同名 sheet 后不再携带 externalLink 部件，
+    保留前缀就是悬空引用（Excel ``Workbooks.Open`` 报 0x80020009 拒绝整簿）。
+    仅当 [N] 后跟的表名在 ``local_sheets`` 中时剥离，指向真正外部簿的不动。
+    覆盖 ``表名!``、``'表名'!`` 与 ``''`` 转义变体。
+    """
+    if not local_sheets:
+        return text, 0
+    total = 0
+    for name in local_sheets:
+        escaped = re.escape(name.replace("'", "''"))
+        quoted = re.compile(r"\[\d+\]'" + escaped + r"'!")
+        text, count = quoted.subn("'" + name.replace("'", "''") + "'!", text)
+        total += count
+        bare = re.compile(r"\[\d+\]" + re.escape(name) + r"!")
+        text, count = bare.subn(name + "!", text)
+        total += count
+    return text, total
+
+
 def _xml_escape_formula(text: str) -> str:
     """公式文本写回 <f> 前的 XML 转义（& 先行，避免二次转义）。"""
     for ch, ent in _XML_ESCAPE_ORDER:
@@ -265,6 +288,21 @@ class _TemplateReader:
             return []
         return ["".join(t.text or "" for t in si.iter() if t.tag.endswith("}t"))
                 for si in root]
+
+    def local_sheet_names(self) -> list[str]:
+        """本包（模板）的工作表名清单，用于判定 [N] 引用是否指向本地表。"""
+        workbook_xml = self.parts.get("xl/workbook.xml", b"")
+        if not workbook_xml:
+            return []
+        try:
+            root = StdET.fromstring(workbook_xml)
+        except StdET.ParseError:
+            return []
+        return [
+            node.get("name") or ""
+            for node in root.iter()
+            if node.tag.split("}")[-1] == "sheet" and (node.get("name") or "")
+        ]
 
     def sheet_part(self, sheet_name: str) -> str | None:
         """表名 ↔ 部件映射（workbook.xml + rels，属性顺序无关）。"""
@@ -512,6 +550,8 @@ class DirectOoxmlFormulaRegionWriter:
     mode = WRITER_DIRECT_OOXML
     capabilities = {"formula_write": True, "style_write": True,
                     "merge_write": True, "structured_rule_sheet": False}
+    # 累计剥离的 [N] 外部引用数量（诊断用）
+    _external_refs_stripped = 0
 
     def write(self, *, template_path: Path, audit_path: Path,
               definition, formula_overrides=None) -> FormulaRegionWriteResult:
@@ -524,6 +564,7 @@ class DirectOoxmlFormulaRegionWriter:
         else:
             self._structured_rule_sheet_pending = False
         template_reader = _TemplateReader(template_path, definition)
+        local_sheets = template_reader.local_sheet_names()
         with zipfile.ZipFile(Path(audit_path)) as archive:
             part_order = list(archive.namelist())
             parts = {name: archive.read(name) for name in part_order}
@@ -557,7 +598,7 @@ class DirectOoxmlFormulaRegionWriter:
                 )
             xml = parts[part].decode("utf-8")
             xml, n_cells, n_merges = self._patch_sheet(
-                xml, region, style_map)
+                xml, region, style_map, local_sheets)
             parts[part] = xml.encode("utf-8")
             written_cells += n_cells
             merged_merges += n_merges
@@ -655,7 +696,8 @@ class DirectOoxmlFormulaRegionWriter:
     # ---- 单表重生成：区域内格按模板写入；区域外原样 ----
 
     def _patch_sheet(self, xml: str, region: _TemplateRegion,
-                     style_map: dict[str, str]) -> tuple[str, int, int]:
+                     style_map: dict[str, str],
+                     local_sheets: list[str]) -> tuple[str, int, int]:
         lo_col, lo_row, hi_col, hi_row = region.bounds
         written = 0
         out_rows: list[str] = []
@@ -694,10 +736,17 @@ class DirectOoxmlFormulaRegionWriter:
                     style_attr = f' s="{style}"' if style else ""
                     ref = _cell_ref(row_index, col)
                     if template_cell.formula:
+                        # 剥离指向本地已导入同名表的 [N] 外部簿前缀：副本不带
+                        # 模板的 externalLink 部件，保留前缀会让 Excel 以
+                        # 0x80020009 拒绝整簿。指向真正外部簿的引用保持原样。
+                        formula_text, stripped = _strip_external_prefixes(
+                            template_cell.formula, local_sheets)
+                        if stripped:
+                            type(self)._external_refs_stripped += stripped
                         cells[col] = (
                             f'<c r="{ref}"{style_attr}>'
                             f"<f{_f_attrs_xml(template_cell.formula_attrs)}>"
-                            f"{_xml_escape(template_cell.formula)}</f></c>"
+                            f"{_xml_escape(formula_text)}</f></c>"
                         )
                         written += 1
                     elif template_cell.value_xml:
