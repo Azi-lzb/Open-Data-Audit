@@ -153,3 +153,27 @@ def test_fallback_keeps_cellis_handling(tmp_path: Path) -> None:
     assert unsupported == 0
     assert [item.target_cell for item in issues] == ["C5"]
     assert issues[0].detail == "条件格式规则：C5>1"
+
+
+def test_fallback_blank_target_setting(tmp_path: Path) -> None:
+    path = _expression_workbook(
+        tmp_path / "空白目标.xlsx",
+        {"B5": 2, "B6": 3, "C5": 1},
+        "$B5>0", "C5:C6",
+    )
+    session = ExcelSession()
+    common = dict(
+        workbook_path=path, mapping=_mapping(), structure_ranges=[],
+        period="2026-08", batch_id="t", audit_time="2026-08-01 00:00:00",
+        org_code="", org_name="", source_file=path,
+    )
+    included, included_unsupported = session._extract_conditional_format_issues_from_rules(
+        **common, include_blank_cells=True)
+    assert included_unsupported == 0
+    assert {item.target_cell for item in included} == {"C5", "C6"}
+
+    excluded, excluded_unsupported = session._extract_conditional_format_issues_from_rules(
+        **common, include_blank_cells=False)
+    assert excluded_unsupported == 0
+    assert {item.target_cell for item in excluded} == {"C5"}
+    assert session.last_conditional_blank_cells_excluded == 1

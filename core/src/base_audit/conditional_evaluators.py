@@ -514,19 +514,22 @@ class NativeDisplayVerifier:
         self.source = SOURCE_WPS_NATIVE if "WPS" in engine_name else SOURCE_EXCEL_NATIVE
 
     def extract_issues(self, *, com_workbook, mapping, structure_ranges, period, batch_id,
-                       audit_time, org_code, org_name, source_file, workbook_path):
+                       audit_time, org_code, org_name, source_file, workbook_path,
+                       include_blank_cells=True):
         started = time.monotonic()
         issues = self.session.extract_conditional_format_issues(
             com_workbook, mapping=mapping, structure_ranges=structure_ranges,
             period=period, batch_id=batch_id, audit_time=audit_time,
             org_code=org_code, org_name=org_name, source_file=source_file,
-            workbook_path=workbook_path,
+            workbook_path=workbook_path, include_blank_cells=include_blank_cells,
         )
         stats = {
             "display_format_read_time": time.monotonic() - started,
             "evaluated_cells": int(getattr(self.session, "last_conditional_evaluated_cells", 0) or 0),
             "unsupported_rule_count": int(getattr(self.session, "last_conditional_unsupported_count", 0) or 0),
             "unsupported_rule_details": [],
+            "display_fallback": bool(getattr(self.session, "last_conditional_display_fallback", False)),
+            "blank_cells_excluded": int(getattr(self.session, "last_conditional_blank_cells_excluded", 0) or 0),
         }
         return issues, stats
 
@@ -543,10 +546,12 @@ class ConditionalFormatService:
     """
 
     def __init__(self, mode: str, session=None,
-                 rule_reader: str = "DIRECT_OOXML") -> None:
+                 rule_reader: str = "DIRECT_OOXML",
+                 include_blank_cells: bool = True) -> None:
         self.mode = effective_evaluator_mode(mode)
         self.rule_reader = str(rule_reader or "DIRECT_OOXML").strip().upper()
         self.session = session
+        self.include_blank_cells = bool(include_blank_cells)
 
     def extract_issues(
         self, *, workbook_path: Path, ranges, structure_ranges,
@@ -564,6 +569,7 @@ class ConditionalFormatService:
                 mapping=mapping, com_workbook=com_workbook,
                 org_code=org_code, org_name=org_name,
                 total_started=total_started,
+                include_blank_cells=self.include_blank_cells,
             )
 
         reader_result = self._read_rules(workbook_path)
@@ -580,6 +586,7 @@ class ConditionalFormatService:
         evaluation_started = time.monotonic()
         results: list[ConditionalFormatResult] = []
         merged: dict = {"evaluated_cells": 0, "unsupported_cells": {}, "errors": [],
+                        "blank_cells_excluded": 0,
                         "com_call_count": 0, "com_evaluate_time": 0.0}
         if self.mode == EVALUATOR_PYTHON:
             evaluator = PythonConditionalRuleEvaluator()
@@ -595,6 +602,16 @@ class ConditionalFormatService:
                 continue
             sheet_results, sheet_stats = evaluator.evaluate_sheet(
                 sheet, rules, areas, reader_result)
+            if not self.include_blank_cells:
+                kept_results = []
+                for result in sheet_results:
+                    row, column = _cell_rowcol(result.cell)
+                    value = reader_result.cell_values.get(sheet, row, column) if row else None
+                    if value in (None, ""):
+                        merged["blank_cells_excluded"] += 1
+                    else:
+                        kept_results.append(result)
+                sheet_results = kept_results
             results.extend(sheet_results)
             merged["evaluated_cells"] += sheet_stats.get("evaluated_cells", 0)
             merged["unsupported_cells"].update(sheet_stats.get("unsupported_cells", {}))
@@ -650,6 +667,7 @@ class ConditionalFormatService:
             "unsupported_cells": len(merged["unsupported_cells"]),
             "errors": merged["errors"],
             "evaluated_cells": merged["evaluated_cells"],
+            "blank_cells_excluded": merged["blank_cells_excluded"],
             "triggered": len(results),
         }
         if self.mode == EVALUATOR_COM:
@@ -671,7 +689,7 @@ class ConditionalFormatService:
         self, *, workbook_path: Path, ranges, structure_ranges,
         period: str, batch_id: str, audit_time: str, source_file: Path,
         mapping, com_workbook, org_code: str, org_name: str,
-        total_started: float,
+        total_started: float, include_blank_cells: bool,
     ) -> tuple[list, dict]:
         """COM_DISPLAY：判定来自 DisplayFormat 渲染，结果构建走统一 Builder。
 
@@ -692,6 +710,7 @@ class ConditionalFormatService:
             batch_id=batch_id, audit_time=audit_time,
             org_code=org_code, org_name=org_name,
             source_file=source_file, workbook_path=workbook_path,
+            include_blank_cells=include_blank_cells,
         )
 
         # ---- RuleReader 解释层（读取耗时单列，不混入判定耗时） ----

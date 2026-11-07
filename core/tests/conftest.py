@@ -34,6 +34,7 @@ _SYSTEM_TEST_FILES = {
         "test_external.py",
         "test_external_sheet_writer.py",
         "test_external_copy_fallback.py",
+        "test_excel_open_repair.py",
         "test_feature_log.py",
         "test_formula_inspection.py",
         "test_formula_region_writer.py",

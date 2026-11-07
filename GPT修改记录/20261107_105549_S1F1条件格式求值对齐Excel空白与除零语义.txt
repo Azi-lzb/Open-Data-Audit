@@ -1,0 +1,72 @@
+# S1-F01 条件格式求值对齐 Excel 空白与除零语义
+
+时间：2026-11-07 10:55（Asia/Shanghai）
+范围：S1-F01 条件格式表达式求值器（base_audit/conditional_format.py）；UOS native 与
+Windows COM 回退路径共用该求值器，两侧口径同时受益。不改默认引擎路由、不改输出结构。
+
+## 背景与证据链
+
+1. 129 份真实核查表三模式对拍（PYTHON / COM_EVALUATE / COM_DISPLAY × Excel/WPS）：
+   所有位置差异 100% 是空白目标格（66 vs Excel 可比集 + 26 vs WPS 可比集 = 92 处），
+   有值差异 0。Excel 与 WPS 真实判定（求值、渲染）彼此完全一致。
+2. 规则盘点：2095 条规则全部 expression 型；ISBLANK 使用 0 处；空白保护靠
+   AND(x<>"",...)（480 条）；未保护裸除法 ?/?<=0.9（35 条）等是假阳性来源。
+3. COM 除零微实验（probe_divzero_com.py）：Excel 与 WPS 的 Evaluate 对除零返回
+   VARIANT 错误码 int -2146826281（#DIV/0!），错误从除法传播到最外层比较；
+   空白语义实测：空白="" → TRUE、空白=0 → TRUE、空白<=0.9 → TRUE、0<>"" → TRUE。
+4. 探针实验（experiment_blank_semantics.py，三轮迭代）确认修正语义后 Python 与两家
+   COM 在 129 份上 0 差异（hit_to_miss=92 恰为全部假阳性，miss_to_hit=0）。
+
+## 修改（core/src/base_audit/conditional_format.py）
+
+1. factor()：算术中空白单元格按 0 参与；除以 0（含 空/空）产生模块级哨兵 _EXPR_ERROR。
+2. term()/factor()：错误哨兵在算术中传播。
+3. _expr_compare() 重写：
+   - 含 _EXPR_ERROR → FALSE；
+   - t="e" 错误缓存文本（#DIV/0! 等 10 种）参与比较 → FALSE；
+   - 只有"空单元格"(None) 按对方类型折算（文本折空串、数值折 0、布尔折 FALSE）；
+     空串字面量 "" 是文本（0="" → FALSE、0<>"" → TRUE，修复原先折 0 的误判）；
+   - 数字与文本混合：= 恒 FALSE、<> 恒 TRUE、数字恒小于文本（<、<= 数字在左为 TRUE）；
+   - 文本/文本：=、<> 按字符串相等，排序比较保持 FALSE；
+   - 布尔/布尔与布尔折算（TRUE=1）；数值仍做 Excel 15 位有效数字收敛。
+4. evaluate_expression_formula 尾部：表达式整体为错误哨兵 → 规则 FALSE。
+
+## 语义边界（保持不变，注释与 CHANGELOG 已写明）
+
+- cellIs 规则空白目标格仍按不触发（当前语料 0 条 cellIs）；
+- 文本参与算术沿用现行为（未改为 #VALUE!）；
+- 文本不参与 < > <= >= 大小排序。
+
+## 测试
+
+- 新增 `TestExcelBlankAndErrorSemantics` 14 项（core/tests/test_conditional_excel_float.py）：
+  空/空、空/5、5/空、正常除法、保护规则空白/0.5/3、空白=0/=""、空白对比文本、
+  0 与 "" 的类型区分、错误缓存值、空白算术折 0、SUM 跳过空白、cellIs 边界钉住。
+- 条件格式相关回归（test_conditional_format/evaluators/excel_float/engine/fallback/
+  external_copy_fallback）：59 passed。
+- 定向 test_conditional_excel_float.py：25 passed。
+- S1 系统回归：571 passed / 13 skipped / 3 subtests passed。
+- 129 份金标准回归（verify_landed_semantics.py，用落地代码、无 monkeypatch）：
+  vs COM_EVALUATE(Excel) 101 文件 0 差异、vs COM_DISPLAY(Excel) 101 文件 0 差异、
+  vs COM_EVALUATE(WPS) 129 文件 0 差异；hit_to_miss=92（全部为原假阳性）、miss_to_hit=0。
+  数据：test-output/s1f1_mode_parity_20261107/landed_semantics_verification.json。
+- test_version_manifest.py：8 passed（期望同步 2.7.1）。
+
+## 版本
+
+- S1-F01：2.7.0 → 2.7.1，PATCH（缺陷修复：空白/除零/错误值的判定结果与 Office 对齐；
+  输出列与协议不变）。MANIFEST、组件 CHANGELOG、用户版更新日志已同步。
+- 产品版本、配置版本不变。
+
+## 风险与边界
+
+- 对齐范围 = 本数据集规则语料（2095 条、全 expression 型）；规则形态变化时需重跑对拍。
+- 文本参与算术未改为 #VALUE!（语料未覆盖，保持旧行为）；如未来出现会有偏差。
+- WPS COM_DISPLAY 的 DisplayFormat 不可读回退（46/129 文件）与本次修复正交：
+  修复后回退结果与真实判定同口径，回退标记仍如实记录。
+- 129 份验证在 Windows 侧完成；UOS 真机未实测（求值器为纯 Python，平台无关，
+  风险低）。
+
+## Git
+
+未提交、未推送。

@@ -466,11 +466,24 @@ def handle_structure_compare(ctx: NodeContext, parameters: Dict[str, Any], input
 
 
 def handle_files_copy(ctx: NodeContext, parameters: Dict[str, Any], inputs: Dict[str, Any]) -> ModuleExecutionResult:
-    """复制审核副本快照（每文件复制前后各一次 SHA-256 校验）。"""
+    """复制审核副本快照（每文件复制前后各一次 SHA-256 校验）。
+
+    Windows 管线计算走 Excel/WPS COM：引擎为“Microsoft Excel/自动”时，对副本
+    做一次 Excel 兼容修复（全角括号表名裸引用补引号、冻结窗格坐标矛盾修正），
+    否则公式复制/条件格式提取节点无法用 Excel 打开这类报送文件。WPS 引擎与
+    UOS native 管线不经过本分支（WPS 本身能打开，修复只属于 Excel 路径）。
+    修复只作用于副本，原始报送文件不改写。
+    """
     flow_name = parameters.get("flow_name", "")
     stage_dir = Path(parameters["stage_dir"]) / "v1-copy"
     stage_dir.mkdir(parents=True, exist_ok=True)
+    service = ctx.run.services.get("service")
+    engine = str(getattr(service, "engine_preference", "自动") or "自动")
+    repair_engine = engine != "WPS 表格"
     records = []
+    repaired_files = 0
+    repaired_quotes = 0
+    repaired_panes = 0
     for record in _records(inputs["accepted_files"]):
         audit_path = _available_output_path(stage_dir, Path(record.source))
         source_hash = _sha256(Path(record.source))
@@ -484,6 +497,19 @@ def handle_files_copy(ctx: NodeContext, parameters: Dict[str, Any], inputs: Dict
                 f"执行流程“{flow_name}”处理“{Path(record.source).name}”失败，已按“停止”中止："
                 "原始报送文件在审核过程中发生变化"
             )
+        if repair_engine:
+            from ...excel_open_repair import repair_audit_copy_for_excel
+            repair = repair_audit_copy_for_excel(audit_path)
+            if repair.get("changed"):
+                repaired_files += 1
+                repaired_quotes += int(repair.get("quoted", 0))
+                repaired_panes += int(repair.get("pane_fixed", 0))
+                detail = "、".join(filter(None, (
+                    f"工作表引用补引号 {repair.get('quoted', 0)} 处" if repair.get("quoted") else "",
+                    f"冻结窗格修正 {repair.get('pane_fixed', 0)} 处" if repair.get("pane_fixed") else "",
+                )))
+                ctx.log(f"{Path(record.source).name}：Excel 无法打开原样副本，已在审核副本上修复（{detail}）；"
+                        "原始文件未改动。")
         records.append(FileRecord(
             source=record.source, audit=str(audit_path),
             org_code=record.org_code, org_name=record.org_name, version=record.version + 1,
@@ -491,7 +517,13 @@ def handle_files_copy(ctx: NodeContext, parameters: Dict[str, Any], inputs: Dict
         ))
     artifact = FileSetArtifact(records=tuple(records), subtype=ArtifactSubtype.EXCEL_WORKBOOK_SET)
     artifact.lineage = (inputs["accepted_files"].artifact_id,)
-    return ModuleExecutionResult.ok(workbooks=artifact)
+    result = ModuleExecutionResult.ok(workbooks=artifact)
+    result.metrics.update({
+        "excel_open_repair_files": repaired_files,
+        "excel_open_repair_quoted": repaired_quotes,
+        "excel_open_repair_panes": repaired_panes,
+    })
+    return result
 
 
 def handle_external_copy(ctx: NodeContext, parameters: Dict[str, Any], inputs: Dict[str, Any]) -> ModuleExecutionResult:
@@ -805,13 +837,15 @@ def handle_conditional_issue_extract(ctx: NodeContext, parameters: Dict[str, Any
         ctx, template, definition, mapping, source_files, excel,
         mode=mode, service=service, rule_reader=rule_reader,
         period=period, batch_id=batch_id, audit_time=audit_time,
+        workbooks=inputs.get("workbooks"),
     )
 
 
 def _conditional_issues_via_service(ctx: NodeContext, template: Dict[str, Any], definition,
                                    mapping, source_files, excel, *, mode: str, service,
                                    rule_reader: str = "DIRECT_OOXML",
-                                   period: str, batch_id: str, audit_time: str) -> ModuleExecutionResult:
+                                   period: str, batch_id: str, audit_time: str,
+                                   workbooks=None) -> ModuleExecutionResult:
     """PYTHON / COM_EVALUATE：Direct OOXML 规则读取 + 所选求值器（无回退）。"""
     from ...conditional_evaluators import ConditionalFormatService
     from ...native.openpyxl_workbook import named_ranges
@@ -824,17 +858,37 @@ def _conditional_issues_via_service(ctx: NodeContext, template: Dict[str, Any], 
     finally:
         book.close()
 
-    cf_service = ConditionalFormatService(mode, session=excel)
+    include_blank_cells = bool(
+        getattr(service, "conditional_format_include_blank_cells", True)
+    )
+    cf_service = ConditionalFormatService(
+        mode, session=excel, include_blank_cells=include_blank_cells)
     issues = []
     stat_lines = []
+    # 审核副本映射：copy-files 产物（record.audit = 已做 Excel 兼容修复的 v1 副本）。
+    # 结构比对拒绝的文件没有副本，COM 提取时回退打开原始文件（若 Excel 仍打不开则按失败策略处理）。
+    copy_map: Dict[str, str] = {}
+    if workbooks is not None:
+        for copied in _records(workbooks):
+            if getattr(copied, "audit", ""):
+                copy_map[str(Path(copied.source).resolve())] = str(copied.audit)
+
     for record in _records(source_files):
         ctx.log(f"正在求值条件格式规则：{Path(record.source).name}")
         com_workbook = None
+        # COM 模式优先打开审核副本（copy-files 产物，已在复制时做 Excel 兼容修复）：
+        # 原始报送文件中“全角括号表名裸引用 / 冻结窗格矛盾”会让 Excel 拒绝打开，
+        # 而副本与原始文件的条件格式语义完全一致（修复只规范引号与窗格，不改规则与值）。
+        # PYTHON 模式不涉及 COM 打开，仍读原始报送文件，保持与既有对拍基线同口径。
+        audit_copy = copy_map.get(str(Path(record.source).resolve()), "")
+        use_copy = (mode in ("COM_EVALUATE", "COM_DISPLAY")
+                    and bool(audit_copy) and Path(audit_copy).is_file())
+        open_path = Path(audit_copy) if use_copy else Path(record.source)
         if mode in ("COM_EVALUATE", "COM_DISPLAY"):
-            com_workbook = excel.open_workbook(Path(record.source), read_only=True)
+            com_workbook = excel.open_workbook(open_path, read_only=True)
         try:
             file_issues, stats = cf_service.extract_issues(
-                workbook_path=Path(record.source), ranges=ranges,
+                workbook_path=open_path, ranges=ranges,
                 structure_ranges=definition.structure_ranges,
                 period=period, batch_id=batch_id, audit_time=audit_time,
                 source_file=Path(record.source), mapping=mapping,
@@ -849,6 +903,8 @@ def _conditional_issues_via_service(ctx: NodeContext, template: Dict[str, Any], 
             line = ("  rule_read {rule_read_time:.2f}s | display_read {display_format_read_time:.2f}s"
                     " | total {total_time:.2f}s | 规则匹配 {match_counts} | 触发 {triggered}"
                     ).format(**stats, triggered=len(file_issues))
+            if stats.get("display_fallback"):
+                line += " | 显示色不可读：本文件回退 Python 规则求值，结果不代表 Office 实际显示"
         else:
             line = ("  rule_read {rule_read_time:.2f}s | evaluate {evaluation_time:.2f}s"
                     " | build {result_build_time:.2f}s | total {total_time:.2f}s"
@@ -856,6 +912,8 @@ def _conditional_issues_via_service(ctx: NodeContext, template: Dict[str, Any], 
                     " | 触发 {triggered}").format(**stats)
             if "com_call_count" in stats:
                 line += f" | COM 调用 {stats['com_call_count']} 次（{stats.get('com_evaluate_time', 0):.2f}s）"
+        if stats.get("blank_cells_excluded"):
+            line += f" | 按设置排除空白目标格 {stats['blank_cells_excluded']} 个"
         stat_lines.append(f"{Path(record.source).name}: {line}")
         if stats.get("unsupported_rule_details"):
             detail = "、".join(
@@ -1117,9 +1175,18 @@ AUDIT_MODULE_DEFINITIONS = (
     ModuleDefinition(
         module_id="excel.conditional_format_issue_extract", version="1", name="条件格式结果提取",
         category=ModuleCategory.CHECK, execution_scope=ExecutionScope.PER_FILE,
-        input_ports=(SOURCE_SET_IN, InputPortDefinition("template", ArtifactType.METADATA)),
+        input_ports=(
+            SOURCE_SET_IN,
+            InputPortDefinition("template", ArtifactType.METADATA),
+            # Excel/WPS COM 模式优先打开审核副本（copy-files 产物，已做 Excel 兼容修复）：
+            # 原始报送文件中两类非规范内容会让 Excel 拒绝打开。可选输入，缺失时回退原始文件。
+            InputPortDefinition("workbooks", ArtifactType.FILE_SET,
+                                accepted_subtypes=(ArtifactSubtype.EXCEL_WORKBOOK_SET,),
+                                required=False),
+        ),
         output_ports=(OutputPortDefinition("conditional_issues", ArtifactType.AUDIT_RESULT_SET),),
-        description="读取原始报送文件中条件格式实际触发的单元格。",
+        description="提取条件格式实际触发的单元格：COM 模式读审核副本（与原始文件条件格式语义一致），"
+                    "PYTHON 模式读原始报送文件。",
     ),
     ModuleDefinition(
         module_id="audit.result_merge", version="1", name="审核结果汇聚",

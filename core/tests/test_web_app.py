@@ -1015,6 +1015,7 @@ class WebAppCompatibilityTests(unittest.TestCase):
             api = WebApi(Path(folder))
             self.assertEqual(api.state["conditionalFormatEvaluator"], "PYTHON")
             self.assertEqual(api.state["conditionalFormatRuleReader"], "DIRECT_OOXML")
+            self.assertTrue(api.state["conditionalFormatIncludeBlankCells"])
             # 该标志 = pipeline_kind()=="com"，仅 Windows 为真（UOS 上 COM 选项按设计禁用）。
             self.assertEqual(api.state["conditionalFormatNativeAvailable"], sys.platform == "win32")
             api.update({"conditionalFormatEvaluator": "PYTHON"})
@@ -1028,14 +1029,18 @@ class WebAppCompatibilityTests(unittest.TestCase):
             api.update({"conditionalFormatRuleReader": "OPENPYXL"})
             self.assertEqual(api.state["conditionalFormatRuleReader"], "OPENPYXL")
             self.assertEqual(api.state["conditionalFormatEvaluator"], "PYTHON")
+            api.update({"conditionalFormatIncludeBlankCells": False})
+            self.assertFalse(api.state["conditionalFormatIncludeBlankCells"])
             api.update({"conditionalFormatRuleReader": "BOGUS"})
             self.assertEqual(api.state["conditionalFormatRuleReader"], "OPENPYXL")
             reloaded = WebApi(Path(folder))
             self.assertEqual(reloaded.state["conditionalFormatEvaluator"], "PYTHON")
             self.assertEqual(reloaded.state["conditionalFormatRuleReader"], "OPENPYXL")
+            self.assertFalse(reloaded.state["conditionalFormatIncludeBlankCells"])
             api.reset_general_settings()
             self.assertEqual(api.state["conditionalFormatEvaluator"], "PYTHON")
             self.assertEqual(api.state["conditionalFormatRuleReader"], "DIRECT_OOXML")
+            self.assertTrue(api.state["conditionalFormatIncludeBlankCells"])
 
     def test_reset_general_settings_keeps_other_system_settings(self) -> None:
         """General-page reset must not erase period/record-level preferences."""

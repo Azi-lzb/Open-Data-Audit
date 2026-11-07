@@ -107,3 +107,80 @@ class TestCellIsRounding:
             "equal", ["100.01"], 100.0,
             resolve_operand=lambda formulas, index: float(formulas[index]))
         assert result.status == "FALSE", result
+
+
+class TestExcelBlankAndErrorSemantics:
+    """Excel 空白/除零/类型比较语义（依据：129 份 COM 对拍，见
+    test-output/s1f1_mode_parity_20261107/parity_report.md）。
+
+    真实 Office 行为（Evaluate 实测，Excel 与 WPS 一致）：
+    - 空/空除法 → #DIV/0! 错误，错误传播 → 条件格式不成立；
+    - 空白单元格比较按对方类型折算（数值折 0、文本折空串）；
+    - 字面量 "" 是文本：0<>"" 为 TRUE；
+    - t="e" 错误缓存（#DIV/0! 等）参与比较 → 不成立。
+    """
+
+    def test_blank_over_blank_division_does_not_trigger(self):
+        result = _eval("C8/C7<=0.9", {})
+        assert result.status == "FALSE", result
+
+    def test_blank_numerator_is_zero(self):
+        result = _eval("C8/C7<=0.9", {"C7": 5.0})
+        assert result.status == "TRUE", result
+
+    def test_blank_denominator_is_division_by_zero(self):
+        result = _eval("C8/C7<=0.9", {"C8": 5.0})
+        assert result.status == "FALSE", result
+
+    def test_normal_division_still_triggers(self):
+        result = _eval("C8/C7<=0.9", {"C8": 4.0, "C7": 5.0})
+        assert result.status == "TRUE", result
+
+    def test_guarded_rule_blank_target_stays_silent(self):
+        """AND($C7<>"",OR($C7<=1,$C7>=10))：空白目标格不触发（_eval 锚点无平移，$C7 即取值格）。"""
+        result = _eval('AND($C7<>"",OR($C7<=1,$C7>=10))', {"C7": None})
+        assert result.status == "FALSE", result
+
+    def test_guarded_rule_small_value_triggers(self):
+        result = _eval('AND($C7<>"",OR($C7<=1,$C7>=10))', {"C7": 0.5})
+        assert result.status == "TRUE", result
+
+    def test_guarded_rule_normal_value_silent(self):
+        result = _eval('AND($C7<>"",OR($C7<=1,$C7>=10))', {"C7": 3})
+        assert result.status == "FALSE", result
+
+    def test_blank_equals_number_and_empty_text(self):
+        assert _eval("C8=0", {}).status == "TRUE"
+        assert _eval('C8=""', {}).status == "TRUE"
+        assert _eval("C8<>0", {}).status == "FALSE"
+        assert _eval('C8<>""', {}).status == "FALSE"
+
+    def test_blank_against_text_compares_as_empty_text(self):
+        assert _eval('C8="x"', {}).status == "FALSE"
+        assert _eval('C8<>"x"', {}).status == "TRUE"
+
+    def test_zero_literal_is_not_empty_text(self):
+        """数字与文本永不相等：0="" 为 FALSE，0<>"" 为 TRUE。"""
+        assert _eval('0=""', {}).status == "FALSE"
+        assert _eval('0<>""', {}).status == "TRUE"
+
+    def test_error_cached_value_never_triggers(self):
+        """t="e" 缓存的 #DIV/0! 参与比较 → 错误传播 → 不成立。"""
+        assert _eval("F38>=30", {"F38": "#DIV/0!"}).status == "FALSE"
+        assert _eval('F38<>""', {"F38": "#DIV/0!"}).status == "FALSE"
+
+    def test_blank_arithmetic_coerces_to_zero(self):
+        assert _eval("C8*2<=4", {}).status == "TRUE"
+        assert _eval("C8*2<=4", {"C8": 3}).status == "FALSE"
+
+    def test_sum_skips_blank_cells(self):
+        values = {"C1": 2, "C2": 2, "C3": None}
+        assert _eval("SUM(C1:C3)>5", values).status == "FALSE"
+        assert _eval("SUM(C1:C3)>3", values).status == "TRUE"
+
+    def test_cellis_blank_target_boundary_unchanged(self):
+        """已知边界：cellIs 空白目标格按不触发（当前语料 0 条 cellIs，保持现行为）。"""
+        result = evaluate_cellis_rule(
+            "lessThan", ["0.9"], None,
+            resolve_operand=lambda formulas, index: float(formulas[index]))
+        assert result.status == "FALSE", result

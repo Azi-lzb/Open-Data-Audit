@@ -39,6 +39,7 @@ def _build_rule_workbook(path: Path) -> None:
     sheet["B3"] = -1
     sheet["B4"] = 0
     sheet["B5"] = 3
+    sheet["B6"] = 2
     # cellIs：B2:B4 大于 0（B5 不在区域内）
     sheet.conditional_formatting.add(
         "B2:B4", CellIsRule(operator="greaterThan", formula=["0"], stopIfTrue=False))
@@ -46,6 +47,10 @@ def _build_rule_workbook(path: Path) -> None:
     sheet["C2"] = None
     sheet.conditional_formatting.add(
         "C2:C5", FormulaRule(formula=["$B2<0"], stopIfTrue=True))
+    sheet["C3"] = 1
+    # 空白目标格也可因同一行其他值满足规则而触发。
+    sheet.conditional_formatting.add(
+        "C6", FormulaRule(formula=["$B6>0"], stopIfTrue=False))
     # colorScale：不支持类型
     from openpyxl.formatting.rule import ColorScaleRule
 
@@ -198,6 +203,29 @@ class ServicePythonTests(unittest.TestCase):
             issue = issues[0]
             self.assertEqual(issue.sheet_name, "资产负债表")
             self.assertTrue(str(issue.message))
+
+    def test_blank_target_setting_includes_or_excludes_triggered_blank(self):
+        with TemporaryDirectory(prefix="cf-blank-setting-") as folder:
+            workbook = Path(folder) / "空白目标.xlsx"
+            _build_rule_workbook(workbook)
+            common = dict(
+                workbook_path=workbook, ranges=[], structure_ranges=[],
+                period="2026-08", batch_id="blank", audit_time="2026-09-12 00:00:00",
+                source_file=workbook,
+            )
+            included, include_stats = ConditionalFormatService(
+                EVALUATOR_PYTHON, include_blank_cells=True
+            ).extract_issues(**common)
+            excluded, exclude_stats = ConditionalFormatService(
+                EVALUATOR_PYTHON, include_blank_cells=False
+            ).extract_issues(**common)
+            included_cells = {issue.target_cell for issue in included}
+            excluded_cells = {issue.target_cell for issue in excluded}
+            self.assertIn("C6", included_cells)
+            self.assertNotIn("C6", excluded_cells)
+            self.assertEqual(include_stats["triggered"], len(included))
+            self.assertEqual(exclude_stats["blank_cells_excluded"], 1)
+            self.assertEqual(exclude_stats["triggered"], len(excluded))
 
 
 if __name__ == "__main__":

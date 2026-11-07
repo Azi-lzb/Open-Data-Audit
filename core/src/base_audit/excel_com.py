@@ -1437,6 +1437,7 @@ class ExcelSession:
         org_name: str,
         source_file: Path,
         workbook_path: Path | None = None,
+        include_blank_cells: bool = True,
     ) -> list[Issue]:
         """Extract cells whose conditional formatting changes the fill colour.
 
@@ -1452,6 +1453,8 @@ class ExcelSession:
         ``expression`` rules from OOXML rather than failing the whole step.
         """
         self.last_conditional_unsupported_count = 0
+        self.last_conditional_display_fallback = False
+        self.last_conditional_blank_cells_excluded = 0
         # Native 后端的同构结果输出（ConditionalFormatEngine 契约）；判定逻辑
         # 仍以 DisplayFormat 渲染对比为准，这里只做旁路记录。
         self.last_conditional_results = []
@@ -1460,15 +1463,17 @@ class ExcelSession:
                 workbook, mapping=mapping, structure_ranges=structure_ranges,
                 period=period, batch_id=batch_id, audit_time=audit_time,
                 org_code=org_code, org_name=org_name, source_file=source_file,
+                include_blank_cells=include_blank_cells,
             )
         except RuntimeError as exc:
             if workbook_path is None or "实际显示颜色" not in str(exc):
                 raise
+            self.last_conditional_display_fallback = True
             issues, unsupported = self._extract_conditional_format_issues_from_rules(
                 workbook_path=workbook_path, mapping=mapping,
                 structure_ranges=structure_ranges, period=period, batch_id=batch_id,
                 audit_time=audit_time, org_code=org_code, org_name=org_name,
-                source_file=source_file,
+                source_file=source_file, include_blank_cells=include_blank_cells,
             )
             self.last_conditional_unsupported_count = unsupported
             return issues
@@ -1485,6 +1490,7 @@ class ExcelSession:
         org_code: str,
         org_name: str,
         source_file: Path,
+        include_blank_cells: bool,
     ) -> list[Issue]:
         """Read a rendered conditional-format fill colour through COM."""
         requested = self._named_ranges_for_features(workbook, [mapping])
@@ -1556,8 +1562,7 @@ class ExcelSession:
                         value = values[row_offset][column_offset]
                     except IndexError:
                         value = None
-                    if value in (None, ""):
-                        continue
+                    is_blank_target = value in (None, "")
                     row, column = first_row + row_offset, first_column + column_offset
                     matched_rules = matching_rules(str(sheet.Name), row, column)
                     if matched_rules == []:
@@ -1569,6 +1574,9 @@ class ExcelSession:
                     cell = sheet.Cells(row, column)
                     color = self._active_conditional_fill_color(cell)
                     if color is None:
+                        continue
+                    if is_blank_target and not include_blank_cells:
+                        self.last_conditional_blank_cells_excluded += 1
                         continue
                     target_cell = _column_letters(column) + str(row)
                     check_field = self._conditional_check_field(sheet, row, column, structure_ranges)
@@ -1778,6 +1786,7 @@ class ExcelSession:
         org_code: str,
         org_name: str,
         source_file: Path,
+        include_blank_cells: bool = True,
     ) -> tuple[list[Issue], int]:
         """Evaluate ``cellIs``/``expression`` rules from OOXML for WPS.
 
@@ -1789,6 +1798,7 @@ class ExcelSession:
         from openpyxl.utils.cell import range_boundaries
 
         self.last_conditional_results = []
+        self.last_conditional_blank_cells_excluded = 0
         book = load_workbook(workbook_path, data_only=True, keep_links=False)
         try:
             # 条件格式区域 named ranges limit scanning; when the source file
@@ -1870,6 +1880,7 @@ class ExcelSession:
                                         if identity in seen:
                                             continue
                                         value = sheet.cell(row=row, column=column).value
+                                        is_blank_target = value in (None, "")
                                         if rule_type == "cellis":
                                             matched = self._cellis_matches_rule(rule, value, sheet)
                                         else:
@@ -1877,6 +1888,9 @@ class ExcelSession:
                                                 formula, sheet, anchor_row, anchor_col, row, column
                                             )
                                         if not matched:
+                                            continue
+                                        if is_blank_target and not include_blank_cells:
+                                            self.last_conditional_blank_cells_excluded += 1
                                             continue
                                         seen.add(identity)
                                         target_cell = _column_letters(column) + str(row)

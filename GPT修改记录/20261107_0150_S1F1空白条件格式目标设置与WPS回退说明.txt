@@ -1,0 +1,46 @@
+时间：2026-11-07 01:50（Asia/Shanghai）
+执行者：Codex
+修改前 commit：c350567（desktop）
+修改后 commit：未提交
+工作区状态：承接当前 S1-F01 空白目标格/WPS 显示色核实 WIP；未改动既有无关 WIP（.zcode/、core/tests/.pytest-tmp-v3/、docs/Excel与Office技术检查点_2026-10-22.md、external/），未改动真实源工作簿、Rust-Audit 或配置工作簿。
+
+目的：用户选择方案三，要求高级设置可控制条件格式结果是否输出空白目标单元格，并重点核实“Python 比 WPS 多、WPS 比 Excel 多”的差异是否说明 WPS 实际渲染出了这些空白格。
+
+实现：
+- S1-F01 高级设置新增“输出空白目标单元格”布尔项，跨重启保存；旧设置无该键时默认开启。开启时 Python 规则成立或 Office 实际显示填充与基础填充不同的空值目标格可以纳入结果；关闭时从最终结果排除，并在运行记录列出排除数量。
+- WPS 无法读取 DisplayFormat 实际颜色时，继续调用既有 Python 规则求值回退，并在运行记录标明此文件不是 WPS 实际显示色结果。三种来源仍分别是 Python 规则求值、Office 显示色判定、WPS 显示色不可读后的 Python 回退；没有把回退结果伪称为 WPS 渲染结果。
+- 相关运行设置、审计服务、条件格式读取/判定流程和测试已更新；产品整包版本和配置工作簿未改。
+
+WPS/Excel 核验依据（只读）：Rust-Audit `audit-core/probe/reports/s1f1_real_sample_parity_20261106.md` 于 2026-11-07 的补验记录：85 个 Rust-only 候选中，67 个可由 Excel COM 打开，66 个显示色未变化，仅 `单位存款发生额分产品期限!AX10` 显示色与基础色不同；另 18 个因 Excel `Workbooks.Open` 失败，显示状态未知。对 7 本 Excel 打开失败样本的 WPS 补验扫描 116 个目标格，116 个均无法读取基础/显示填充色，结果记为 0 命中并附 116 条诊断，7 本均部分完成。故这些样本的 WPS 结果不能证明 WPS 真正渲染或输出了更多空白命中；旧 Python Audit 在显示色不可读时会回退到 Python 静态规则求值，回退命中可能包含空白目标格。AX10 是当前已验证的空白格显示色变化例；18 格仍未知，不能推断全量 Office 结果。
+
+修改文件：
+- `core/src/base_audit/settings.py`
+- `core/src/base_audit/web_app.py`
+- `core/src/base_audit/service.py`
+- `core/src/base_audit/excel_com.py`
+- `core/src/base_audit/conditional_evaluators.py`
+- `core/src/base_audit/workflow/adapters/audit_handlers.py`
+- `core/frontend/web/index.html`
+- `core/tests/test_conditional_evaluators.py`
+- `core/tests/test_conditional_format_fallback.py`
+- `core/tests/test_web_app.py`
+- `core/tests/test_version_manifest.py`
+- `版本管理/VERSION_MANIFEST.json`
+- `版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md`
+- `日志/更新日志.txt`
+
+验证：
+- 定向条件格式和设置持久化测试：21 passed。
+- S1 系统回归：563 passed、7 skipped、597 deselected、3 subtests passed。
+- `git diff --check`：通过。
+- 未执行 Excel/WPS 新设置 GUI 人工验收，也未重新运行 129 本真实工作簿全量 Office 显示色对拍；18 个 Excel 无法打开的候选仍未知。
+
+回滚提示：若撤销本能力，应一起回退用户设置字段与 UI、服务传递和条件格式过滤逻辑、测试、S1-F01 MANIFEST/CHANGELOG 与用户更新日志；不得单独移除持久化字段而遗留调用。
+
+【组件版本】
+系统：S1 逐笔统计系统
+影响功能：S1-F01 汇总核查表校验 v2.6.5 → v2.7.0
+影响配置：S1-CFG-01 逐笔统计系统配置 v2.0.0 → v2.0.0（未变）
+产品整包：V26.2.2.5（未发布、未改版本）
+未修改的相关组件：S1-F02~F05、S2-F01、S3-F01~F05 及其他配置组件
+版本升级原因：新增兼容的空白条件格式目标格结果开关，并明确 WPS 显示色不可读时的 Python 回退来源。

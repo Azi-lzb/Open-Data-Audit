@@ -194,6 +194,25 @@ _EXPR_TOKEN_RE = re.compile(r"""\s*(?:
 
 _EXPR_ARITH = {'+': _operator.add, '-': _operator.sub, '*': _operator.mul, '/': _operator.truediv}
 
+# Excel 求值语义：除以 0（含 空/空）产生错误值，错误在算术与比较中传播；
+# 含错误的条件格式规则整体不成立。哨兵仅在表达式求值内部流转。
+class _ExprErrorValue:
+    """#DIV/0! 等错误值的进程内表示；参与比较时规则判 FALSE。"""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - 诊断辅助
+        return "#DIV/0!"
+
+
+_EXPR_ERROR = _ExprErrorValue()
+
+# 单元格以 t="e" 缓存的错误文本（如 #DIV/0!）参与比较时同样按错误传播处理。
+_EXPR_ERROR_TEXTS = frozenset({
+    "#N/A", "#VALUE!", "#REF!", "#DIV/0!", "#NUM!", "#NAME?", "#NULL!",
+    "#SPILL!", "#GETTING_DATA", "#CALC!",
+})
+
 
 def _expr_number(value):
     if value is None or isinstance(value, bool):
@@ -337,7 +356,10 @@ def evaluate_expression_formula(formula: str, ws, anchor_row: int, anchor_col: i
         while peek_kind() == "op" and peek() in ("+", "-"):
             op = eat()
             right = factor()
-            if isinstance(left, str) or isinstance(right, str):
+            if left is _EXPR_ERROR or right is _EXPR_ERROR:
+                # Excel：错误在加减中传播。
+                left = _EXPR_ERROR
+            elif isinstance(left, str) or isinstance(right, str):
                 if op == "+":
                     left = str(left or "") + str(right or "")
                 else:
@@ -353,13 +375,18 @@ def evaluate_expression_formula(formula: str, ws, anchor_row: int, anchor_col: i
         while peek_kind() == "op" and peek() in ("*", "/"):
             op = eat()
             right = unary()
-            ln, rn = _expr_number(left), _expr_number(right)
-            if ln is None or rn is None:
-                left = None
-            elif op == "/" and rn == 0:
-                left = None
+            if left is _EXPR_ERROR or right is _EXPR_ERROR:
+                left = _EXPR_ERROR
             else:
-                left = _excel_round15(_EXPR_ARITH[op](ln, rn))
+                # Excel：空白单元格在算术中按 0 参与；除以 0 → #DIV/0! 错误。
+                ln = _expr_number(0 if (left is None or left == "") else left)
+                rn = _expr_number(0 if (right is None or right == "") else right)
+                if ln is None or rn is None:
+                    left = None
+                elif op == "/" and rn == 0:
+                    left = _EXPR_ERROR
+                else:
+                    left = _excel_round15(_EXPR_ARITH[op](ln, rn))
         return left
 
     def unary():
@@ -408,33 +435,58 @@ def evaluate_expression_formula(formula: str, ws, anchor_row: int, anchor_col: i
         fail()
 
     def _expr_compare(op, a, b):
-        a_empty = a is None or a == ""
-        b_empty = b is None or b == ""
-        # 数值比较前按 Excel 15 位有效数字收敛（两侧同为数值时）；
-        # 字符串/布尔比较不受影响。
-        if not a_empty and not b_empty and not isinstance(a, bool) and not isinstance(b, bool):
-            na15, nb15 = _expr_number(a), _expr_number(b)
-            if na15 is not None and nb15 is not None:
-                a, b = _excel_round15(na15), _excel_round15(nb15)
-        if op == "=":
-            if a_empty and b_empty:
-                return True
-            if a_empty or b_empty:
-                return False
-            return a == b
-        if op == "<>":
-            if a_empty and b_empty:
-                return False
-            if a_empty or b_empty:
-                return True
-            return a != b
-        na = _expr_number(0 if a_empty else a)
-        nb = _expr_number(0 if b_empty else b)
-        if na is None or nb is None:
+        if a is _EXPR_ERROR or b is _EXPR_ERROR:
+            # Excel：错误参与比较 → 整个比较是错误 → 条件格式不成立。
             return False
-        return {"<": na < nb, ">": na > nb, "<=": na <= nb, ">=": na >= nb}[op]
+        # Excel 错误值（t="e" 缓存为文本）比较同样按错误传播处理。
+        if isinstance(a, str) and a.strip().upper() in _EXPR_ERROR_TEXTS:
+            return False
+        if isinstance(b, str) and b.strip().upper() in _EXPR_ERROR_TEXTS:
+            return False
+        # 只有“空单元格”(None) 才按对方类型折算；空串字面量 "" 是文本。
+        if a is None and b is None:
+            return op == "="
+        if a is None:
+            a = "" if isinstance(b, str) else (False if isinstance(b, bool) else 0)
+        elif b is None:
+            b = "" if isinstance(a, str) else (False if isinstance(a, bool) else 0)
+        if isinstance(a, str) != isinstance(b, str):
+            # Excel：数字与文本比较，= 恒 FALSE、<> 恒 TRUE，数字恒小于文本。
+            if op == "=":
+                return False
+            if op == "<>":
+                return True
+            number_first = not isinstance(a, str)
+            return {"<": number_first, "<=": number_first,
+                    ">": not number_first, ">=": not number_first}.get(op, False)
+        if isinstance(a, str) and isinstance(b, str):
+            eq = (a == b)
+            if op == "=":
+                return eq
+            if op == "<>":
+                return not eq
+            # 与既有口径一致：文本不参与 < > <= >= 大小排序。
+            return False
+        if isinstance(a, bool) and isinstance(b, bool):
+            eq = (a == b)
+            if op == "=":
+                return eq
+            if op == "<>":
+                return not eq
+            return {"<": a < b, ">": a > b, "<=": a <= b, ">=": a >= b}.get(op, False)
+        if isinstance(a, bool):
+            a = 1 if a else 0
+        if isinstance(b, bool):
+            b = 1 if b else 0
+        na15 = _excel_round15(a)
+        nb15 = _excel_round15(b)
+        return {"=": na15 == nb15, "<>": na15 != nb15, "<": na15 < nb15,
+                ">": na15 > nb15, "<=": na15 <= nb15, ">=": na15 >= nb15}[op]
 
     value = expr()
+    if value is _EXPR_ERROR:
+        # Excel：表达式整体为错误（如 空/空 <= 0.9）→ 条件格式不成立。
+        return False
     return _expr_truthy(value)
 
 

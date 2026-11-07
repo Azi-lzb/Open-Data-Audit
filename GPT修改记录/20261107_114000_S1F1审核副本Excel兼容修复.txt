@@ -1,0 +1,76 @@
+# S1-F01 审核副本 Excel 兼容修复（全角表名引用 + 冻结窗格）
+
+时间：2026-11-07 11:40（Asia/Shanghai）
+范围：S1-F01 Windows 管线“复制审核副本”节点；新增 excel_open_repair 模块。
+不改默认引擎路由；WPS 引擎与 UOS native 管线不修复。
+
+## 背景
+
+129 份真实核查表中有 28 本 Excel COM 打不开（`Workbooks.Open` 报“方法无效”；
+WPS 全部能开）。根因分析（`test-output/s1f1_mode_parity_20261107/excel_open_root_cause.md`）
+定位到两个独立原因：
+
+1. **全角括号表名裸引用**（B00 三类 21 本）：公式直接写
+   `个人贷款发生额信息（隐藏发放）!A1` 而未加单引号；Excel 要求含特殊字符的表名
+   必须引号，存储公式解析失败即拒绝打开。通过组 101 本裸引用 0 例。
+2. **冻结窗格 topLeftCell 落在冻结区内**（置换旧债 7 本）：
+   `<pane ySplit="6" topLeftCell="C6" state="frozen"/>` 自相矛盾；Excel 强制
+   冻结态下 topLeftCell 位于分割线右下方。
+
+## 实现
+
+新增 `core/src/base_audit/excel_open_repair.py`：
+
+- `repair_audit_copy_for_excel(path)`：只处理 ZIP 容器（.xlsx/.xlsm）；
+  廉价预检（无嫌疑不重写，干净文件字节不变）；修复两类内容——
+  1. 对 `<f>`、`<formula>`（条件格式/数据验证）、`<c:f>`（图表）、
+     `<definedNames>` 四类载体中“强制引号表名的裸引用”补单引号
+     （`(?<!')` 防重复；公式语义不变）；
+  2. 冻结窗格 `topLeftCell` 行号 ≤ ySplit 时修正为 ySplit+1。
+- 原子替换（临时文件 + os.replace）；任何异常返回 changed=False 且文件保持原样，
+  不打断审核。
+- 强制引号字符集与判定、补引号/修窗格算法与根因分析脚本完全一致，
+  28 本真实样本计数逐本一致（28/28）。
+
+接入 `workflow/adapters/audit_handlers.py::handle_files_copy`（Windows 适配器）：
+
+- 门控：`service.engine_preference != "WPS 表格"` 才修复（即 Microsoft Excel/自动）。
+  理由：修复只为 Excel COM 打开服务；WPS 本身能打开这些文件，native 管线不经此分支。
+- 修复对象是刚复制的审核副本（v1），原始报送文件不改写（有测试钉住）。
+- 指标 `excel_open_repair_files/quoted/panes`；逐文件日志说明修复内容。
+
+## 测试
+
+新增 `core/tests/test_excel_open_repair.py`（7 项，已登记 s1 分组）：
+
+- 合成缺陷修复（补引号 + 窗格修正，openpyxl 合成后注入缺陷并解码 NCR 至字面 UTF-8，
+  与真实缺陷文件形态一致）；
+- 干净文件字节不变；非 ZIP 优雅跳过；
+- handler 门控：Excel/自动修、WPS 不修、原始文件保护；
+- 真实样本计数（隔离目录存在时）。
+
+结果：
+
+- 定向：`test_excel_open_repair.py` 7 passed；`test_version_manifest.py` 8 passed。
+- 条件格式相关回归：59 passed。
+- S1 回归：577 passed / 13 skipped / 3 subtests（1 项 distribution_profile 既有偶发，
+  单独与整文件复跑均通过）。
+- 28 本真实样本：修复模块 vs 根因分析脚本计数 28/28 一致；
+  修复后 Excel COM 打开 28/28（excel_open_fix_28.json）。
+
+## 版本
+
+- S1-F01：2.7.1 → 2.7.2，PATCH。MANIFEST、组件 CHANGELOG、用户版更新日志已同步。
+- 产品版本、配置版本不变。
+
+## 边界与风险
+
+- 修复只覆盖已证实的两类缺陷；其它 Excel 拒绝打开的原因不在处理范围。
+- 补引号在公式字符串字面量中出现同形文本时理论上会误改（对 28 本真实文件
+  未出现）；修复后 Excel 打开与 WPS 兼容均已验证。
+- xlsm 输入同样支持（ZIP 重打包不触碰 vbaProject 部件）。
+- 未在 UOS 真机验证（本修复仅 Windows 分支）。
+
+## Git
+
+未提交、未推送。

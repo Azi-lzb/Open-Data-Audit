@@ -2647,6 +2647,8 @@ function renderAdvanced(){
       +'<option value="COM_EVALUATE"'+(s.conditionalFormatEvaluator==='COM_EVALUATE'?' selected':'')+'>Office 公式计算（兼容）</option>'
       +'<option value="COM_DISPLAY"'+(s.conditionalFormatEvaluator==='COM_DISPLAY'?' selected':'')+'>Office 公式渲染（兼容）</option>'
       +'</select>'),
+    row('输出空白目标单元格','规则成立或 Office 显示填充变化时，是否把目标值为空的单元格纳入 S1-F01 条件格式结果；默认纳入。',
+      toggle('setConditionalFormatIncludeBlankCells',s.conditionalFormatIncludeBlankCells!==false)),
   ].join('');
   const rowsCentralForm=[
     row('生成文件方式','直接填充使用 zipfile、ElementTree 和 XML 文本处理修改金融表单模板，准备阶段可能配合 openpyxl；工作簿生成通过 openpyxl 对象填充数据、设置格式并保存。两种方式都不计算公式。适用于比较文件生成金融表单。',
@@ -2734,6 +2736,7 @@ function toggleGenSetting(btn){
   else if(btn.id==='setExportRunLogs')setExportRunLogs(on);
   else if(btn.id==='setShowPerformanceDiagnostics')setShowPerformanceDiagnostics(on);
   else if(btn.id==='setConfirmBeforeRun')setConfirmBeforeRun(on);
+  else if(btn.id==='setConditionalFormatIncludeBlankCells')setConditionalFormatIncludeBlankCells(on);
 }
 function syncGeneralControls(){
   const s=state||{};
@@ -2752,6 +2755,7 @@ function syncGeneralControls(){
   syncSel('setCentralDataReader',String(s.centralDataReader||'AUTO'));
   syncSel('setCentralComparisonWriter',String(s.centralComparisonWriter||'AUTO'));
   syncSel('setConditionalFormatEvaluator',String(s.conditionalFormatEvaluator||'PYTHON'));
+  syncToggle('setConditionalFormatIncludeBlankCells',s.conditionalFormatIncludeBlankCells!==false);
   syncSel('setXlsxRenderMode',String(s.xlsxRenderMode||'FAST_OOXML'));
   syncSel('setExpressionMode',String(s.expressionEvaluationMode||'SBE'));
   syncSel('setExpressionBackend',String(s.expressionEvaluationBackend||'PYTHON'));
@@ -2769,9 +2773,12 @@ function syncGeneralControls(){
   }
   const cfDesc=document.getElementById('cfEvaluatorDesc');
   if(cfDesc){
-    cfDesc.textContent=String(s.conditionalFormatEvaluator)==='COM_DISPLAY'
-      ?'Office 读取单元格实际显示状态；此模式下规则读取仅用于规则描述和匹配，不参与触发判定。'
-      :'决定如何判断条件格式规则是否实际触发；规则由上方所选读取方式提供。';
+    const evaluator=String(s.conditionalFormatEvaluator);
+    cfDesc.textContent=evaluator==='COM_DISPLAY'
+      ?'读取 Office 实际显示状态；WPS 读不到显示色时会回退到 Python 规则求值，并在运行记录中标明。'
+      :evaluator==='PYTHON'
+        ?'Python 规则求值作为常规审核结果；Office 显示色是另一口径，可单独切换核对，结果不会混在一起。'
+        :'将条件格式公式交给 Office 计算；这与检查最终显示颜色是不同口径。';
   }
   syncToggle('setShowRunDetailLogs',!!s.showRunDetailLogs);
   syncToggle('setExportRunLogs',!!s.exportRunLogs);
@@ -2871,6 +2878,12 @@ async function setConditionalFormatReader(value){
   try{await bridge.api.update({conditionalFormatRuleReader:value})}
   catch(e){ alert('切换条件格式规则读取方式失败：'+((e&&e.message)?e.message:String(e))); }
   if(state)state.conditionalFormatRuleReader=value;
+}
+async function setConditionalFormatIncludeBlankCells(checked){
+  if(state&&state.busy)return;
+  try{await bridge.api.update({conditionalFormatIncludeBlankCells:!!checked})}
+  catch(e){ alert('切换空白目标单元格处理失败：'+((e&&e.message)?e.message:String(e))); return; }
+  if(state)state.conditionalFormatIncludeBlankCells=!!checked;
 }
 async function setFormulaRegionWriter(value){
   if(state&&state.busy)return;

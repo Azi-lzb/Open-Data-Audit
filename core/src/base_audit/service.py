@@ -146,6 +146,7 @@ class AuditService:
         audit_result_writer: str = "AUTO",
         conditional_format_evaluator: str = "PYTHON",
         conditional_format_rule_reader: str = "DIRECT_OOXML",
+        conditional_format_include_blank_cells: bool = True,
         formula_region_writer: str = "DIRECT_OOXML",
         external_sheet_writer: str = "DIRECT_OOXML",
         combine_sheets_plans: list[dict[str, object]] | None = None,
@@ -161,6 +162,7 @@ class AuditService:
         # OOXML=纯规则求值。UOS（native 管线）固定 OOXML，与此设置无关。
         self.conditional_format_evaluator = conditional_format_evaluator
         self.conditional_format_rule_reader = conditional_format_rule_reader
+        self.conditional_format_include_blank_cells = bool(conditional_format_include_blank_cells)
         self.formula_region_writer = formula_region_writer
         self.external_sheet_writer = external_sheet_writer
         self.combine_sheets_plans = list(combine_sheets_plans or [])

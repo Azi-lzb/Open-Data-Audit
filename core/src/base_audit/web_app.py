@@ -412,6 +412,7 @@ class WebApi:
                 else "PYTHON"
             ),
             "conditionalFormatRuleReader": self.settings.conditional_format_rule_reader,
+            "conditionalFormatIncludeBlankCells": self.settings.conditional_format_include_blank_cells,
             "formulaRegionWriter": self.settings.formula_region_writer,
             "externalSheetWriter": self.settings.external_sheet_writer,
             "periodExternalReader": (
@@ -1130,6 +1131,7 @@ class WebApi:
         self.state["systemEnvironment"] = self._system_environment_text
         self.state["conditionalFormatEvaluator"] = "PYTHON"
         self.state["conditionalFormatRuleReader"] = "DIRECT_OOXML"
+        self.state["conditionalFormatIncludeBlankCells"] = True
         self.state["formulaRegionWriter"] = "DIRECT_OOXML"
         self.state["externalSheetWriter"] = "DIRECT_OOXML"
         self.state["xlsxRenderMode"] = DEFAULT_XLSX_RENDER_MODE
@@ -3127,6 +3129,11 @@ class WebApi:
             else:
                 self.state["conditionalFormatRuleReader"] = candidate
                 self._save_settings()
+        if "conditionalFormatIncludeBlankCells" in values:
+            self.state["conditionalFormatIncludeBlankCells"] = bool(
+                values["conditionalFormatIncludeBlankCells"]
+            )
+            self._save_settings()
         if "formulaRegionWriter" in values:
             candidate = str(values["formulaRegionWriter"]).strip().upper()
             if candidate not in FORMULA_REGION_WRITERS:
@@ -3423,6 +3430,9 @@ class WebApi:
                 audit_result_writer=str(self.state.get("auditResultWriter") or "AUTO"),
                 conditional_format_evaluator=str(self.state.get("conditionalFormatEvaluator") or "COM_DISPLAY"),
                 conditional_format_rule_reader=str(self.state.get("conditionalFormatRuleReader") or "DIRECT_OOXML"),
+                conditional_format_include_blank_cells=bool(
+                    self.state.get("conditionalFormatIncludeBlankCells", True)
+                ),
                 formula_region_writer=str(self.state.get("formulaRegionWriter") or "COM_RANGE"),
                 external_sheet_writer=str(self.state.get("externalSheetWriter") or "DIRECT_OOXML"),
                 combine_sheets_plans=self.settings.combine_sheets_plans,
@@ -3570,6 +3580,9 @@ class WebApi:
             str(self.state.get("conditionalFormatRuleReader"))
             if self.state.get("conditionalFormatRuleReader") in CONDITIONAL_FORMAT_RULE_READERS
             else "DIRECT_OOXML"
+        )
+        self.settings.conditional_format_include_blank_cells = bool(
+            self.state.get("conditionalFormatIncludeBlankCells", True)
         )
         self.settings.formula_region_writer = (
             str(self.state.get("formulaRegionWriter"))

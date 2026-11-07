@@ -1,0 +1,63 @@
+# S1-F01 条件格式提取改读审核副本
+
+时间：2026-11-07 12:20（Asia/Shanghai）
+范围：S1-F01 条件格式结果提取节点（Windows COM 路由）；接续 v2.7.2 的副本 Excel 兼容修复。
+
+## 问题（用户指出的缺口）
+
+v2.7.2 把 Excel 兼容修复挂在 copy-files（复制审核副本）节点，但 DAG 里
+**条件格式提取与副本链是并行支路**：`extract-conditional-issues` 的输入端口是
+`source_files`（原始报送文件），COM 模式直接 `excel.open_workbook(原始文件)`。
+因此 28 类 Excel 拒绝打开的文件在条件格式节点**仍然失败**——副本修复覆盖不到它。
+
+原始拓扑：
+
+```
+source-files ──┬──> compare-structure ──> copy-files ──> add-external ──> copy-formulas ──> extract-formula-issues ─┐
+               │                                                                                                     ├─> merge
+               └──> extract-conditional-issues（直接读原始文件）──────────────────────────────────────────────────────┘
+```
+
+## 实现
+
+- 模块 `excel.conditional_format_issue_extract` 新增**可选**输入端口 `workbooks`
+  （FILE_SET/EXCEL_WORKBOOK_SET，required=False）。
+- DAG 新增边 `copy-files.workbooks → extract-conditional-issues.workbooks`；
+  UOS native 图同样带边，native handler 忽略该输入（openpyxl 读原始文件无打不开问题）。
+- Windows handler `_conditional_issues_via_service`：COM 模式（COM_DISPLAY/COM_EVALUATE）
+  按原始路径对齐 copy-files 产物，**优先打开 record.audit（修复后的 v1 副本）**；
+  结构比对拒绝的文件无副本 → 回退原始文件；PYTHON 模式仍读原始文件
+  （无 COM 打开问题，保持与 129 份对拍基线同口径）。
+- `source_file` 元数据保持原始报送文件名（结果归档口径不变）。
+- 语义依据：v2.7.2 修复只规范化引号与窗格，不改规则、值与渲染，
+  副本与原始文件的条件格式语义完全一致，COM_DISPLAY 真实渲染判定在副本上照常成立。
+
+## 验证
+
+- 单元（core/tests/test_external_copy_fallback.py，共 9 passed）：
+  COM 模式打开副本而非原始文件；PYTHON 仍读原始；workbooks 缺失回退；
+  模块端口 required=False；DAG 边存在。
+- 端到端（Windows Excel COM，真实样本）：
+  - 置换旧债（原始打不开）：files_copy 修复副本 → COM_DISPLAY 从副本提取成功。
+  - 同业业务：副本提取 9 == 原始提取 9。
+  - 博罗代发工资：副本 7 == 原始 7（探针基线 7）。
+  - 惠州农商代发工资：副本 16 == 原始 16（探针基线 16）。
+  - 脚本：test-output/s1f1_mode_parity_20261107/e2e_extract_from_copy.py。
+- S1 回归：581 passed / 13 skipped / 3 subtests。
+- test_version_manifest：8 passed（期望同步 2.7.3）。
+
+## 版本
+
+- S1-F01：2.7.2 → 2.7.3，PATCH。MANIFEST、组件 CHANGELOG、用户版更新日志已同步。
+- 产品版本、配置版本不变。
+
+## 边界
+
+- 提取时点为 copy-files 产物（v1+修复），不包含外部表与公式复制——与原设计
+  "提取自报送原始内容"语义一致（外部表添加与公式复制均不修改既有条件格式）。
+- E2E 脚本曾误报 0 命中：读结果工件用了错误属性（rows vs issues）且模板选择
+  未按"后批覆盖"——均已修正， handler 本身无问题。
+
+## Git
+
+未提交、未推送。

@@ -159,6 +159,8 @@ class UserSettings:
     # Windows 兼容/渲染基线。仅 Windows 生效，UOS 固定 PYTHON。
     conditional_format_evaluator: str = "PYTHON"
     conditional_format_rule_reader: str = "DIRECT_OOXML"
+    # 空目标单元格若条件规则成立/实际显示填充变化，是否纳入 S1-F01 结果。
+    conditional_format_include_blank_cells: bool = True
     # 公式校验复制方式（写入后端）：DIRECT_OOXML 默认（真实业务基准验证）。
     formula_region_writer: str = "DIRECT_OOXML"
     # 外部辅助表写入：纯数据外部表默认使用 OOXML 高速路径。
@@ -367,6 +369,9 @@ class SettingsStore:
                 or payload.get("conditional_format_engine_mode")),
             conditional_format_rule_reader=normalize_conditional_rule_reader(
                 payload.get("conditional_format_rule_reader")),
+            conditional_format_include_blank_cells=bool(
+                payload.get("conditional_format_include_blank_cells", True)
+            ),
             formula_region_writer=(
                 str(payload.get("formula_region_writer") or "DIRECT_OOXML").strip().upper()
                 if str(payload.get("formula_region_writer") or "DIRECT_OOXML").strip().upper()

@@ -74,6 +74,9 @@ def build_audit_workflow() -> WorkflowDefinition:
         WorkflowEdge("template", "template", "compare-structure", "template"),
         WorkflowEdge("source-files", "source_files", "extract-conditional-issues", "source_files"),
         WorkflowEdge("template", "template", "extract-conditional-issues", "template"),
+        # 条件格式提取在 COM 模式下读取审核副本（copy-files 产物，已做 Excel 兼容修复），
+        # 避免 Excel 拒绝打开含非规范内容的原始报送文件；PYTHON 模式忽略该输入仍读原始文件。
+        WorkflowEdge("copy-files", "workbooks", "extract-conditional-issues", "workbooks"),
         WorkflowEdge("compare-structure", "accepted_files", "copy-files", "accepted_files"),
         WorkflowEdge("copy-files", "workbooks", "add-external-sheets", "workbooks"),
         WorkflowEdge("template", "template", "add-external-sheets", "template"),

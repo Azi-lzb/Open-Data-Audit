@@ -407,3 +407,93 @@ def test_external_copy_keeps_chain_when_both_writers_fail(tmp_path: Path) -> Non
     assert record.stage_errors, "失败必须进入文件级结果，不能静默吞掉"
     assert "外部文件添加" in record.stage_errors[0]
     assert Path(record.audit).exists(), "审核副本必须保留以便链路继续"
+
+
+def test_conditional_module_accepts_optional_workbooks_port() -> None:
+    """条件格式提取新增可选 workbooks 输入（审核副本），COM 模式优先读副本。"""
+    import json
+    from base_audit.workflow.adapters.audit_handlers import AUDIT_MODULE_DEFINITIONS
+    module = next(m for m in AUDIT_MODULE_DEFINITIONS
+                  if m.module_id == "excel.conditional_format_issue_extract")
+    port = module.port("workbooks", is_input=True)
+    assert port is not None and port.required is False
+
+
+def test_default_dag_feeds_audit_copy_into_conditional_extract() -> None:
+    """DAG：copy-files 的审核副本接入条件格式提取，且 copy-files 在其上游。"""
+    from base_audit.workflow.defaults import default_workflows
+    flows = default_workflows()
+    flow = next(f for f in flows.values()
+                if any(n.node_id == "extract-conditional-issues" for n in f.nodes))
+    edge = next(e for e in flow.edges
+                if e.from_node == "copy-files" and e.to_node == "extract-conditional-issues")
+    assert edge.from_port == "workbooks" and edge.to_port == "workbooks"
+
+
+def test_conditional_extract_com_mode_opens_audit_copy(tmp_path: Path) -> None:
+    """COM_DISPLAY：有审核副本时打开副本而不是原始文件；PYTHON 仍打开原始文件。"""
+    from base_audit.workflow.adapters.audit_handlers import _conditional_issues_via_service
+    from base_audit.native.openpyxl_workbook import named_ranges
+    from base_audit.node_flow_config import load_dag_feature_mappings
+
+    source = tmp_path / "原始报送.xlsx"
+    book = Workbook()
+    book.active.title = "报表"
+    book.active["A1"] = 1
+    book.save(source)
+    book.close()
+    copy = tmp_path / "审核副本.xlsx"
+    shutil.copy2(source, copy)
+
+    opened = []
+
+    class Session:
+        engine_name = "Microsoft Excel"
+        last_conditional_evaluated_cells = 0
+        last_conditional_unsupported_count = 0
+        last_conditional_display_fallback = False
+        last_conditional_blank_cells_excluded = 0
+
+        def open_workbook(self, path, *, read_only=True):
+            opened.append(Path(path))
+            return SimpleNamespace()
+
+        def close_workbook(self, wb):
+            pass
+
+        def extract_conditional_format_issues(self, *args, **kwargs):
+            return []
+
+    mappings = load_dag_feature_mappings()
+    mapping = next(m for m in mappings if getattr(m, "name", "") == "条件格式结果提取")
+    definition = SimpleNamespace(structure_ranges=())
+    ranges = ()
+    template = SimpleNamespace(payload={
+        "template_path": str(source), "mappings": mappings, "definition": definition})
+    source_record = FileRecord(source=str(source), audit="", org_code="机", org_name="机构",
+                               version=0, stage_paths=(str(source),))
+    copy_record = FileRecord(source=str(source), audit=str(copy), org_code="机", org_name="机构",
+                             version=1, stage_paths=(str(copy),))
+    inputs = {
+        "template": SimpleNamespace(payload={
+            "definition": definition, "mappings": mappings,
+            "external_plan": None, "template_path": str(source)}),
+        "source_files": FileSetArtifact(records=(source_record,),
+                                        subtype=ArtifactSubtype.EXCEL_WORKBOOK_SET),
+        "workbooks": FileSetArtifact(records=(copy_record,),
+                                     subtype=ArtifactSubtype.EXCEL_WORKBOOK_SET),
+    }
+    ctx = SimpleNamespace(log=lambda m: None,
+                          run=SimpleNamespace(services={"service": SimpleNamespace(
+                              external_sheet_writer="DIRECT_OOXML",
+                              conditional_format_evaluator="COM_DISPLAY",
+                              conditional_format_rule_reader="DIRECT_OOXML",
+                              conditional_format_include_blank_cells=True)},
+                          resources={}))
+
+    _conditional_issues_via_service(
+        ctx, template.payload, definition, mapping, inputs["source_files"], Session(),
+        mode="COM_DISPLAY", service=ctx.run.services["service"],
+        period="2026-08", batch_id="T", audit_time="2026-11-07",
+        workbooks=inputs["workbooks"])
+    assert [p.name for p in opened] == ["审核副本.xlsx"], opened

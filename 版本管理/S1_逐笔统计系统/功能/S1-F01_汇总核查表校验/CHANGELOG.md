@@ -1,6 +1,128 @@
 # S1-F01 汇总核查表校验
 
-当前版本：v2.6.5
+当前版本：v2.7.3
+
+## v2.7.3 — 2026-11-07 12:20
+
+变更类型：Bugfix / PATCH
+
+前版本：v2.7.2；新版本：v2.7.3。
+
+- 条件格式结果提取在 Excel/WPS COM 模式下改为读取审核副本（copy-files 产物，已做 Excel 兼容修复），
+  原始报送文件不再经 COM 打开。此前该节点直接打开原始报送文件，v2.7.2 的副本修复覆盖不到它，
+  28 类 Excel 拒绝打开的文件在条件格式节点仍会失败。
+- 副本与原始文件的条件格式语义完全一致（v2.7.2 修复只规范化引号与窗格，不改规则、值与渲染）；
+  COM_DISPLAY 的真实渲染判定在副本上照常成立。
+- PYTHON 模式仍读原始报送文件（无 COM 打开问题，保持与 129 份对拍基线同口径）。
+- 结构比对拒绝的文件没有审核副本，COM 提取回退打开原始文件（若 Excel 仍打不开则按节点失败策略处理）。
+- DAG 新增边 copy-files.workbooks → extract-conditional-issues.workbooks；模块新增可选输入端口
+  （required=False），UOS native 图同样带边但 native handler 忽略该输入。
+
+影响文件：`core/src/base_audit/workflow/adapters/audit_handlers.py`、
+`core/src/base_audit/workflow/defaults.py`、`core/tests/test_external_copy_fallback.py`、
+`core/tests/test_version_manifest.py`、`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。
+
+测试：handler 门控 3 项新增（COM 模式开副本、端口可选、DAG 边存在）；端到端实测
+（Windows Excel COM）：置换旧债样本经复制修复后 COM_DISPLAY 从副本提取成功；
+同业业务/代发工资/惠州农商代发工资的“副本提取 vs 原始提取”逐格一致（9/9、7/7、16/16）。
+S1 回归 581 passed / 13 skipped。
+
+GPT修改记录：`GPT修改记录/20261107_122000_S1F1条件格式提取改读审核副本.txt`。
+
+Git提交：未提交。
+
+## v2.7.2 — 2026-11-07 11:40
+
+变更类型：Bugfix / PATCH
+
+前版本：v2.7.1；新版本：v2.7.2。
+
+- Windows Excel/自动引擎在“复制审核副本”节点对副本自动修复两类 Excel 拒绝打开的非规范内容：
+  1. 公式引用含全角括号的表名未加单引号（如 `个人贷款发生额信息（隐藏发放）!A1`）→ 补引号，
+     公式语义不变；载体含单元格公式、条件格式/数据验证公式、图表引用与定义名称。
+  2. 冻结窗格 topLeftCell 行号落在冻结区内（如 `ySplit="6"` 配 `topLeftCell="C6"`）→
+     行号修正为 ySplit+1。
+- 门控：仅引擎为“Microsoft Excel/自动”时修复；“WPS 表格”引擎与 UOS native 管线不修复
+  （WPS 本身能打开这些文件，修复只属于 Excel 路径）。修复只作用于审核副本，
+  原始报送文件不改写；无缺陷文件字节不变；修复失败不打断流程（副本保持原样并按原路径继续）。
+- 根因与证据：129 份真实核查表中 28 本 Excel COM 打不开（B00 三类 21 本 + 置换旧债 7 本），
+  根因分析与属性级二分见 `test-output/s1f1_mode_parity_20261107/excel_open_root_cause.md`；
+  两类修复应用后 28/28 可被 Excel 打开（excel_open_fix_28.json），修复模块与根因分析脚本
+  在 28 本上计数逐本一致。
+- 运行记录：复制节点输出 excel_open_repair_files/quoted/panes 指标，逐文件写日志说明。
+
+影响文件：`core/src/base_audit/excel_open_repair.py`（新增）、
+`core/src/base_audit/workflow/adapters/audit_handlers.py`、
+`core/tests/test_excel_open_repair.py`（新增）、`core/tests/conftest.py`、
+`core/tests/test_version_manifest.py`、`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。无新增用户设置。
+
+测试：新增 `test_excel_open_repair.py` 7 项（合成缺陷修复、干净文件字节不变、非 ZIP 跳过、
+Excel/自动/WPS 引擎门控、原始文件保护、真实样本计数）；定向 25 passed（excel_open_repair +
+version_manifest）；条件格式相关 59 passed；S1 回归 577 passed / 13 skipped
+（1 项 distribution_profile 为既有偶发，单独与整文件复跑均通过）。
+
+GPT修改记录：`GPT修改记录/20261107_114000_S1F1审核副本Excel兼容修复.txt`。
+
+Git提交：未提交。
+
+## v2.7.1 — 2026-11-07 10:55
+
+变更类型：Bugfix / PATCH
+
+前版本：v2.7.0；新版本：v2.7.1。
+
+- 条件格式表达式求值对齐 Excel/WPS 真实口径，修正四类偏差（依据 129 份真实核查表、双引擎 COM 对拍）：
+  1. 算术中空白单元格按 0 参与；除以 0（含 空/空）为 #DIV/0! 错误，错误在算术与比较中传播，
+     含错误的规则整体不成立。原先 `空/空<=0.9` 被 Python 误判为触发（Excel/WPS 实测判不触发）。
+  2. 空单元格参与比较按对方类型折算：对文本折空串、对数值折 0、对布尔折 FALSE。
+  3. 数字与文本混合比较按 Excel 类型序：= 恒 FALSE、<> 恒 TRUE、数字恒小于文本；
+     字面量 "" 是文本，`0<>""` 为 TRUE（此前会被折算成 0<>0 而误判）。
+  4. t="e" 错误缓存值（#DIV/0! 等）参与比较 → 不成立（单位存款余额 F 列 5 格场景）。
+- 对拍证据：对齐前 Python 相对真实 Office 有 92 处空白假阳性（66 vs Excel 可比集 + 26 vs WPS 可比集）；
+  修正后 vs COM_EVALUATE(Excel) 101 文件、vs COM_DISPLAY(Excel) 101 文件、vs COM_EVALUATE(WPS) 129 文件
+  全部 0 差异，且未误删任何正确命中（miss_to_hit=0）。逐文件数据见
+  `test-output/s1f1_mode_parity_20261107/`（parity_report.md、checkpoint.jsonl、
+  landed_semantics_verification.json、probe_divzero_com.py）。
+- 语义边界保持不变：cellIs 空白目标格仍按不触发（当前语料 0 条 cellIs）；文本参与算术沿用现行为；
+  文本不参与大小排序。Excel/WPS COM 对除零的实测返回（VARIANT 错误码 -2146826281 = #DIV/0!）
+  见 probe_divzero_com.py，两家引擎逐项一致。
+
+影响文件：`core/src/base_audit/conditional_format.py`、`core/tests/test_conditional_excel_float.py`、
+`core/tests/test_version_manifest.py`、`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。UOS native 与 Windows COM 回退路径共用本求值器，两侧口径同时受益。
+
+测试：新增 TestExcelBlankAndErrorSemantics 14 项（定向 25 passed）；条件格式相关回归 59 passed；
+S1 系统回归 571 passed / 13 skipped / 3 subtests passed；129 份金标准回归 0 差异
+（`test-output/s1f1_mode_parity_20261107/landed_semantics_verification.json`）。
+
+GPT修改记录：`GPT修改记录/20261107_105549_S1F1条件格式求值对齐Excel空白与除零语义.txt`。
+
+Git提交：未提交。
+
+## v2.7.0 — 2026-11-07 01:50
+
+变更类型：Feature / MINOR
+
+前版本：v2.6.5；新版本：v2.7.0。
+
+- 高级设置新增“空白目标单元格”选项，可选择是否把值为空、但条件格式规则成立或 Office 显示填充变化的目标格纳入 S1-F01 结果；默认纳入，关闭后会排除并在运行记录中显示数量。
+- WPS 无法读取 `DisplayFormat` 显示色时，继续使用 Python 条件规则求值兜底，并在运行记录明确标记该文件结果不代表 WPS 实际显示；Python 判定、Office 显示色判定和兜底结果保持各自来源，不混合成显示色证据。
+- 设置保存在用户设置中；旧设置文件缺少该字段时按默认“纳入”读取。
+
+影响文件：`core/src/base_audit/settings.py`、`core/src/base_audit/web_app.py`、`core/src/base_audit/service.py`、`core/src/base_audit/excel_com.py`、`core/src/base_audit/conditional_evaluators.py`、`core/src/base_audit/workflow/adapters/audit_handlers.py`、`core/frontend/web/index.html`、`core/tests/test_conditional_evaluators.py`、`core/tests/test_conditional_format_fallback.py`、`core/tests/test_web_app.py`、`core/tests/test_version_manifest.py`。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。用户设置新增兼容字段，旧设置按默认值加载。
+
+测试：定向测试 21 passed；S1 系统回归 563 passed / 7 skipped / 597 deselected / 3 subtests passed；`git diff --check` 通过。未执行 Excel/WPS 真机新增设置的 GUI 点选验收。
+
+GPT修改记录：`GPT修改记录/20261107_0150_S1F1空白条件格式目标设置与WPS回退说明.txt`。
+
+Git提交：未提交。
 
 ## v2.6.5 — 2026-11-06 23:03
 
