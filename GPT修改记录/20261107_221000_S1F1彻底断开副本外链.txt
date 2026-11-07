@@ -1,0 +1,82 @@
+# S1-F01 审核副本彻底断开外部工作簿引用
+
+时间：2026-11-07 22:10（Asia/Shanghai）
+范围：S1-F01 审核副本管线；`excel_open_repair` 的 `drop_external_links`（接续 v2.7.4 悬空引用修复）。
+
+## 用户决策与要求
+
+1. test-data 与 Rust-Audit 的毒链接已被用户自行修复，因此本轮用用户提供的真实文件验收。
+2. **暂不运行外部工作簿（外部文件）引用**——只允许工作簿内（工作表之间）的引用。
+
+第 2 点落到实现上是：副本不应再持有任何外部工作簿依赖，只保留本簿内表引用。
+
+## 实现
+
+`core/src/base_audit/excel_open_repair.py`：
+
+- `repair_audit_copy_for_excel` 新增 `drop_external_links: bool = True` 与
+  `dropped_links` 计数。
+- 流程：剥离 `[N]` 前缀（v2.7.4）→ 重开临时包检查**是否仍存在任何 `[N]` 引用**
+  （`_ANY_INDEX_PREFIX_RE = \[(\d+)\][^\s!<>()\[\]]+!`，覆盖指向未导入表的情形）
+  → 若无残留，调用 `_drop_external_link_parts`：
+  - 移除 `<externalReferences>…</externalReferences>`（含自闭合变体）；
+  - 移除 workbook rels 中 `Type=".../externalLink"` 的 Relationship；
+  - 移除 `[Content_Types].xml` 中 `/xl/externalLinks/*` 的 Override；
+  - 剔除 `xl/externalLinks/` 下全部部件（含其 `_rels`）。
+- **安全闸门**：只要有任一 `[N]` 残留（例如指向未导入的外部簿），就**不删**外链定义——
+  否则会让原本靠 externalLink 存活的引用变成新的悬空引用。此时 `dropped_links=0` 并在
+  运行日志/结果中如实反映。
+- 健壮性：`_sheet_names` 在严格 XML 解析失败时回退正则读表名（结构有瑕疵仍能修）；
+  临时包重读异常时放弃断开外链、文件保持原样。
+
+## 真实文件验收（用户提供的债券业务模板）
+
+样本：`2026-07-31/！70.金融基础数据采集（债券业务）202608.xlsx`
+（7 张表；3 条公式含 `[1]集中系统数据!` / `[1]参照表!`；这两张表同时是本簿本地表
+rId6/rId7；包内 `externalLink1.xml` + `<externalReferences>` 存在）。
+
+| 检查项 | 结果 |
+|---|---|
+| 剥离 `[N]` 前缀 | 12 处 |
+| 断开外链 | `dropped_links=1`；externalReferences / rels 关系 / Content_Types / 部件 **4 项全部清除** |
+| 全包残留 `[N]` | **0** |
+| Excel COM 只读打开 | **OK，7/7 表**（存量债券投资、债券投资发生额、存量债券发行、债券发行发生额、极端数据核查信息、集中系统数据、参照表） |
+| WPS 打开 + 重算 | 公式完整保留：`=INDEX(集中系统数据!$1:$1048576,MATCH(VLOOKUP($B$4,参照表!$A:$B,2,0),集中系统数据!$B:$B,0),MATCH(...))` |
+| 公式语义 | 指向本地 `集中系统数据` / `参照表`，无 `[1]` |
+| 原始文件 SHA-256 | 前后一致（未修改） |
+
+## 测试
+
+`core/tests/test_excel_open_repair.py` 新增 3 项（合计 15 passed）：
+
+- 无残留 `[N]` → 外链定义、关系、Content_Types、部件全部清除；
+- 存在指向未导入外部簿的 `[N]` → 保留外链定义（不制造新悬空引用）；
+- `drop_external_links=False` → 只剥 `[N]`、保留外链（对照/回退）。
+
+相关回归（external_copy_fallback / formula_region_writer / native_uos / workflow）：111 passed。
+S1 回归：597 passed / 13 skipped。
+
+## 调试过程中发现并修正的三个测试侧问题
+
+1. `_inject_formula` 传入带前导 `=` 的公式 → 写出 `<f>=INDEX(...)`（非法），修正为不带 `=`；
+2. 测试脚手架把 `<externalReferences>` 放在 `<calcPr>` 之后（违反 schema 顺序）且根元素缺
+   `xmlns:r` 声明 → 解析失败；已按 schema 顺序紧跟 `</sheets>` 并补命名空间声明；
+3. 脚手架写了 `externalLink1.xml` 却漏了它的 `.rels` → openpyxl 读取报 KeyError；已补全。
+
+前两项同时反哺了生产健壮性（`_sheet_names` 回退正则）。
+
+## 版本
+
+- S1-F01：2.7.4 → 2.7.5，PATCH。MANIFEST、组件 CHANGELOG、用户版更新日志已同步。
+- 产品版本、配置版本不变。
+
+## 边界
+
+- 本仓库 test-data 的外链样本由用户自行修复，回归不覆盖真实触发场景；本轮以用户提供的
+  真实模板完成验收。
+- 外部文件（外部工作簿）导入流程本轮**未运行**（按用户要求），仅验证工作簿内引用路径。
+- 未在 UOS 真机验证（纯 ZIP 文本处理，平台无关）。
+
+## Git
+
+未提交、未推送。

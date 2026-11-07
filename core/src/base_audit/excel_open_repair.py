@@ -23,6 +23,7 @@ test-output/s1f1_mode_parity_20261107/excel_open_root_cause.md）：
 
 from __future__ import annotations
 
+from html import unescape as html_unescape
 import re
 import time
 import zipfile
@@ -38,14 +39,28 @@ _FORMULA_RE = re.compile(r"(<formula(?:\s[^>]*)?>)(.*?)(</formula>)", re.S)
 _CHART_F_RE = re.compile(r"(<c:f>)(.*?)(</c:f>)")
 _DEFINED_RE = re.compile(r"(<definedNames>)(.*?)(</definedNames>)", re.S)
 _PANE_RE = re.compile(r"<pane[^>]*/>")
+_EXTERNAL_REFS_RE = re.compile(r"<externalReferences>.*?</externalReferences>", re.S)
+_EXTERNAL_REFS_EMPTY_RE = re.compile(r"<externalReferences\s*/>")
+_EXTERNAL_REL_RE = re.compile(
+    r"<Relationship\b[^>]*Type=\"[^\"]*relationships/externalLink\"[^>]*/>")
+_EXTERNAL_CT_RE = re.compile(
+    r"<Override\b[^>]*PartName=\"/xl/externalLinks/[^\"]*\"[^>]*/>")
 _XML_PART_PREFIXES = ("xl/worksheets/", "xl/charts/", "xl/drawings/")
 
 
+_SHEET_NAME_RE = re.compile(r'<sheet[^>]*name="([^"]*)"')
+
+
 def _sheet_names(archive: zipfile.ZipFile) -> list[str]:
+    """读取工作表名；严格解析失败时回退正则（结构瑕疵但表名可读的文件仍需修复）。"""
     try:
         root = StdET.fromstring(archive.read("xl/workbook.xml"))
     except (KeyError, StdET.ParseError):
-        return []
+        try:
+            text = archive.read("xl/workbook.xml").decode("utf-8", "ignore")
+        except KeyError:
+            return []
+        return [html_unescape(m) for m in _SHEET_NAME_RE.findall(text)]
     return [(s.get("name") or "") for s in root.iter(_SHEET_TAG)]
 
 
@@ -116,6 +131,57 @@ def _dangling_ref_pattern(local_sheets: list[str]):
     return re.compile(r"\[\d+\]'?(?:" + alts + r")'?!")
 
 
+_ANY_INDEX_PREFIX_RE = re.compile(r"\[\d+\][^\s!<>()\[\]]+!")
+
+
+def _has_dangling_external_ref(archive: zipfile.ZipFile, local_sheets: list[str]) -> bool:
+    """全包是否仍有任何 [N]表名! 形式的外部簿引用（判定能否安全断开外链）。
+
+    注意这里必须检查**所有** [N] 引用而不是只查指向本地表的：外链定义一旦删除，
+    指向真外部簿的 [N] 也会变成悬空引用（它原本靠 externalLink 存活）。
+    只要还有任何 [N]，就不得删除外链定义。
+    """
+    for part in archive.namelist():
+        if not part.endswith(".xml"):
+            continue
+        try:
+            text = archive.read(part).decode("utf-8", "ignore")
+        except Exception:
+            continue
+        if _ANY_INDEX_PREFIX_RE.search(text):
+            return True
+    return False
+
+
+def _drop_external_link_parts(parts: dict[str, bytes]) -> int:
+    """彻底断开外链：清 externalReferences、删关系与 Content_Types 声明、剔除部件。
+
+    调用方必须确认全包已无指向本地表的 [N] 引用（否则删链接会让残留 [N] 变悬空）。
+    返回移除的关系条数。
+    """
+    removed = 0
+    workbook = parts.get("xl/workbook.xml")
+    if workbook is not None:
+        text = workbook.decode("utf-8", "ignore")
+        text = _EXTERNAL_REFS_RE.sub("", text)
+        text = _EXTERNAL_REFS_EMPTY_RE.sub("", text)
+        parts["xl/workbook.xml"] = text.encode("utf-8")
+    rels = parts.get("xl/_rels/workbook.xml.rels")
+    if rels is not None:
+        text = rels.decode("utf-8", "ignore")
+        text, count = _EXTERNAL_REL_RE.subn("", text)
+        removed += count
+        parts["xl/_rels/workbook.xml.rels"] = text.encode("utf-8")
+    content_types = parts.get("[Content_Types].xml")
+    if content_types is not None:
+        text = content_types.decode("utf-8", "ignore")
+        text = _EXTERNAL_CT_RE.sub("", text)
+        parts["[Content_Types].xml"] = text.encode("utf-8")
+    for part in [n for n in parts if n.startswith("xl/externalLinks/")]:
+        parts.pop(part, None)
+    return removed
+
+
 def _needs_repair(archive: zipfile.ZipFile, special: list[str],
                   local_sheets: list[str], *, fix_quotes: bool, fix_panes: bool,
                   fix_external_refs: bool) -> bool:
@@ -136,6 +202,10 @@ def _needs_repair(archive: zipfile.ZipFile, special: list[str],
                 return True
         if dangling_pattern and dangling_pattern.search(text):
             return True
+        if fix_external_refs and part in ("xl/workbook.xml", "[Content_Types].xml",
+                                          "xl/_rels/workbook.xml.rels"):
+            if "<externalReferences>" in text or "externalLink" in text:
+                return True
         if fix_panes and part.startswith("xl/worksheets/") and "<pane " in text:
             for pane in _PANE_RE.findall(text):
                 ys = re.search(r'ySplit="(\d+)"', pane)
@@ -148,7 +218,8 @@ def _needs_repair(archive: zipfile.ZipFile, special: list[str],
 
 def repair_audit_copy_for_excel(path: Path, *, attempts: int = 3,
                                 fix_quotes: bool = True, fix_panes: bool = True,
-                                fix_external_refs: bool = True) -> dict:
+                                fix_external_refs: bool = True,
+                                drop_external_links: bool = True) -> dict:
     """修复审核副本使其可被 Excel 打开；返回统计。
 
     只处理 .xlsx/.xlsm（ZIP 容器）；其余格式原样跳过。任何异常都返回
@@ -160,10 +231,13 @@ def repair_audit_copy_for_excel(path: Path, *, attempts: int = 3,
     - fix_panes：冻结窗格 topLeftCell 落在冻结区时行号修正；
     - fix_external_refs：公式中指向“本地已导入同名工作表”的 [N] 外部簿前缀
       剥离（externalLink 缺失/错位时 [N] 是悬空引用，Excel 拒绝打开；
-      WPS/LibreOffice 打开但重算回落断链缓存）。
+      WPS/LibreOffice 打开但重算回落断链缓存）；
+    - drop_external_links：剥离后若全包再无指向本地表的 [N]，彻底断开外链
+      （清 externalReferences、删关系与 Content_Types 声明、剔除 externalLinks 部件），
+      使副本只含工作簿内引用。仍有残留 [N] 时不动外链，避免制造新的悬空引用。
     """
     result: dict = {"changed": False, "quoted": 0, "pane_fixed": 0,
-                    "stripped_refs": 0, "reason": ""}
+                    "stripped_refs": 0, "dropped_links": 0, "reason": ""}
     temporary = None
     last_exc: Exception | None = None
     for attempt in range(max(1, attempts)):
@@ -228,6 +302,25 @@ def repair_audit_copy_for_excel(path: Path, *, attempts: int = 3,
                             text = _PANE_RE.sub(fix_pane, text)
                             data = text.encode("utf-8")
                         zout.writestr(part, data)
+                if fix_external_refs and drop_external_links:
+                    # 剥离后若全包再无指向本地表的 [N]，则可安全彻底断开外链：
+                    # 清 externalReferences、删关系/Content_Types、剔除 externalLinks 部件，
+                    # 使副本只含工作簿内引用（Excel/WPS/LibreOffice 均按本地表重算）。
+                    rebuilt = {}
+                    with zipfile.ZipFile(temporary) as check:
+                        still_dangling = _has_dangling_external_ref(check, local_sheets)
+                        if not still_dangling:
+                            try:
+                                rebuilt = {n: check.read(n) for n in check.namelist()}
+                            except (KeyError, zipfile.BadZipFile):
+                                # 包内 rela 缺失等结构瑕疵：放弃断开外链，保留原样
+                                rebuilt = {}
+                                still_dangling = True
+                    if not still_dangling:
+                        result["dropped_links"] = _drop_external_link_parts(rebuilt)
+                        with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as zout:
+                            for name, payload in rebuilt.items():
+                                zout.writestr(name, payload)
             temporary.replace(path)
             result["changed"] = True
             return result
@@ -236,6 +329,7 @@ def repair_audit_copy_for_excel(path: Path, *, attempts: int = 3,
             result["quoted"] = 0
             result["pane_fixed"] = 0
             result["stripped_refs"] = 0
+            result["dropped_links"] = 0
             result["reason"] = f"{type(exc).__name__}: {exc}"
             try:
                 if temporary is not None:

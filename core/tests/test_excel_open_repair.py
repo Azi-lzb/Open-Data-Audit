@@ -351,3 +351,125 @@ def test_real_poisoned_bond_template_formula(tmp_path: Path) -> None:
 
     assert result["stripped_refs"] >= 1
     assert "[1]" not in str(load_workbook(src)["债券投资发生额"]["B2"].value)
+
+
+# ---------------------------------------------------------------------------
+# 彻底断开外链：剥离后无残留 [N] 时，清 externalReferences/rels/Content_Types/部件，
+# 使副本只含工作簿内引用（用户决策：默认断开所有外链，不保留外链定义）。
+# ---------------------------------------------------------------------------
+
+def _add_external_link_scaffold(path: Path) -> None:
+    """给合成工作簿补上外链脚手架（部件 + 关系 + Content_Types + 引用）。"""
+    import zipfile
+    with zipfile.ZipFile(path) as zin:
+        parts = {n: zin.read(n) for n in zin.namelist()}
+    parts["xl/externalLinks/_rels/externalLink1.xml.rels"] = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+        'relationships/externalLinkPath" Target="file:///C:/旧机器/旧数据.xlsx" TargetMode="External"/>'
+        '</Relationships>'
+    ).encode("utf-8")
+    parts["xl/externalLinks/externalLink1.xml"] = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<externalBook r:id="rId1" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<sheetNames><sheetName val="集中系统数据"/></sheetNames></externalBook></externalLink>'
+    ).encode("utf-8")
+    rels = parts["xl/_rels/workbook.xml.rels"].decode("utf-8")
+    rels = rels.replace(
+        "</Relationships>",
+        '<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+        'relationships/externalLink" Target="externalLinks/externalLink1.xml"/></Relationships>')
+    parts["xl/_rels/workbook.xml.rels"] = rels.encode("utf-8")
+    wb = parts["xl/workbook.xml"].decode("utf-8")
+    # openpyxl 的根元素不带 xmlns:r，需先补声明（否则 r:id 未绑定导致解析失败）；
+    # 且 externalReferences 必须紧跟 </sheets>（schema 顺序）。
+    if "xmlns:r=" not in wb.split(">", 1)[0]:
+        wb = wb.replace(
+            "<workbook ",
+            '<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ', 1)
+    wb = wb.replace("</sheets>",
+                    '</sheets><externalReferences><externalReference r:id="rId99"/>'
+                    '</externalReferences>', 1)
+    parts["xl/workbook.xml"] = wb.encode("utf-8")
+    ct = parts["[Content_Types].xml"].decode("utf-8")
+    ct = ct.replace("</Types>",
+                    '<Override PartName="/xl/externalLinks/externalLink1.xml" '
+                    'ContentType="application/vnd.openxmlformats-officedocument.'
+                    'spreadsheetml.externalLink+xml"/></Types>')
+    parts["[Content_Types].xml"] = ct.encode("utf-8")
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zout:
+        for name, data in parts.items():
+            zout.writestr(name, data)
+
+
+def test_drops_external_links_when_no_dangling_ref_left(tmp_path: Path) -> None:
+    """剥离后无残留 [N] → 外链定义、关系、Content_Types、部件全部清除。"""
+    import zipfile
+    src = tmp_path / "核查表.xlsx"
+    book = Workbook()
+    book.active.title = "发生额"
+    book.create_sheet("集中系统数据")
+    book.save(src)
+    book.close()
+    _inject_formula(src, "B2", "INDEX([1]集中系统数据!$A:$A,1)")
+    _add_external_link_scaffold(src)
+
+    result = repair_audit_copy_for_excel(src)
+
+    assert result["changed"] is True
+    assert result["stripped_refs"] == 1
+    assert result["dropped_links"] == 1, result
+    with zipfile.ZipFile(src) as z:
+        workbook = z.read("xl/workbook.xml").decode("utf-8")
+        rels = z.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+        content_types = z.read("[Content_Types].xml").decode("utf-8")
+        names = z.namelist()
+    assert "<externalReferences>" not in workbook
+    assert "externalLink" not in rels
+    assert "externalLink" not in content_types
+    assert not [n for n in names if "externalLink" in n]
+    assert load_workbook(src)["发生额"]["B2"].value == "=INDEX(集中系统数据!$A:$A,1)"
+
+
+def test_keeps_external_links_when_dangling_ref_remains(tmp_path: Path) -> None:
+    """存在指向真外部簿的 [N]（未导入本地）→ 不删外链，避免新增悬空引用。"""
+    import zipfile
+    src = tmp_path / "核查表.xlsx"
+    book = Workbook()
+    book.active.title = "发生额"
+    book.create_sheet("集中系统数据")
+    book.save(src)
+    book.close()
+    _inject_formula(src, "B2", "INDEX([2]未导入的外部表!$A:$A,1)")
+    _add_external_link_scaffold(src)
+
+    result = repair_audit_copy_for_excel(src)
+
+    assert result["dropped_links"] == 0, result
+    with zipfile.ZipFile(src) as z:
+        assert "<externalReferences>" in z.read("xl/workbook.xml").decode("utf-8")
+        assert [n for n in z.namelist() if "externalLink" in n]
+    assert load_workbook(src)["发生额"]["B2"].value == "=INDEX([2]未导入的外部表!$A:$A,1)"
+
+
+def test_drop_external_links_can_be_disabled(tmp_path: Path) -> None:
+    """drop_external_links=False 时只剥 [N]，保留外链定义（对照/回退用）。"""
+    import zipfile
+    src = tmp_path / "核查表.xlsx"
+    book = Workbook()
+    book.active.title = "发生额"
+    book.create_sheet("集中系统数据")
+    book.save(src)
+    book.close()
+    _inject_formula(src, "B2", "INDEX([1]集中系统数据!$A:$A,1)")
+    _add_external_link_scaffold(src)
+
+    result = repair_audit_copy_for_excel(src, drop_external_links=False)
+
+    assert result["stripped_refs"] == 1
+    assert result["dropped_links"] == 0
+    with zipfile.ZipFile(src) as z:
+        assert "<externalReferences>" in z.read("xl/workbook.xml").decode("utf-8")
+        assert [n for n in z.namelist() if "externalLink" in n]

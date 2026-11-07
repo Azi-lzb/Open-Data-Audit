@@ -1,6 +1,40 @@
 # S1-F01 汇总核查表校验
 
-当前版本：v2.7.4
+当前版本：v2.7.5
+
+## v2.7.5 — 2026-11-07 22:10
+
+变更类型：Bugfix / PATCH
+
+前版本：v2.7.4；新版本：v2.7.5。
+
+- 审核副本默认**彻底断开外部工作簿引用**（用户决策：不保留外链定义）：剥离指向本地已导入表的
+  `[N]` 前缀后，若全包再无任何 `[N]` 引用，则清除 `<externalReferences>`、workbook rels 中的
+  externalLink 关系、`[Content_Types].xml` 的 externalLink 声明，并剔除
+  `xl/externalLinks/*` 部件——副本只含工作簿内引用。
+- 安全闸门：只要仍存在**任何** `[N]` 引用（含指向未导入的外部簿），就不删外链定义，
+  避免把原本靠 externalLink 存活的引用变成新的悬空引用。
+- 新增 `drop_external_links` 参数（默认 True，可关闭作对照）；新增 `dropped_links` 计数。
+- 生产健壮性：`_sheet_names` 在严格 XML 解析失败时回退正则提取表名（结构有瑕疵但表名可读的
+  文件仍能修复）；临时包读取异常时放弃断开外链、保持原样。
+- 真实文件验收（用户提供 `！70.金融基础数据采集（债券业务）202608.xlsx`，含 3 条
+  `[1]集中系统数据!`/`[1]参照表!` 公式，且这两张表恰为本簿本地表）：
+  剥离 12 处、外链 4 项全部断开、全包残留 `[N]` = 0、Excel COM 打开 7/7 表、
+  WPS 打开重算后公式完整保留（`=INDEX(集中系统数据!$1:$1048576,MATCH(...))`）、
+  原始文件 SHA-256 不变、公式指向本地表。
+
+影响文件：`core/src/base_audit/excel_open_repair.py`、
+`core/tests/test_excel_open_repair.py`、`core/tests/test_version_manifest.py`、
+`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。无新增用户设置。
+
+测试：`test_excel_open_repair.py` 15 passed（新增 3 项：无残留时断开外链、有残留时保留、
+可关闭断开）；相关回归 111 passed；S1 回归 597 passed / 13 skipped。
+
+GPT修改记录：`GPT修改记录/20261107_221000_S1F1彻底断开副本外链.txt`。
+
+Git提交：未提交。
 
 ## v2.7.4 — 2026-11-07 16:40
 
