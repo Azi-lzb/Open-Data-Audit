@@ -1,0 +1,99 @@
+# S1-F01 悬空外部引用缺陷排查与修复
+
+时间：2026-11-07 16:40（Asia/Shanghai）
+范围：S1-F01 审核副本管线（Windows COM + UOS native 双路径）；`excel_open_repair` 第三类修复。
+
+## 任务来源
+
+Rust-Audit 侧已实锤的缺陷（`audit-core/src/excel_open_repair.rs` 第三类
+`strip_external_refs`）：模板校验区域公式自带 `[N]表名!` 外部簿前缀，副本导入外部表为
+本地 sheet 后若丢弃 externalLink 部件却保留前缀，公式悬空 → Excel 拒绝打开（0x80020009）。
+要求交叉排查本仓库同类管线。
+
+## 排查结论
+
+### 风险面（本仓库）
+
+- `formula_region_writer.py`（DIRECT_OOXML）：**零处**处理 `[N]`/`externalLink`，
+  公式原文原样写入 → 风险成立。
+- `external_sheet_writer.py`：导入外部表为本地 sheet（缺陷另一必要条件），自身不写公式。
+- `native/openpyxl_workbook.copy_formula_ranges_from_template`：openpyxl 复制公式原文。
+- `fast_ooxml.py`（S3 模板渲染 / S1 结果直写）：只搬值或写新表，不复制公式 → 无此风险。
+
+### 真实数据分布
+
+- 本仓库 `test-data/S1F1_external_fallback_20261106`：**0/129 报送、0/19 模板**含外链或
+  `[N]` 引用 → 该数据集 129/129 全通是数据干净，不是管线免疫。
+- Rust-Audit `business_templates/！70.金融基础数据采集（债券业务）202608.xlsx`：
+  2 个 externalLink 部件、3 条 `[1]` 公式，但毒公式在 `债券发行发生额` 的 W152/W153，
+  校验区域只覆盖 `H6:J83` 等 → **在校验区域之外**，故本仓库“只移植校验区域”的路径
+  侥幸未触发。
+
+### 旧管线副本干净的机制（结论：非代码归一，非 openpyxl 归一）
+
+实测 openpyxl 3.1.5 读写毒模板后：`externalLink1.xml`、`<externalReferences>`、
+公式 `[1]` 前缀**全部保留**（与“openpyxl 天然剥离断链外链”的假设相反）。
+旧管线干净的真实原因是**校验区域范围隔离**：毒公式不在被移植区域内。
+已写入 `docs/悬空外部引用缺陷_机制与跨仓库结论.md` 与 `rules/03` 第 2 节。
+
+## 实现
+
+`core/src/base_audit/excel_open_repair.py`：
+
+- 新增 `_strip_dangling_external_refs`：剥离指向“本地已导入同名工作表”的 `[N]` 前缀
+  （仅当表名存在于本包 `<sheets>`；带引号与裸变体；兼容字面与 NCR 实体编码）。
+- 新增 `_name_flex_regex`：每个非 ASCII 字符同时匹配字面 / `&#N;` / `&#xN;`——
+  openpyxl 保存把中文写成 NCR，实测不加此兼容会漏修。
+- `repair_audit_copy_for_excel` 增加 `fix_external_refs` 开关（默认开）与
+  `stripped_refs` 计数；预检同步识别悬空 `[N]`。
+
+接线：
+
+- Windows `handle_formula_copy`：DIRECT_OOXML 写入后、`excel.open_workbook` 前，
+  以 `fix_quotes=False, fix_panes=False` 只做剥离，并写运行日志。
+- UOS native `handle_formula_copy`：openpyxl 写公式后、`recalculate_many` 前剥离。
+
+## 验收四条（实测通过）
+
+用真实核查表（债券业务）+ 真实外部文件构造：
+
+| 步骤 | Excel COM 只读打开 |
+|---|---|
+| A 干净副本（导入本地表，无 `[N]`） | OK，7 张表 |
+| B 同副本 + 合法写入 `=INDEX([1]集中系统数据!$1:$1048576,1)` | **FAIL 0x80020009** |
+| C B 经修复剥离后 | **OK，7 张表** |
+
+①Excel 打开成功、表数正确 ②WPS 打开重算后 B2 公式保留
+（`=INDEX(集中系统数据!$1:$1048576,1)`）③原始报送文件 SHA-256 前后一致
+④公式指向本地已导入表（无 `[1]`）。
+
+**方法学教训**：首次注入实验用“追加 `<row r="152">`”，FAIL 混入结构非法因素
+（去掉该行即恢复可开）。重做改用 openpyxl 写入保证结构合法，才得到单一变量结论。
+已写入文档，后续实验必须“结构合法 + 单一变量”。
+
+## 测试
+
+- `test_excel_open_repair.py` 新增 5 项：剥本地 `[N]`、保留真外链、
+  带引号变体、`<definedNames>` 上下文、真实毒模板公式（business_templates）。
+  合计 12 passed。
+- 相关回归（`test_external_copy_fallback`、`test_formula_region_writer`、
+  `test_native_uos`、`core/tests/workflow`）：108 passed。
+- S1 回归：594 passed / 13 skipped / 3 subtests。
+- `test_version_manifest.py`：8 passed（期望同步 2.7.4）。
+
+## 版本
+
+- S1-F01：2.7.3 → 2.7.4，PATCH。MANIFEST、组件 CHANGELOG、用户版更新日志已同步。
+- 产品版本、配置版本不变。
+
+## 边界与风险
+
+- 仅剥离“表名在本地 `<sheets>` 内”的 `[N]`；真外部引用保持原样（可能仍导致 Excel 拒绝，
+  属另一类问题，需业务确认目标表是否应导入）。
+- 未在 UOS 真机实测（native 路径为纯 ZIP 文本处理，平台无关）。
+- 本仓库当前 test-data 数据集无外链样本，回归无法覆盖真实触发场景；
+  已用 Rust-Audit `business_templates` 真实毒公式做单测。
+
+## Git
+
+未提交、未推送。

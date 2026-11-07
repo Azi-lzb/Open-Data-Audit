@@ -1,6 +1,52 @@
 # S1-F01 汇总核查表校验
 
-当前版本：v2.7.3
+当前版本：v2.7.4
+
+## v2.7.4 — 2026-11-07 16:40
+
+变更类型：Bugfix / PATCH
+
+前版本：v2.7.3；新版本：v2.7.4。
+
+- 修复审核副本“悬空外部簿引用”缺陷：模板校验区域公式若携带 `[N]表名!` 外部簿前缀
+  （模板作者用外部链接写规则，模板自带 `xl/externalLinks/*`），而副本把外部簿导入为
+  本地 sheet 后不含 externalLink 部件，公式便指向不存在的外部簿——Excel COM
+  `Workbooks.Open` 直接拒绝（HRESULT 0x80020009），WPS/LibreOffice 可打开但重算
+  丢失公式或回落断链缓存值。
+- 修复：公式写入后、Office 打开/重算前，剥离指向“本地已导入同名工作表”的 `[N]` 前缀
+  （表名存在于本包 `<sheets>` 才剥；指向真外部簿的不动）。覆盖 `<f>`、条件格式/数据验证
+  `<formula>`、图表 `<c:f>`、`<definedNames>` 四类载体，兼容 `'表名'!` 与裸 `表名!`
+  变体，并兼容表名的字面 UTF-8 与 NCR 实体（`&#38598;`）两种编码——openpyxl 保存
+  会写成 NCR，不兼容会漏修（本次实测踩到）。
+- 接线：Windows `handle_formula_copy`（DIRECT_OOXML 写入后、COM 打开前）、
+  UOS native `handle_formula_copy`（openpyxl 写公式后、LibreOffice 重算前）。
+- 拒绝“保留外链定义”方案：保留虽可让 Excel 打开，但重算回落模板缓存的外部旧值，
+  审核结论基于错误数据；剥离后公式指向本次导入的本地表，与旧 audit 结果一致。
+  真·无关外链剥离后重算为 `#REF!`，按审核异常口径捕获，优于整文件拒绝打开。
+- 机制文档与跨仓库结论：`docs/悬空外部引用缺陷_机制与跨仓库结论.md`
+  （含 openpyxl 不剥离外链的实测、旧管线“校验区域范围隔离”而非代码归一的结论）；
+  规则补充：`rules/03_Excel与OOXML边界.md` 第 2 节。
+
+影响文件：`core/src/base_audit/excel_open_repair.py`、
+`core/src/base_audit/workflow/adapters/audit_handlers.py`、
+`core/src/base_audit/workflow/adapters/native_audit_handlers.py`、
+`core/tests/test_excel_open_repair.py`、`core/tests/test_version_manifest.py`、
+`rules/03_Excel与OOXML边界.md`、`docs/悬空外部引用缺陷_机制与跨仓库结论.md`、
+`版本管理/VERSION_MANIFEST.json`。
+
+配置影响：无；S1-CFG-01 v2.0.0 不变。无新增用户设置。
+
+测试：新增 5 项（剥本地 `[N]`、保留真外链、引号变体、definedNames 上下文、
+真实毒公式 business_templates 债券业务）；`test_excel_open_repair.py` 12 passed；
+相关回归 108 passed；S1 回归 594 passed / 13 skipped。
+验收四条实测：①修复副本 Excel 只读打开成功（7/7 表）②WPS 重算后公式保留
+（`=INDEX(集中系统数据!$1:$1048576,1)`）③原始报送文件 SHA-256 不变
+④公式指向本地已导入表。因果实验：A 干净副本 OK → B 加悬空 `[1]` FAIL(0x80020009)
+→ C 剥离后 OK。
+
+GPT修改记录：`GPT修改记录/20261107_164000_S1F1悬空外部引用修复.txt`。
+
+Git提交：未提交。
 
 ## v2.7.3 — 2026-11-07 12:20
 

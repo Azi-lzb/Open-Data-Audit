@@ -703,6 +703,16 @@ def handle_formula_copy(ctx: NodeContext, parameters: Dict[str, Any], inputs: Di
                     )
                     for message in write_result.messages:
                         ctx.log(f"  {message}")
+                    # 模板校验区域公式可能携带 [1]表名! 外部簿前缀；副本把外部簿
+                    # 导入为本地表但不含模板的 externalLink 部件 → 悬空引用会让
+                    # Excel 拒绝打开。写入后、打开前剥离指向本地已导入表的 [N]。
+                    from ...excel_open_repair import repair_audit_copy_for_excel
+                    strip = repair_audit_copy_for_excel(
+                        Path(record.audit), fix_quotes=False, fix_panes=False,
+                        fix_external_refs=True)
+                    if strip.get("changed"):
+                        ctx.log(f"  {Path(record.source).name}：剥离悬空外部簿引用 "
+                                f"{strip.get('stripped_refs', 0)} 处（改指本地已导入表）")
                     workbook = excel.open_workbook(Path(record.audit), read_only=False)
                     recalculate_started = time.monotonic()
                     excel.calculate_workbook(workbook)

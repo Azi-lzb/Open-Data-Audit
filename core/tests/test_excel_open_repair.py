@@ -198,3 +198,156 @@ def test_real_world_defect_files_repaired(tmp_path: Path) -> None:
         assert result["quoted"] == quoted, (name, result)
         assert result["changed"] is True
         assert work.read_bytes() != src.read_bytes()
+
+
+# ---------------------------------------------------------------------------
+# 第三类缺陷：悬空外部簿引用 [N]（Excel 拒开 0x80020009；WPS/LibreOffice 重算
+# 回落断链缓存）。修复口径与 Rust audit-core excel_open_repair.rs 第三类一致：
+# 仅当 [N] 后表名存在于本包 <sheets>（本地已导入）时剥前缀，真外链不动。
+# ---------------------------------------------------------------------------
+
+def _inject_formula(path: Path, cell_ref: str, formula: str) -> None:
+    """把公式原样写入首个 worksheet 部件的指定单元格（模拟模板公式移植）。
+
+    cell_ref 必须是 B 列 2 行起的引用（合成簿只有第 1 行，保证行序合法）；
+    不带样式属性，避免指向合成簿不存在的样式索引。"""
+    import re
+    import zipfile
+    with zipfile.ZipFile(path) as zin:
+        parts = {n: zin.read(n) for n in zin.namelist()}
+    sheet_key = next(n for n in parts if n.startswith("xl/worksheets/sheet"))
+    text = parts[sheet_key].decode("utf-8")
+    new_cell = f'<c r="{cell_ref}"><f>{formula}</f></c>'
+    if f'<c r="{cell_ref}"' in text:
+        text = re.sub(rf'<c r="{cell_ref}"[^>]*/>|<c r="{cell_ref}"[^>]*>.*?</c>',
+                      new_cell, text, count=1, flags=re.S)
+    elif "<sheetData/>" in text:
+        text = text.replace("<sheetData/>",
+                            f'<sheetData><row r="2">{new_cell}</row></sheetData>')
+    else:
+        text = text.replace("</sheetData>",
+                            f'<row r="2">{new_cell}</row></sheetData>')
+    parts[sheet_key] = text.encode("utf-8")
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zout:
+        for name, data in parts.items():
+            zout.writestr(name, data)
+
+
+def _sheets_of(path: Path) -> list[str]:
+    book = load_workbook(path, read_only=True)
+    try:
+        return list(book.sheetnames)
+    finally:
+        book.close()
+
+
+def test_strips_dangling_local_index_prefix(tmp_path: Path) -> None:
+    """[1]集中系统数据! 且集中系统数据是本地 sheet → 剥前缀，语义指向本地表。"""
+    src = tmp_path / "核查表.xlsx"
+    book = Workbook()
+    book.active.title = "债券投资发生额"
+    book.create_sheet("集中系统数据")
+    book.create_sheet("参照表")
+    book.save(src)
+    book.close()
+    _inject_formula(
+        src, "B2",
+        "INDEX([1]集中系统数据!$1:$1048576,MATCH($B$4,[1]参照表!$A:$B,2,0))")
+
+    result = repair_audit_copy_for_excel(src)
+
+    assert result["changed"] is True
+    assert result["stripped_refs"] == 2, result
+    formula = load_workbook(src)["债券投资发生额"]["B2"].value
+    assert formula == "=INDEX(集中系统数据!$1:$1048576,MATCH($B$4,参照表!$A:$B,2,0))", formula
+
+
+def test_keeps_genuinely_external_ref(tmp_path: Path) -> None:
+    """[N] 指向的表不在本地 sheets → 真外部引用，不得剥离。"""
+    src = tmp_path / "核查表.xlsx"
+    book = Workbook()
+    book.active.title = "发生额"
+    book.create_sheet("集中系统数据")
+    book.save(src)
+    book.close()
+    _inject_formula(src, "B2", "INDEX([3]旧系统归档表!$A:$A,1)")
+
+    result = repair_audit_copy_for_excel(src)
+
+    assert result["changed"] is False
+    assert load_workbook(src)["发生额"]["B2"].value == "=INDEX([3]旧系统归档表!$A:$A,1)"
+
+
+def test_strips_quoted_sheet_variant(tmp_path: Path) -> None:
+    """带引号变体 '[1]'集中系统数据'! 同样剥离。"""
+    src = tmp_path / "核查表.xlsx"
+    book = Workbook()
+    book.active.title = "发生额"
+    book.create_sheet("集中系统数据")
+    book.save(src)
+    book.close()
+    _inject_formula(src, "B2", "INDEX([1]'集中系统数据'!$B:$B,0)")
+
+    result = repair_audit_copy_for_excel(src)
+
+    assert result["stripped_refs"] == 1
+    # 带引号变体剥离后保留引号（Excel 规范写法，语义等价）
+    assert load_workbook(src)["发生额"]["B2"].value == "=INDEX('集中系统数据'!$B:$B,0)"
+
+
+def test_strips_prefix_in_defined_names(tmp_path: Path) -> None:
+    """definedNames 上下文的 [N] 前缀同样剥离。"""
+    src = tmp_path / "核查表.xlsx"
+    book = Workbook()
+    book.active.title = "发生额"
+    book.create_sheet("集中系统数据")
+    book.save(src)
+    book.close()
+    import zipfile
+    with zipfile.ZipFile(src) as zin:
+        parts = {n: zin.read(n) for n in zin.namelist()}
+    wb = parts["xl/workbook.xml"].decode("utf-8")
+    wb = wb.replace("<definedNames/>", "")  # openpyxl 可能不写空块
+    block = ('<definedNames><definedName name="数据区">INDEX([1]集中系统数据!$A:$B,1)</definedName></definedNames>')
+    wb = wb.replace("</workbook>", block + "</workbook>")
+    parts["xl/workbook.xml"] = wb.encode("utf-8")
+    with zipfile.ZipFile(src, "w", zipfile.ZIP_DEFLATED) as zout:
+        for name, data in parts.items():
+            zout.writestr(name, data)
+
+    result = repair_audit_copy_for_excel(src)
+
+    assert result["changed"] is True
+    assert result["stripped_refs"] == 1
+    repaired = zipfile.ZipFile(src).read("xl/workbook.xml").decode("utf-8")
+    assert "INDEX(集中系统数据!$A:$B,1)" in repaired
+
+
+def test_real_poisoned_bond_template_formula(tmp_path: Path) -> None:
+    """真实毒公式（business_templates 债券业务 W152，INDEX([1]集中系统数据!…））。"""
+    poison_t = Path(r"C:\Users\AZI\Desktop\VibeCode\Rust-Audit\测试数据"
+                    r"\S1F1_新旧对比_20261105_231620\business_templates"
+                    r"\！70.金融基础数据采集（债券业务）202608.xlsx")
+    if not poison_t.is_file():
+        pytest.skip("本机无 Rust-Audit business_templates 毒模板")
+    import re as _re
+    import zipfile as _zf
+    with _zf.ZipFile(poison_t) as z:
+        x1 = z.read("xl/worksheets/sheet1.xml").decode("utf-8")
+    m = _re.search(r'<c r="W152"[^>]*>\s*<f[^>]*>([^<]+)</f>', x1)
+    assert m, "毒模板应含 W152 公式"
+    poison_formula = m.group(1)
+
+    src = tmp_path / "核查表.xlsx"
+    book = Workbook()
+    book.active.title = "债券投资发生额"
+    book.create_sheet("集中系统数据")
+    book.create_sheet("参照表")
+    book.save(src)
+    book.close()
+    _inject_formula(src, "B2", poison_formula)
+
+    result = repair_audit_copy_for_excel(src)
+
+    assert result["stripped_refs"] >= 1
+    assert "[1]" not in str(load_workbook(src)["债券投资发生额"]["B2"].value)

@@ -362,6 +362,21 @@ def handle_formula_copy(ctx: NodeContext, parameters: dict, inputs: dict) -> Mod
         template_book.close()
     write_seconds = time.monotonic() - write_started
     ctx.log(f"公式写入完成：{len(records)} 份审核副本，用时 {write_seconds:.2f} 秒")
+    # 模板校验区域公式可能携带 [1]表名! 外部簿前缀；副本把外部簿导入为本地表但
+    # 不含模板的 externalLink 部件 → 悬空引用。LibreOffice 打开同样受影响，
+    # 重算前剥离指向本地已导入表的 [N]（引号/窗格修复属 Excel 打开问题，不在 native 触发）。
+    from ...excel_open_repair import repair_audit_copy_for_excel
+    stripped_refs = 0
+    stripped_files = 0
+    for record in records:
+        strip = repair_audit_copy_for_excel(
+            Path(record.audit), fix_quotes=False, fix_panes=False,
+            fix_external_refs=True)
+        if strip.get("changed"):
+            stripped_files += 1
+            stripped_refs += int(strip.get("stripped_refs", 0))
+            ctx.log(f"  {Path(record.source).name}：剥离悬空外部簿引用 "
+                    f"{strip.get('stripped_refs', 0)} 处（改指本地已导入表）")
     recalculate = calculator.recalculate_many(
         (Path(record.audit) for record in records), batch_size=8,
     )

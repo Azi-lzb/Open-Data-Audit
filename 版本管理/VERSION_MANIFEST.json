@@ -23,12 +23,12 @@
   "features": {
     "S1-F01": {
       "name": "汇总核查表校验",
-      "version": "2.7.3",
+      "version": "2.7.4",
       "system": "S1",
       "implementation": "core/src/base_audit/native/result_writer.py",
       "description": "逐笔统计系统主流程：模板体检、表结构比对、公式复制、Excel/WPS 重算、问题提取与审核副本输出（DAG 编排）。",
       "changelog": "版本管理/S1_逐笔统计系统/功能/S1-F01_汇总核查表校验/CHANGELOG.md",
-      "version_note": "v2.7.3（PATCH）：S1-F01 条件格式提取在 Excel/WPS COM 模式下改读审核副本（copy-files 产物，已做 Excel 兼容修复），原始报送文件不再经 COM 打开；PYTHON 模式仍读原始文件；结构比对拒绝的文件回退原始路径。"
+      "version_note": "v2.7.4（PATCH）：修复审核副本悬空外部簿引用——模板校验区域公式携带 [N]表名! 前缀而副本不含 externalLink 部件时，Excel 拒绝打开（0x80020009）、WPS/LibreOffice 重算丢公式。现于公式写入后、Office 打开前剥离指向本地已导入表的 [N]，指向真外部簿的不动。"
     },
     "S1-F02": {
       "name": "汇总校验结果说明",

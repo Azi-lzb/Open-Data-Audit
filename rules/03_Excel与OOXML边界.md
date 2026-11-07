@@ -30,6 +30,12 @@
 - 禁止依赖 `ns0:` 等具体前缀的正则解析结构；
 - 正确维护 Relationship、Content Types、Sheet graph；
 - 删除 Sheet 后校验不存在悬空引用；
+- **复制公式原文时必须处理外部簿前缀 `[N]表名!`**：外部表已导入为本地同名 sheet 时
+  剥离 `[N]`（改指本地表）；指向真外部簿的不动。副本不含 `xl/externalLinks/*` 时，
+  残留 `[N]` 会成为悬空引用，Excel `Workbooks.Open` 直接拒绝（0x80020009），
+  而 WPS/LibreOffice 重算会丢失公式或回落到断链缓存。统一实现见
+  `core/src/base_audit/excel_open_repair.py::_strip_dangling_external_refs`；
+  机制与实证见 `docs/悬空外部引用缺陷_机制与跨仓库结论.md`；
 - 输出必须能重新用 openpyxl/Office 打开。
 
 不适合：
