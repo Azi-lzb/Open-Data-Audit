@@ -1,0 +1,15 @@
+时间：2026-11-17（Asia/Shanghai）
+执行者：Codex
+修改前 commit：ab0b535008f6d9bbf09642dd1c380c5e6aadc2e3。
+修改后 commit：见本记录所在提交。
+WIP：原有未跟踪的本机目录、临时测试文件及旧盘点文档保留，不纳入提交。
+
+目的：按用户要求，在 GitHub README 明确旧 Python 项目暂停更新，并指向 Rust-Audit。
+修改文件：README.md；新增本记录。
+变化：README 顶部新增暂停更新说明和 Rust-Audit 链接；产品版本改为“本仓库保留版本”，下载描述改为历史发行包，避免继续更新的表述。
+链接核验：只读查看 Rust-Audit 本机 origin，并通过 GitHub 连接器确认 https://github.com/Azi-lzb/Rust-Audit 为公开仓库、默认分支 main。
+配置及 VBA 迁移影响：无。没有修改 Rust-Audit 仓库、业务代码、配置或 Release 附件。
+验证：提交前检查文档 diff 与公开快照；提交后回读 GitHub main 的 README 确认提示及链接。纯文档修改，不运行 pytest。
+【组件版本】不升级。
+删除清单：无。
+回滚：撤销本次文档提交即可恢复原说明；不改变安装包。

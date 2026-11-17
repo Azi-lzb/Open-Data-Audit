@@ -1,10 +1,12 @@
 # Open Data Audit
 
-审核工具（AuditTools）V3 的公开代码仓库，当前产品版本为 **V26.2.2.5**。程序在本机处理 Excel 工作簿，提供 Windows 桌面窗口、Windows 浏览器工作台和 Linux 浏览器工作台。
+> **本项目已暂停更新。** 后续开发与功能更新转至 [Rust-Audit](https://github.com/Azi-lzb/Rust-Audit)，请前往该项目关注最新进展及使用说明。本仓库保留现有源码、历史记录和已发布安装包，供参考及兼容使用。
+
+审核工具（AuditTools）V3 的公开代码仓库，本仓库保留版本为 **V26.2.2.5**。程序在本机处理 Excel 工作簿，提供 Windows 桌面窗口、Windows 浏览器工作台和 Linux 浏览器工作台。
 
 ## 下载与选择版本
 
-前往 [审核工具 V26.2.2.5 Release](https://github.com/Azi-lzb/Open-Data-Audit/releases/tag/v26.2.2.5) 下载已打包程序；后续版本可在 [Releases](https://github.com/Azi-lzb/Open-Data-Audit/releases) 查看。Release 页面自动生成的 **Source code** 是源码，不是安装包。
+前往 [审核工具 V26.2.2.5 Release](https://github.com/Azi-lzb/Open-Data-Audit/releases/tag/v26.2.2.5) 下载已打包程序；本项目历史发行包可在 [Releases](https://github.com/Azi-lzb/Open-Data-Audit/releases) 查看。Release 页面自动生成的 **Source code** 是源码，不是安装包。
 
 - **Windows-Flask ZIP**：浏览器工作台，同一个压缩包内提供 Windows 10/11 64 位程序和 Windows 7 SP1 兼容程序。
 - **Windows-PyWebView ZIP**：Windows 10/11 64 位桌面窗口版，需要 Microsoft Edge WebView2 Runtime。
