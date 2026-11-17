@@ -1,0 +1,10 @@
+执行者：Codex
+目的：按用户批准清理第一批LO安装包及编译缓存。
+修改前后业务代码commit：ada4ba9，未提交代码变更。
+删除：11份LibreOffice安装包，两个外壳build缓存，以及三个Rust crate target内除S1/S3正式写入器以外的文件；合计9020个文件、4226435223字节。
+保留：Windows/Linux S1/S3四个写入器，清理前后SHA256一致；源码、前端、真实配置、业务及测试数据1609个文件SHA256一致。
+未清理：.git、test-output、dist、Python环境；没有修改配置及VBA语义。
+验证：文件哈希核对通过，Git状态核对；不运行业务测试。
+【组件版本】不升级。
+详情：test-output/cleanup-first-batch-20261117.json（本机忽略文件）。
+回滚：编译缓存可重建；LO包可从既有GitHub附件重新下载。源码和数据无需恢复。
